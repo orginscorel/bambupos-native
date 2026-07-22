@@ -1,0 +1,439 @@
+{
+  "_aciklama": "Demo katalog görsel kaynakları. Dosyalar storage/app/public/tenants/1/products/ altında (git dışı). 800px genişlik, WebP, <=150KB. product_images tablosuna ProductImageService ile yüklendi (2026-07-22).",
+  "_gorselsiz": {
+    "65": "Premium Nargile (uygun lisanslı, konuyla uyuşan görsel bulunamadı)",
+    "66": "VIP Nargile (Özel Karışım) (uygun lisanslı, konuyla uyuşan görsel bulunamadı)",
+    "67": "Meyve Başlıklı Nargile (uygun lisanslı, konuyla uyuşan görsel bulunamadı)",
+    "68": "Buz Nargile (uygun lisanslı, konuyla uyuşan görsel bulunamadı)"
+  },
+  "urunler": {
+    "1": {
+      "name": "Serpme Kahvaltı (2 Kişilik)",
+      "source": "Wikimedia Commons",
+      "file": "File:Turkish breakfast in Rumelihisarı.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Turkish_breakfast_in_Rumelihisarı.jpg",
+      "license": "CC BY-SA 3.0",
+      "author": "Jwslubbock"
+    },
+    "2": {
+      "name": "Hızlı Kahvaltı Tabağı",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1533089860892-a7c6f0a88666",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "3": {
+      "name": "Menemen",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1590412200988-a436970781fa",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "4": {
+      "name": "Sucuklu Yumurta",
+      "source": "Wikimedia Commons",
+      "file": "File:Sucuklu yumurta.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Sucuklu_yumurta.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "E4024"
+    },
+    "5": {
+      "name": "Pancake Kulesi",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "6": {
+      "name": "Sigara Böreği (4 Adet)",
+      "source": "Wikimedia Commons",
+      "file": "File:Sigara Böreği.JPG",
+      "url": "https://commons.wikimedia.org/wiki/File:Sigara_Böreği.JPG",
+      "license": "CC BY-SA 3.0",
+      "author": "CMoi"
+    },
+    "7": {
+      "name": "Humus Tabağı",
+      "source": "Wikimedia Commons",
+      "file": "File:Hummus plate.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Hummus_plate.jpg",
+      "license": "CC BY-SA 4.0"
+    },
+    "8": {
+      "name": "Çıtır Tavuk (8 Adet)",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1562967914-608f82629710",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "9": {
+      "name": "Patates Kızartması",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1573080496219-bb080dd4f877",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "10": {
+      "name": "Soğan Halkası",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1639024471283-03518883512d",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "11": {
+      "name": "Mozzarella Stick (6 Adet)",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1531749668029-2db88e4276c7",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "12": {
+      "name": "Izgara Köfte",
+      "source": "Wikimedia Commons",
+      "file": "File:Şiş köfte platter.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Şiş_köfte_platter.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "E4024"
+    },
+    "13": {
+      "name": "Bonfile Lokum",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1558030006-450675393462",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "14": {
+      "name": "Tavuk Şiş",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1555939594-58d7cb561ad1",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "15": {
+      "name": "Piliç Pirzola",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1432139555190-58524dae6a55",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "16": {
+      "name": "Karışık Izgara",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1544025162-d76694265947",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "17": {
+      "name": "Classic Cheeseburger",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "18": {
+      "name": "Mushroom Burger",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1572802419224-296b0aeee0d9",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "19": {
+      "name": "BBQ Bacon Burger",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1553979459-d2229ba7433b",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "20": {
+      "name": "Chicken Burger",
+      "source": "Wikimedia Commons",
+      "file": "File:Fried chicken burger .jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Fried_chicken_burger_.jpg",
+      "license": "CC0"
+    },
+    "21": {
+      "name": "Double Smash Burger",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1586816001966-79b736744398",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "22": {
+      "name": "Vegan Burger",
+      "source": "Wikimedia Commons",
+      "file": "File:Fancy Veggie Burger and Fries - Joe's Burger House 2024-07-07.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Fancy_Veggie_Burger_and_Fries_-_Joe's_Burger_House_2024-07-07.jpg",
+      "license": "CC0",
+      "author": "Andy Li"
+    },
+    "23": {
+      "name": "Margherita",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1604068549290-dea0e4a305ca",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "24": {
+      "name": "Karışık Pizza",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "25": {
+      "name": "Pepperoni",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1628840042765-356cda07504e",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "26": {
+      "name": "Sucuklu Pizza",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1513104890138-7c749659a591",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "27": {
+      "name": "Fettuccine Alfredo",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1645112411341-6c4fd023714a",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "28": {
+      "name": "Spaghetti Bolonez",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1556761223-4c4282c73f77",
+      "license": "Unsplash License",
+      "note": "eski sistemde 30 numaralı üründeydi"
+    },
+    "29": {
+      "name": "Penne Arrabbiata",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9",
+      "license": "Unsplash License",
+      "note": "eski sistemde 28 numaralı üründeydi"
+    },
+    "30": {
+      "name": "Mantarlı Makarna",
+      "source": "Wikimedia Commons",
+      "file": "File:Creamy Mushroom Pasta.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Creamy_Mushroom_Pasta.jpg",
+      "license": "CC BY 3.0",
+      "author": "Sharon Chen"
+    },
+    "31": {
+      "name": "Sezar Salata",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1550304943-4f24f54ddde9",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "32": {
+      "name": "Akdeniz Salata",
+      "source": "Wikimedia Commons",
+      "file": "File:Greek Salad Choriatiki.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Greek_Salad_Choriatiki.jpg",
+      "license": "CC BY 2.0",
+      "author": "https://www.fli"
+    },
+    "33": {
+      "name": "Ton Balıklı Salata",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1546793665-c74683f339c1",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "34": {
+      "name": "Avokadolu Tavuk Salata",
+      "source": "Wikimedia Commons",
+      "file": "File:Cobb salad with chicken, avocado, etc - San Francisco, CA.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Cobb_salad_with_chicken,_avocado,_etc_-_San_Francisco,_CA.jpg",
+      "license": "CC0",
+      "author": "Daderot"
+    },
+    "35": {
+      "name": "Kaşarlı Tost",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1528735602780-2552fd46c7af",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "36": {
+      "name": "Karışık Tost",
+      "source": "Wikimedia Commons",
+      "file": "File:Ham & cheese toasted sandwich - Potatoast 2026-05-02.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Ham_&_cheese_toasted_sandwich_-_Potatoast_2026-05-02.jpg",
+      "license": "CC0",
+      "author": "Andy Li"
+    },
+    "37": {
+      "name": "Club Sandwich",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1567234669003-dce7a7a88821",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "38": {
+      "name": "Tavuklu Wrap",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1626700051175-6818013e1d4f",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "39": {
+      "name": "Kasap Köfte Sandviç",
+      "source": "Wikimedia Commons",
+      "file": "File:Meatball sub FTW.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Meatball_sub_FTW.jpg",
+      "license": "CC BY 2.0"
+    },
+    "40": {
+      "name": "San Sebastian Cheesecake",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1524351199678-941a58a3df50",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "41": {
+      "name": "Çikolatalı Sufle",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1617305855058-336d24456869",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "42": {
+      "name": "Waffle",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1562376552-0d160a2f238d",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "43": {
+      "name": "Künefe",
+      "source": "Wikimedia Commons",
+      "file": "File:Künefe.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Künefe.jpg",
+      "license": "CC BY 2.0",
+      "author": "elif ayse"
+    },
+    "44": {
+      "name": "Tiramisu",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "45": {
+      "name": "Magnolia",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1488477181946-6428a0291777",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "46": {
+      "name": "Türk Kahvesi",
+      "source": "Wikimedia Commons",
+      "file": "File:Turkish Coffee with Crema.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Turkish_Coffee_with_Crema.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "Garrett Ziegler"
+    },
+    "47": {
+      "name": "Espresso",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1510707577719-ae7c14805e3a",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "48": {
+      "name": "Americano",
+      "source": "Wikimedia Commons",
+      "file": "File:Espresso Americano.jpeg",
+      "url": "https://commons.wikimedia.org/wiki/File:Espresso_Americano.jpeg",
+      "license": "Public domain"
+    },
+    "49": {
+      "name": "Latte",
+      "source": "Wikimedia Commons",
+      "file": "File:Latte art.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Latte_art.jpg",
+      "license": "CC BY-SA 2.0"
+    },
+    "50": {
+      "name": "Cappuccino",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1572442388796-11668a67e53d",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "51": {
+      "name": "Mocha",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1578314675249-a6910f80cc4e",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "52": {
+      "name": "Sıcak Çikolata",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "53": {
+      "name": "Chai Latte",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1557006021-b85faa2bc5e2",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "54": {
+      "name": "Filtre Kahve",
+      "source": "Wikimedia Commons",
+      "file": "File:Manual drip (pour-over) coffee.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Manual_drip_(pour-over)_coffee.jpg",
+      "license": "CC0",
+      "author": "Kim Sanso"
+    },
+    "55": {
+      "name": "Çay (Bardak)",
+      "source": "Wikimedia Commons",
+      "file": "File:Turkish tea with classical glass.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Turkish_tea_with_classical_glass.jpg",
+      "license": "CC0",
+      "author": "eXpl"
+    },
+    "56": {
+      "name": "Ev Yapımı Limonata",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1621263764928-df1444c5e859",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "57": {
+      "name": "Ice Americano",
+      "source": "Wikimedia Commons",
+      "file": "File:Ice coffee image.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Ice_coffee_image.jpg",
+      "license": "CC BY-SA 3.0"
+    },
+    "58": {
+      "name": "Iced Latte",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1461023058943-07fcbe16d735",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "59": {
+      "name": "Milkshake (Çikolata)",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1572490122747-3968b75cc699",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "60": {
+      "name": "Mango Smoothie",
+      "source": "Wikimedia Commons",
+      "file": "File:Fresh-mango-smoothie 01.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Fresh-mango-smoothie_01.jpg",
+      "license": "CC BY-SA 4.0",
+      "author": "Vivekpat30"
+    },
+    "61": {
+      "name": "Taze Portakal Suyu",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1613478223719-2ab802602423",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "62": {
+      "name": "Meyveli Soda",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1558645836-e44122a743ee",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "63": {
+      "name": "Mojito (Alkolsüz)",
+      "source": "Unsplash",
+      "url": "https://images.unsplash.com/photo-1551538827-9c037cb4f32a",
+      "license": "Unsplash License (ücretsiz ticari kullanım, atıf gerekmez)"
+    },
+    "64": {
+      "name": "Klasik Nargile",
+      "source": "Wikimedia Commons",
+      "file": "File:Hookah Pipes at a Hookah lounge by Don Ramey Logan.jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Hookah_Pipes_at_a_Hookah_lounge_by_Don_Ramey_Logan.jpg",
+      "license": "CC BY-SA 4.0"
+    },
+    "69": {
+      "name": "Fıstıklı Baklava (4 Dilim)",
+      "source": "Wikimedia Commons",
+      "file": "File:Pistachio Baklava from Sarigerme, Turkey (49070918302).jpg",
+      "url": "https://commons.wikimedia.org/wiki/File:Pistachio_Baklava_from_Sarigerme,_Turkey_(49070918302).jpg",
+      "license": "CC BY 2.0"
+    }
+  }
+}
