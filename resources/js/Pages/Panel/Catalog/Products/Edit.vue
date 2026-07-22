@@ -706,8 +706,19 @@ const spicinessOptions = [
                             </div>
 
                             <div class="grid gap-4 sm:grid-cols-2">
-                                <BaseSwitch v-model="form.is_active" label="Satışta" description="Kapalıysa ürün hiçbir kanalda görünmez." />
-                                <BaseSwitch v-model="form.is_available" label="Mevcut" description="Kapatınca menüde 'tükendi' görünür." />
+                                <BaseSwitch
+                                    v-model="form.is_active"
+                                    label="Satışta"
+                                    description="Ürün menüde görünsün mü? Kalıcı karar: kapatınca ürün hiçbir kanalda görünmez (mevsimlik ya da menüden kaldırılan ürün için)."
+                                />
+                                <BaseSwitch
+                                    v-model="form.is_available"
+                                    label="Mevcut"
+                                    :disabled="!form.is_active"
+                                    :description="form.is_active
+                                        ? 'Bugün stokta var mı? Geçici durum: kapatınca ürün menüde kalır ama &quot;Tükendi&quot; görünür; stok gelince tekrar açın.'
+                                        : 'Ürün satışta değilken stok durumu uygulanmaz; önce ürünü satışa alın.'"
+                                />
                             </div>
 
                             <div class="grid gap-4 sm:grid-cols-3">

@@ -175,9 +175,10 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
     const previous = p[field];
     (p as unknown as Record<string, boolean>)[field] = value; // iyimser
     try {
-        await api(`/api/v1/catalog/products/${p.id}`, { method: 'PUT', body: { [field]: value } });
+        // Dar uç: yalnız ilgili boolean doğrulanır (tam form doğrulaması ÇALIŞMAZ).
+        await api(`/api/v1/catalog/products/${p.id}/availability`, { method: 'PATCH', body: { [field]: value } });
         success(
-            field === 'is_active' ? (value ? 'Ürün satışta' : 'Ürün pasife alındı') : value ? 'Ürün mevcut' : 'Tükendi işaretlendi',
+            field === 'is_active' ? (value ? 'Ürün satışta' : 'Ürün satıştan kaldırıldı') : value ? 'Ürün mevcut' : 'Tükendi işaretlendi',
             p.name,
         );
     } catch (e) {
@@ -215,6 +216,15 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
             <p v-if="dragEnabled" class="flex items-center gap-1.5 text-xs text-muted">
                 <AppIcon name="info" :size="14" />
                 Bu kategoride satırları sürükleyerek menü sırasını değiştirebilirsiniz.
+            </p>
+
+            <p class="flex items-start gap-1.5 text-xs text-muted">
+                <AppIcon name="info" :size="14" class="mt-0.5 shrink-0" />
+                <span>
+                    <strong class="font-semibold text-body">Satışta</strong>: ürün menüde görünsün mü? (kalıcı karar — mevsimlik/kaldırılan ürünü kapatın)
+                    &nbsp;·&nbsp;
+                    <strong class="font-semibold text-body">Mevcut</strong>: ürün menüde görünür ama bugün stok bitti mi? (geçici — "Tükendi" yazar, gün içinde tekrar açın)
+                </span>
             </p>
 
             <!-- Toplu işlem çubuğu -->
@@ -331,16 +341,21 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                                             {{ p.is_active ? 'Satışta' : 'Pasif' }}
                                         </span>
                                     </span>
-                                    <span class="flex items-center gap-2">
+                                    <span
+                                        class="flex items-center gap-2"
+                                        :class="!p.is_active ? 'opacity-45' : ''"
+                                        :title="!p.is_active ? 'Ürün satışta değilken stok (Mevcut/Tükendi) durumu uygulanmaz; önce ürünü satışa alın.' : undefined"
+                                    >
                                         <BaseSwitch
                                             size="sm"
                                             :model-value="p.is_available"
                                             :aria-label="`${p.name} mevcut/tükendi`"
-                                            :disabled="!canUpdate"
+                                            :disabled="!canUpdate || !p.is_active"
                                             :busy="switchBusyId === p.id"
                                             @update:model-value="toggleField(p, 'is_available', $event)"
                                         />
-                                        <span class="text-xs" :class="p.is_available ? 'text-muted' : 'text-danger'">
+                                        <span v-if="!p.is_active" class="text-xs text-subtle">Satışta değil</span>
+                                        <span v-else class="text-xs" :class="p.is_available ? 'text-muted' : 'text-danger'">
                                             {{ p.is_available ? 'Mevcut' : 'Tükendi' }}
                                         </span>
                                     </span>

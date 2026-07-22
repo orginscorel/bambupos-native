@@ -45,6 +45,8 @@ Route::middleware(['auth:web', 'tenant'])->group(function (): void {
         Route::post('products/reorder', [ProductController::class, 'reorder'])->name('catalog.products.reorder');
         Route::get('products/{product}', [ProductController::class, 'show'])->name('catalog.products.show');
         Route::put('products/{product}', [ProductController::class, 'update'])->name('catalog.products.update');
+        // Satır içi switch'ler için dar uç: yalnız is_active / is_available.
+        Route::patch('products/{product}/availability', [ProductController::class, 'updateAvailability'])->name('catalog.products.availability');
         Route::delete('products/{product}', [ProductController::class, 'destroy'])->name('catalog.products.destroy');
 
         Route::post('products/{product}/images', [ProductImageController::class, 'store'])->name('catalog.products.images.store');

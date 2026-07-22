@@ -353,6 +353,7 @@ class OrderService
 
             $this->recomputeTotals($locked);
             $this->deriveKitchenStatus($locked, $actor);
+            $this->closeIfEmptied($locked, $actor);
         });
     }
 
@@ -392,6 +393,7 @@ class OrderService
 
             $this->recomputeTotals($locked);
             $this->deriveKitchenStatus($locked, $actor);
+            $this->closeIfEmptied($locked, $actor);
 
             return $item;
         });
@@ -1036,6 +1038,9 @@ class OrderService
             $this->deriveKitchenStatus($locked, $actor);
             $this->deriveKitchenStatus($lockedTarget, $actor);
 
+            // Son kalem taşındıysa kaynak adisyon boş kaldı → otomatik kapat.
+            $this->closeIfEmptied($locked, $actor);
+
             $this->tables->syncForOrder($locked);
             $this->tables->syncForOrder($lockedTarget);
 
@@ -1201,6 +1206,68 @@ class OrderService
         ]);
 
         return $shares;
+    }
+
+    /* =========================================================
+     |  Boşalan adisyonun otomatik kapanışı (kural)
+     * ========================================================= */
+
+    /**
+     * KURAL: Açık adisyonun TÜM kalemleri kaldırılır/iptal edilir/taşınırsa
+     * adisyon otomatik iptal edilir (denetim kaydıyla) ve masa durumu
+     * yeniden türetilir → başka açık adisyon yoksa masa Boş'a döner.
+     * Rezerve / Kullanım dışı masalar TableStatusSynchronizer'da ezilmez.
+     *
+     * Yalnız kalem-çıkaran yollardan (removeItem/cancelItem/moveItem)
+     * çağrılır; yeni açılmış (henüz kalem eklenmemiş) adisyona dokunmaz.
+     * Tahsilatı olan adisyon kapatılmaz (iade yolu kullanılmalı).
+     */
+    /**
+     * Kural dışı kalmış (boş ama açık) adisyonu kilit altında kapatır.
+     * Onarım komutu (orders:repair-table-status) kullanır.
+     *
+     * @return bool adisyon bu çağrıda kapatıldı mı
+     */
+    public function autoCloseIfEmpty(Order $order, ?User $actor = null): bool
+    {
+        return $this->withLockedOrder($order, null, function (Order $locked) use ($actor): bool {
+            $before = (string) $locked->status;
+            $this->closeIfEmptied($locked, $actor);
+
+            return (string) $locked->status !== $before;
+        });
+    }
+
+    private function closeIfEmptied(Order $locked, ?User $actor): void
+    {
+        if (! $locked->statusEnum()->isOpen() || (int) $locked->paid_minor > 0) {
+            return;
+        }
+
+        $hasActiveItem = $locked->items()->get()
+            ->contains(fn (OrderItem $i): bool => $i->isActive());
+
+        if ($hasActiveItem) {
+            return;
+        }
+
+        $from = $locked->statusEnum();
+
+        $locked->status = OrderStatus::Cancelled->value;
+        $locked->cancel_reason = 'Tüm kalemler kaldırıldı — adisyon otomatik kapatıldı';
+        $locked->cancelled_by_id = $actor?->getKey();
+        $locked->cancelled_at = now();
+        $locked->closed_at = now();
+
+        $payload = [
+            'reason' => $locked->cancel_reason,
+            'performed_by' => $actor?->getKey(),
+        ];
+
+        $this->logEvent($locked, 'auto_closed_empty', $actor, $payload, $from->value, OrderStatus::Cancelled->value);
+        $this->audit->log('orders.auto_closed_empty', $locked, ['status' => $from->value], $payload);
+
+        $this->tables->syncForOrder($locked, OrderStatus::Cancelled);
     }
 
     /* =========================================================

@@ -166,6 +166,36 @@ class ProductController extends Controller
         return response()->json(['product' => $this->freshPayload($product)]);
     }
 
+    /**
+     * DAR uç: satır içi "Satışta" / "Mevcut" switch'leri. Tam ürün
+     * doğrulaması (name, price_minor…) BİLİNÇLİ olarak çalışmaz — yalnız
+     * gönderilen boolean(lar) doğrulanıp güncellenir. (2026-07: switch'ler
+     * tam güncelleme ucuna gidip "name zorunlu" 422'si alıyordu.)
+     */
+    public function updateAvailability(Request $request, Product $product): JsonResponse
+    {
+        $this->authorize('update', $product);
+
+        $data = $request->validate([
+            'is_active' => ['sometimes', 'boolean'],
+            'is_available' => ['sometimes', 'boolean'],
+        ]);
+
+        if ($data === []) {
+            throw ValidationException::withMessages([
+                'is_active' => ['En az bir alan gönderilmeli (is_active / is_available).'],
+            ]);
+        }
+
+        $old = $product->only(array_keys($data));
+        $product->update($data);
+
+        app(\App\Modules\Identity\Services\AuditLogger::class)
+            ->log('catalog.product_availability_changed', $product, $old, $data);
+
+        return response()->json(['product' => $this->freshPayload($product)]);
+    }
+
     public function destroy(Product $product): JsonResponse
     {
         $this->authorize('delete', $product);
