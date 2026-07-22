@@ -41,6 +41,7 @@ class User extends Authenticatable
         'hired_at',
         'locale',
         'theme',
+        'default_screen',
         'is_active',
     ];
 
@@ -91,6 +92,17 @@ class User extends Authenticatable
         return $this->belongsToMany(Role::class, 'role_user')->withTimestamps();
     }
 
+    /**
+     * Kişi bazlı izin istisnaları (pivot.mode: grant | revoke).
+     * Etkili izin = (rollerin birleşimi + grant) − revoke.
+     */
+    public function personalPermissions(): BelongsToMany
+    {
+        return $this->belongsToMany(Permission::class, 'permission_user')
+            ->withPivot('mode')
+            ->withTimestamps();
+    }
+
     /* ---------------- Yetki ---------------- */
 
     /** @var array<int, string>|null istek-içi izin önbelleği */
@@ -99,18 +111,47 @@ class User extends Authenticatable
     /** @return array<int, string> */
     public function permissionKeys(): array
     {
+        if ($this->permissionKeyCache !== null) {
+            return $this->permissionKeyCache;
+        }
+
         // TenantScope bağlama bağlıdır; burada bağlamdan bağımsız ama yine
         // kiracı-denetimli sorgu kullanılır: rol, kullanıcının KENDİ
         // kiracısına ait değilse izin vermez (çapraz rol ataması etkisiz).
-        return $this->permissionKeyCache ??= $this->roles()
+        $fromRoles = $this->roles()
             ->withoutGlobalScope(\App\Modules\Tenancy\Scopes\TenantScope::class)
             ->where('roles.tenant_id', $this->tenant_id)
             ->with('permissions:id,key')
             ->get()
-            ->flatMap(fn (Role $role) => $role->permissions->pluck('key'))
+            ->flatMap(fn (Role $role) => $role->permissions->pluck('key'));
+
+        // Kişi bazlı istisnalar: grant üstüne eklenir, revoke düşülür.
+        $overrides = $this->personalPermissions()->get(['permissions.id', 'permissions.key']);
+
+        $grants = $overrides->where('pivot.mode', 'grant')->pluck('key');
+        $revokes = $overrides->where('pivot.mode', 'revoke')->pluck('key')->all();
+
+        return $this->permissionKeyCache = $fromRoles
+            ->merge($grants)
             ->unique()
+            ->reject(fn (string $key) => in_array($key, $revokes, true))
             ->values()
             ->all();
+    }
+
+    /**
+     * İstisnaların ham hâli (UI "rolden geliyor / kişiye özel" rozeti için).
+     *
+     * @return array{grant: array<int, string>, revoke: array<int, string>}
+     */
+    public function personalOverrideKeys(): array
+    {
+        $overrides = $this->personalPermissions()->get(['permissions.id', 'permissions.key']);
+
+        return [
+            'grant' => $overrides->where('pivot.mode', 'grant')->pluck('key')->values()->all(),
+            'revoke' => $overrides->where('pivot.mode', 'revoke')->pluck('key')->values()->all(),
+        ];
     }
 
     public function hasPermission(string $key): bool

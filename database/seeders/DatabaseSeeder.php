@@ -11,6 +11,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             PermissionSeeder::class,
             DemoTenantSeeder::class,
+            StaffRoleDefaultsSeeder::class, // var olan kiracılara şablon rol varsayılanları
             CatalogSeeder::class,
         ]);
     }

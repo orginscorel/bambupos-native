@@ -2,6 +2,7 @@
 
 namespace App\Modules\Identity\Services;
 
+use App\Modules\Identity\Models\Permission;
 use App\Modules\Identity\Models\Role;
 use App\Modules\Identity\Models\User;
 use App\Modules\Tenancy\Models\Branch;
@@ -63,6 +64,17 @@ class StaffService
             throw new TenantIsolationException('Personel kaydı bu kiracıya ait değil.');
         }
 
+        // Sahip güvencesi: sistem rolü taşıyan hesap panelden pasife alınamaz
+        // (işletme sahibi kilitlenemez; demo hesabı dahil).
+        if (array_key_exists('is_active', $attributes)
+            && ! $attributes['is_active']
+            && $staff->is_active
+            && $this->holdsSystemRole($staff)) {
+            throw ValidationException::withMessages([
+                'is_active' => ['Sistem rolü (ör. Sahip) taşıyan hesap pasife alınamaz.'],
+            ])->status(403);
+        }
+
         $old = $staff->only(array_keys($attributes));
 
         $staff->fill($attributes);
@@ -81,6 +93,122 @@ class StaffService
         $this->audit->log('staff.updated', $staff, $old, $attributes);
 
         return $staff;
+    }
+
+    /**
+     * Kişi bazlı izin istisnaları (grant/revoke) — TAM SET olarak yazılır.
+     *
+     * Kurallar:
+     *  - Aktör kendinde olmayan bir izni GRANT edemez (yetki yükseltme engeli).
+     *  - Aktör KENDİ istisnalarını değiştiremez.
+     *  - is_system rol taşıyan kullanıcıya (ör. Sahip) revoke yazılamaz —
+     *    işletme sahibi tek tek izin düşülerek kilitlenemez.
+     *
+     * @param  array<int, string>  $grantKeys
+     * @param  array<int, string>  $revokeKeys
+     */
+    public function setPersonalPermissions(User $actor, User $staff, array $grantKeys, array $revokeKeys): User
+    {
+        $tenantId = $this->context->tenantId();
+
+        if ($tenantId === null || (int) $staff->tenant_id !== $tenantId) {
+            throw new TenantIsolationException('Personel kaydı bu kiracıya ait değil.');
+        }
+
+        if ($actor->is($staff)) {
+            throw ValidationException::withMessages([
+                'staff' => ['Kendi izin istisnalarınızı değiştiremezsiniz.'],
+            ])->status(403);
+        }
+
+        $grantKeys = array_values(array_unique($grantKeys));
+        $revokeKeys = array_values(array_unique(array_diff($revokeKeys, $grantKeys)));
+
+        // Yetki yükseltme engeli: aktör sahip olmadığı izni bağışlayamaz.
+        $actorKeys = $actor->permissionKeys();
+        $forbidden = array_diff($grantKeys, $actorKeys);
+
+        if ($forbidden !== []) {
+            throw ValidationException::withMessages([
+                'grants' => ['Sahip olmadığınız izinleri veremezsiniz: '.implode(', ', $forbidden)],
+            ])->status(403);
+        }
+
+        if ($revokeKeys !== [] && $this->holdsSystemRole($staff)) {
+            throw ValidationException::withMessages([
+                'revokes' => ['Sistem rolü (ör. Sahip) taşıyan kullanıcıdan izin düşülemez.'],
+            ])->status(403);
+        }
+
+        $permissions = Permission::query()
+            ->whereIn('key', array_merge($grantKeys, $revokeKeys))
+            ->pluck('id', 'key');
+
+        $unknown = array_diff(array_merge($grantKeys, $revokeKeys), $permissions->keys()->all());
+
+        if ($unknown !== []) {
+            throw ValidationException::withMessages([
+                'permissions' => ['Bilinmeyen izin anahtarı: '.implode(', ', $unknown)],
+            ]);
+        }
+
+        $old = $staff->personalOverrideKeys();
+
+        $sync = [];
+        foreach ($grantKeys as $key) {
+            $sync[$permissions[$key]] = ['mode' => 'grant'];
+        }
+        foreach ($revokeKeys as $key) {
+            $sync[$permissions[$key]] = ['mode' => 'revoke'];
+        }
+
+        $staff->personalPermissions()->sync($sync);
+        $staff->flushPermissionCache();
+
+        $this->audit->log('staff.overrides_set', $staff, $old, ['grant' => $grantKeys, 'revoke' => $revokeKeys]);
+
+        return $staff;
+    }
+
+    /**
+     * İşten çıkarma = pasife alma. Kayıt SİLİNMEZ (veri kaybı yok);
+     * açık oturumlar EnsureUserIsActive katmanıyla düşer.
+     */
+    public function terminate(User $actor, User $staff): User
+    {
+        $tenantId = $this->context->tenantId();
+
+        if ($tenantId === null || (int) $staff->tenant_id !== $tenantId) {
+            throw new TenantIsolationException('Personel kaydı bu kiracıya ait değil.');
+        }
+
+        if ($actor->is($staff)) {
+            throw ValidationException::withMessages([
+                'staff' => ['Kendi hesabınızı işten çıkaramazsınız.'],
+            ])->status(403);
+        }
+
+        if ($this->holdsSystemRole($staff)) {
+            throw ValidationException::withMessages([
+                'staff' => ['Sistem rolü (ör. Sahip) taşıyan hesap işten çıkarılamaz.'],
+            ])->status(403);
+        }
+
+        $staff->is_active = false;
+        $staff->save();
+
+        $this->audit->log('staff.terminated', $staff, ['is_active' => true], ['is_active' => false]);
+
+        return $staff;
+    }
+
+    private function holdsSystemRole(User $staff): bool
+    {
+        return $staff->roles()
+            ->withoutGlobalScope(\App\Modules\Tenancy\Scopes\TenantScope::class)
+            ->where('roles.tenant_id', $staff->tenant_id)
+            ->where('roles.is_system', true)
+            ->exists();
     }
 
     private function assertBranch(int $branchId): Branch

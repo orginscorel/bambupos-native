@@ -68,7 +68,7 @@ async function submit(): Promise<void> {
     fieldErrors.value = {};
 
     try {
-        await api('/api/v1/auth/pin-login', {
+        const result = await api<{ redirect_to?: string }>('/api/v1/auth/pin-login', {
             method: 'POST',
             body: { tenant: tenant.value.trim().toLowerCase(), staff_code: staffCode.value.trim(), pin: pin.value },
         });
@@ -82,7 +82,8 @@ async function submit(): Promise<void> {
             /* gizli mod */
         }
 
-        window.location.href = '/panel';
+        // Role özel açılış ekranı (garson → sipariş, mutfak → KDS…)
+        window.location.href = result.redirect_to || '/panel';
     } catch (e) {
         loading.value = false;
         pin.value = '';

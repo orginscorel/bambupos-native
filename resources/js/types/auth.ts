@@ -12,6 +12,8 @@ export interface AuthUser {
     last_login_at: string | null;
     two_factor_enabled: boolean;
     has_pin: boolean;
+    /** Açılış ekranı tercihi (null = izinlere göre otomatik) */
+    default_screen?: string | null;
     roles: string[];
 }
 
@@ -27,6 +29,8 @@ export interface AuthProps {
     tenant: { name: string; slug: string } | null;
     branches: BranchOption[];
     activeBranchId: number | null;
+    /** Kullanıcının seçebileceği açılış ekranları (izinli olanlar) */
+    screenOptions?: { key: string; label: string; path: string }[];
 }
 
 /** usePage().props içinden güvenli okuma. */

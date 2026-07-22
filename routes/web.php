@@ -11,8 +11,11 @@ use Inertia\Inertia;
 |--------------------------------------------------------------------------
 */
 Route::get('/', function () {
-    return Auth::guard('web')->check()
-        ? redirect()->route('panel.dashboard')
+    $user = Auth::guard('web')->user();
+
+    return $user instanceof \App\Modules\Identity\Models\User
+        // Role özel açılış ekranı (Personel-Yetki): tercih > otomatik profil.
+        ? redirect(\App\Modules\Identity\Support\HomeScreen::resolve($user))
         : redirect()->route('login');
 })->name('home');
 

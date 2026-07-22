@@ -34,7 +34,7 @@ async function submitCredentials(): Promise<void> {
     locked.value = false;
 
     try {
-        const result = await api<{ two_factor: boolean }>('/api/v1/auth/login', {
+        const result = await api<{ two_factor: boolean; redirect_to?: string }>('/api/v1/auth/login', {
             method: 'POST',
             body: { email: email.value.trim(), password: password.value, remember: remember.value },
         });
@@ -45,8 +45,9 @@ async function submitCredentials(): Promise<void> {
             return;
         }
 
-        // Oturum kuruldu: paylaşılan prop'ların tazelenmesi için tam yükleme.
-        window.location.href = '/panel';
+        // Oturum kuruldu: role özel açılış ekranına tam yükleme
+        // (garson → sipariş, kasiyer → kasa, mutfak → KDS, yönetici → panel).
+        window.location.href = result.redirect_to || '/panel';
     } catch (e) {
         loading.value = false;
         if (e instanceof ApiError) {
@@ -74,11 +75,11 @@ async function submitTwoFactor(): Promise<void> {
     alertMessage.value = '';
 
     try {
-        await api('/api/v1/auth/two-factor-challenge', {
+        const result = await api<{ redirect_to?: string }>('/api/v1/auth/two-factor-challenge', {
             method: 'POST',
             body: { code: code.value.trim() },
         });
-        window.location.href = '/panel';
+        window.location.href = result.redirect_to || '/panel';
     } catch (e) {
         loading.value = false;
         if (e instanceof ApiError) {

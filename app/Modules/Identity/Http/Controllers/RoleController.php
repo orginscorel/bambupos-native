@@ -66,6 +66,21 @@ class RoleController extends Controller
         return response()->json(['role' => $role->fresh()->load('permissions:id,key')]);
     }
 
+    /** Rol kopyalama: izin seti klonlanır (yetki yükseltme engeli geçerli). */
+    public function copy(Request $request, Role $role): JsonResponse
+    {
+        $this->authorize('create', Role::class);
+        $this->authorize('view', $role);
+
+        $data = $request->validate([
+            'name' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $copy = $this->roles->copy($request->user(), $role, $data['name'] ?? null);
+
+        return response()->json(['role' => $copy->load('permissions:id,key')], 201);
+    }
+
     public function destroy(Request $request, Role $role): JsonResponse
     {
         $this->authorize('delete', $role);

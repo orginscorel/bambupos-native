@@ -79,6 +79,9 @@ class LoginController extends Controller
         return response()->json([
             'two_factor' => false,
             'user' => $user->only(['id', 'name', 'email', 'locale', 'theme']),
+            // Role özel açılış ekranı (Personel-Yetki): garson → sipariş,
+            // kasiyer → kasa, mutfak → KDS, yönetici → panel.
+            'redirect_to' => \App\Modules\Identity\Support\HomeScreen::resolve($user),
         ]);
     }
 

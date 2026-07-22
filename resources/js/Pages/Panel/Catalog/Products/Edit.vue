@@ -9,6 +9,7 @@ import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BaseCheckbox from '@/Components/ui/BaseCheckbox.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import BaseTabs from '@/Components/ui/BaseTabs.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import FormField from '@/Components/ui/FormField.vue';
@@ -521,7 +522,7 @@ const spicinessOptions = [
                                             />
                                             Varsayılan
                                         </label>
-                                        <BaseCheckbox v-model="variant.is_active" label="Aktif" />
+                                        <BaseSwitch v-model="variant.is_active" size="sm" label="Aktif" />
                                         <div class="grow" />
                                         <BaseButton size="sm" variant="ghost" icon-only :label="`Varyant ${index + 1} sil`" @click="removeVariant(index)">
                                             <AppIcon name="trash" :size="15" />
@@ -705,8 +706,8 @@ const spicinessOptions = [
                             </div>
 
                             <div class="grid gap-4 sm:grid-cols-2">
-                                <BaseCheckbox v-model="form.is_active" label="Satışta" description="Kapalıysa ürün hiçbir kanalda görünmez." />
-                                <BaseCheckbox v-model="form.is_available" label="Mevcut" description="Kapatınca menüde 'tükendi' görünür." />
+                                <BaseSwitch v-model="form.is_active" label="Satışta" description="Kapalıysa ürün hiçbir kanalda görünmez." />
+                                <BaseSwitch v-model="form.is_available" label="Mevcut" description="Kapatınca menüde 'tükendi' görünür." />
                             </div>
 
                             <div class="grid gap-4 sm:grid-cols-3">

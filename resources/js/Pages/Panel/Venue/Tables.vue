@@ -9,6 +9,7 @@ import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseCard from '@/Components/ui/BaseCard.vue';
 import BaseCheckbox from '@/Components/ui/BaseCheckbox.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
 import BaseDropdown from '@/Components/ui/BaseDropdown.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
@@ -575,8 +576,8 @@ const columns: TableColumn[] = [
                 <FormField label="Not" :error="formErrors.notes">
                     <BaseInput v-model="form.notes" placeholder="İsteğe bağlı not" />
                 </FormField>
-                <BaseCheckbox v-model="form.is_joinable" label="Birleştirilebilir" description="Yan masalarla birleştirilerek büyük grup ağırlayabilir" />
-                <BaseCheckbox v-model="form.is_active" label="Aktif" description="Pasif masalar public menüde ve operasyonda görünmez" />
+                <BaseSwitch v-model="form.is_joinable" label="Birleştirilebilir" description="Yan masalarla birleştirilerek büyük grup ağırlayabilir" />
+                <BaseSwitch v-model="form.is_active" label="Aktif" description="Pasif masalar public menüde ve operasyonda görünmez" />
                 <div class="flex justify-end gap-2 pt-2">
                     <BaseButton variant="secondary" @click="drawerOpen = false">Vazgeç</BaseButton>
                     <BaseButton type="submit" :loading="formBusy">{{ editing ? 'Kaydet' : 'Oluştur' }}</BaseButton>

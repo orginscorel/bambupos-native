@@ -42,6 +42,9 @@ class ProfileController extends Controller
         $data = $request->validate([
             'theme' => ['sometimes', 'in:light,dark'],
             'locale' => ['sometimes', 'in:tr'],
+            // Açılış ekranı tercihi (null = izinlere göre otomatik)
+            'default_screen' => ['sometimes', 'nullable', 'string',
+                \Illuminate\Validation\Rule::in(array_keys((array) config('authz.screens', [])))],
         ]);
 
         $request->user()->forceFill($data)->save();

@@ -41,41 +41,27 @@ class DemoTenantSeeder extends Seeder
             $branch->tenant_id = $tenant->id;
             $branch->save();
 
+            // Rol setleri TEK KAYNAKTAN: config/authz.php 'templates'
+            // (Personel-Yetki — "default olarak lazım olabilecekler" açık).
             $allPermissionIds = Permission::query()->pluck('id', 'key');
-
-            $roles = [
-                'Sahip' => ['system' => true, 'perms' => $allPermissionIds->values()->all()],
-                'Müdür' => ['system' => false, 'perms' => $allPermissionIds->except(['integrations.manage'])->values()->all()],
-                'Garson' => ['system' => false, 'perms' => $allPermissionIds->only([
-                    'catalog.view', 'orders.view', 'orders.create', 'orders.update', 'tables.view', 'customers.view',
-                ])->values()->all()],
-                'Kasiyer' => ['system' => false, 'perms' => $allPermissionIds->only([
-                    'orders.view', 'payments.take', 'cash.view', 'cash.close',
-                ])->values()->all()],
-                // KDS (Faz-4): mutfak yalnız operasyon görür — fiyat/ciro izni YOK.
-                'Mutfak' => ['system' => false, 'perms' => $allPermissionIds->only([
-                    'kds.view',
-                ])->values()->all()],
-                'Komi' => ['system' => false, 'perms' => $allPermissionIds->only([
-                    'kds.deliver',
-                ])->values()->all()],
-            ];
 
             $ownerRole = null;
 
-            foreach ($roles as $name => $definition) {
+            foreach (\App\Modules\Identity\Support\RoleTemplates::all() as $slug => $template) {
                 $role = new Role([
-                    'name' => $name,
-                    'slug' => Str::slug($name),
-                    'description' => $name.' rolü',
+                    'name' => $template['name'],
+                    'slug' => $slug,
+                    'description' => $template['description'],
                 ]);
                 $role->tenant_id = $tenant->id;
-                $role->is_system = $definition['system'];
+                $role->is_system = $template['system'];
                 $role->save();
 
-                $role->permissions()->sync($definition['perms']);
+                $role->permissions()->sync(
+                    $allPermissionIds->only($template['permissions'])->values()->all()
+                );
 
-                if ($name === 'Sahip') {
+                if ($slug === 'sahip') {
                     $ownerRole = $role;
                 }
             }

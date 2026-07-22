@@ -8,7 +8,7 @@ import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
-import BaseCheckbox from '@/Components/ui/BaseCheckbox.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
@@ -292,7 +292,7 @@ const serviceHours = (c: CategoryRow): string =>
                         <BaseInput v-model="form.available_until" type="time" />
                     </FormField>
                 </div>
-                <BaseCheckbox v-model="form.is_active" label="Aktif" description="Pasif kategoriler menüde görünmez." />
+                <BaseSwitch v-model="form.is_active" label="Aktif" description="Pasif kategoriler menüde görünmez." />
             </div>
             <template #footer>
                 <BaseButton variant="secondary" @click="drawerOpen = false">Vazgeç</BaseButton>

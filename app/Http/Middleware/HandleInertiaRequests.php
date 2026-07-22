@@ -88,12 +88,15 @@ class HandleInertiaRequests extends Middleware
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
                 'two_factor_enabled' => $user->hasTwoFactorEnabled(),
                 'has_pin' => $user->pin_hash !== null,
+                'default_screen' => $user->default_screen,
                 'roles' => $user->roles()
                     ->withoutGlobalScopes()
                     ->where('roles.tenant_id', $user->tenant_id)
                     ->pluck('name'),
             ],
             'permissions' => $user->permissionKeys(),
+            // Açılış ekranı tercih listesi (yalnız izinli ekranlar)
+            'screenOptions' => \App\Modules\Identity\Support\HomeScreen::optionsFor($user),
             'tenant' => $tenant?->only(['name', 'slug']),
             'branches' => $branches,
             'activeBranchId' => $activeBranchId ?: null,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { formatCurrencyMinor } from '@/lib/format';
 import { useToast } from '@/composables/useToast';
@@ -9,6 +9,7 @@ import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BasePagination from '@/Components/ui/BasePagination.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
@@ -156,6 +157,36 @@ const drag = useDragSort(
 );
 
 const thumb = (p: ProductRow): string | null => p.images?.[0]?.url ?? null;
+
+/* ---- Satır içi aç/kapa (Personel-Yetki: switch dili) ----
+ * Satışta (is_active) ve Mevcut (is_available) doğrudan listeden
+ * değiştirilir; catalog.update izni yoksa switch kilitli çizilir. */
+const pageProps = usePage();
+const canUpdate = computed<boolean>(() => {
+    const auth = (pageProps.props as Record<string, unknown>).auth as { permissions?: string[] } | undefined;
+    return auth?.permissions?.includes('catalog.update') ?? false;
+});
+
+const switchBusyId = ref(0);
+
+async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', value: boolean): Promise<void> {
+    if (switchBusyId.value) return;
+    switchBusyId.value = p.id;
+    const previous = p[field];
+    (p as unknown as Record<string, boolean>)[field] = value; // iyimser
+    try {
+        await api(`/api/v1/catalog/products/${p.id}`, { method: 'PUT', body: { [field]: value } });
+        success(
+            field === 'is_active' ? (value ? 'Ürün satışta' : 'Ürün pasife alındı') : value ? 'Ürün mevcut' : 'Tükendi işaretlendi',
+            p.name,
+        );
+    } catch (e) {
+        (p as unknown as Record<string, boolean>)[field] = previous;
+        danger('Değiştirilemedi', e instanceof ApiError ? e.displayMessage : 'Lütfen tekrar deneyin.');
+    } finally {
+        switchBusyId.value = 0;
+    }
+}
 </script>
 
 <template>
@@ -286,11 +317,33 @@ const thumb = (p: ProductRow): string | null => p.images?.[0]?.url ?? null;
                             </td>
                             <td class="px-3 py-2.5 text-right text-muted">%{{ Number(p.tax_rate) }}</td>
                             <td class="px-3 py-2.5">
-                                <span class="flex flex-wrap gap-1">
-                                    <BaseBadge :variant="p.is_active ? 'success' : 'neutral'">
-                                        {{ p.is_active ? 'Satışta' : 'Pasif' }}
-                                    </BaseBadge>
-                                    <BaseBadge v-if="!p.is_available" variant="danger">Tükendi</BaseBadge>
+                                <span class="flex flex-col gap-1.5">
+                                    <span class="flex items-center gap-2">
+                                        <BaseSwitch
+                                            size="sm"
+                                            :model-value="p.is_active"
+                                            :aria-label="`${p.name} satışta/pasif`"
+                                            :disabled="!canUpdate"
+                                            :busy="switchBusyId === p.id"
+                                            @update:model-value="toggleField(p, 'is_active', $event)"
+                                        />
+                                        <span class="text-xs" :class="p.is_active ? 'text-success' : 'text-subtle'">
+                                            {{ p.is_active ? 'Satışta' : 'Pasif' }}
+                                        </span>
+                                    </span>
+                                    <span class="flex items-center gap-2">
+                                        <BaseSwitch
+                                            size="sm"
+                                            :model-value="p.is_available"
+                                            :aria-label="`${p.name} mevcut/tükendi`"
+                                            :disabled="!canUpdate"
+                                            :busy="switchBusyId === p.id"
+                                            @update:model-value="toggleField(p, 'is_available', $event)"
+                                        />
+                                        <span class="text-xs" :class="p.is_available ? 'text-muted' : 'text-danger'">
+                                            {{ p.is_available ? 'Mevcut' : 'Tükendi' }}
+                                        </span>
+                                    </span>
                                 </span>
                             </td>
                             <td class="px-3 py-2.5">

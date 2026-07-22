@@ -49,4 +49,130 @@ return [
         'manage' => 'Yönet',
     ],
 
+    // Yetki matrisi başlıkları (UI)
+    'module_labels' => [
+        'catalog' => 'Menü / Katalog',
+        'orders' => 'Siparişler',
+        'payments' => 'Ödemeler',
+        'cash' => 'Kasa',
+        'tables' => 'Masalar',
+        'customers' => 'Müşteriler',
+        'stock' => 'Stok',
+        'kds' => 'Mutfak Ekranı (KDS)',
+        'reports' => 'Raporlar',
+        'staff' => 'Personel',
+        'roles' => 'Roller & Yetkiler',
+        'branches' => 'Şubeler',
+        'theme' => 'Tema',
+        'integrations' => 'Entegrasyonlar',
+        'settings' => 'Ayarlar',
+        'audit' => 'Denetim Kaydı',
+    ],
+
+    /*
+     * Tehlikeli izinler: matriste ayrı renk/ikonla işaretlenir ve kısa
+     * açıklama gösterilir. Anahtar = izin, değer = neden riskli olduğu.
+     */
+    'dangerous' => [
+        'orders.cancel' => 'Siparişi iptal eder; ciro kaydını etkiler.',
+        'orders.refund' => 'Sipariş iadesi başlatır; para çıkışı doğurur.',
+        'orders.discount' => 'Tutar üzerinde indirim uygular.',
+        'orders.comp' => 'Ürünü ikram eder (bedelsiz).',
+        'orders.delete' => 'Sipariş kaydını siler.',
+        'payments.refund' => 'Alınmış ödemeyi iade eder; para çıkışı doğurur.',
+        'cash.close' => 'Kasa oturumunu kapatır (Z raporu).',
+        'catalog.change_price' => 'Satış fiyatlarını değiştirir.',
+        'catalog.delete' => 'Ürün/kategori siler.',
+        'stock.adjust' => 'Stok sayımlarını elle değiştirir.',
+        'staff.manage' => 'Personel hesabı açar/kapatır, PIN sıfırlar.',
+        'roles.manage' => 'Rol ve yetki setlerini değiştirir.',
+        'audit.view' => 'Tüm denetim kayıtlarını görür.',
+        'integrations.manage' => 'Dış sistem bağlantılarını yönetir.',
+    ],
+
+    /*
+     * Rol şablonları: yeni işletme seed'i + "şablondan başlat" akışı.
+     * Her şablon MANTIKLI VARSAYILAN settir; işletme sonradan özelleştirir.
+     * 'all' → katalogtaki tüm izinler; 'except' bunlardan düşülür.
+     */
+    'templates' => [
+        'sahip' => [
+            'name' => 'Sahip',
+            'description' => 'İşletme sahibi — tüm yetkiler.',
+            'all' => true,
+            'system' => true,
+        ],
+        'mudur' => [
+            'name' => 'Müdür',
+            'description' => 'Genel müdür — entegrasyonlar hariç tüm yetkiler.',
+            'all' => true,
+            'except' => ['integrations.manage'],
+        ],
+        'sube-muduru' => [
+            'name' => 'Şube Müdürü',
+            'description' => 'Operasyonun tamamı + raporlar; personel yönetimi sınırlı (rol/yetki tanımlayamaz).',
+            'permissions' => [
+                'catalog.view', 'catalog.create', 'catalog.update', 'catalog.delete', 'catalog.change_price',
+                'orders.view', 'orders.create', 'orders.update', 'orders.cancel', 'orders.discount', 'orders.comp',
+                'payments.take', 'cash.view', 'cash.close',
+                'tables.view', 'tables.create', 'tables.update', 'tables.delete',
+                'customers.view', 'customers.create', 'customers.update',
+                'stock.view', 'stock.adjust',
+                'kds.view', 'kds.deliver', 'kds.manage',
+                'reports.view',
+                'staff.view', 'staff.manage',
+                'roles.view',
+                'branches.view',
+                'settings.view',
+            ],
+        ],
+        'garson' => [
+            'name' => 'Garson',
+            'description' => 'Sipariş alır ve günceller; nedenli ikram ve indirim uygulayabilir. Kasa, rapor ve personel kapalı.',
+            'permissions' => [
+                'catalog.view',
+                'orders.view', 'orders.create', 'orders.update', 'orders.discount', 'orders.comp',
+                'tables.view',
+                'customers.view',
+            ],
+        ],
+        'kasiyer' => [
+            'name' => 'Kasiyer',
+            'description' => 'Ödeme alır, kasa açar/kapatır. İade AYRI yetkidir ve varsayılan kapalıdır.',
+            'permissions' => [
+                'orders.view',
+                'payments.take',
+                'cash.view', 'cash.close',
+                'tables.view',
+            ],
+        ],
+        'mutfak' => [
+            'name' => 'Mutfak',
+            'description' => 'Yalnız mutfak ekranı (KDS) ve kendi istasyonu. Fiyat/ciro/rapor görmez.',
+            'permissions' => ['kds.view'],
+        ],
+        'komi' => [
+            'name' => 'Komi',
+            'description' => 'Hazır siparişleri teslim alır ve masaya götürür.',
+            'permissions' => ['kds.deliver', 'tables.view'],
+        ],
+    ],
+
+    /*
+     * Varsayılan açılış ekranları. Kullanıcı tercihi (users.default_screen)
+     * boşsa sıra ile ilk İZİNLİ ekran seçilir (HomeScreen::resolve).
+     * permission null → herkes görebilir; 'unless' izni varsa o ekran
+     * otomatik seçimde ATLANIR (yönetici mutfağa düşmesin).
+     */
+    'screens' => [
+        'orders' => ['label' => 'Siparişler', 'path' => '/panel/siparisler', 'permission' => 'orders.view'],
+        'tables' => ['label' => 'Masalar', 'path' => '/panel/masalar', 'permission' => 'tables.view'],
+        'cash' => ['label' => 'Kasa', 'path' => '/panel/kasa', 'permission' => 'payments.take'],
+        'kds' => ['label' => 'Mutfak ekranı (KDS)', 'path' => '/panel/mutfak', 'permission' => 'kds.view'],
+        'runner' => ['label' => 'Komi ekranı', 'path' => '/panel/komi', 'permission' => 'kds.deliver'],
+        'catalog' => ['label' => 'Menü yönetimi', 'path' => '/panel/menu', 'permission' => 'catalog.view'],
+        'staff' => ['label' => 'Personel', 'path' => '/panel/personel', 'permission' => 'staff.view'],
+        'dashboard' => ['label' => 'Panel (genel bakış)', 'path' => '/panel', 'permission' => null],
+    ],
+
 ];

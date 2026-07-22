@@ -37,10 +37,21 @@ return Application::configure(basePath: dirname(__DIR__))
             // KDS domaini (Faz 4): mutfak/bar/komi ekranları + polling uçları.
             // Middleware dosyanın içinde tanımlı (web + auth + tenant).
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/kds.php');
+
+            // Payments domaini (Faz 5, ADR-010): kasa + ödeme + POS adapter.
+            // Middleware dosyanın içinde: sağlayıcı callback ucu oturumsuz
+            // ve CSRF dışıdır (kimlik = HMAC imza + zaman damgası).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/payments.php');
+
+            // Personel-Yetki: personel/rol ekranları + kişi bazlı izin
+            // istisnaları + PIN/işten çıkarma uçları (middleware dosya içinde).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/staff.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            // Pasife alınan personelin AÇIK oturumu da düşer (Personel-Yetki).
+            \App\Modules\Identity\Http\Middleware\EnsureUserIsActive::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 

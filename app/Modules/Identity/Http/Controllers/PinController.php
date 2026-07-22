@@ -81,6 +81,9 @@ class PinController extends Controller
 
         $this->audit->log('auth.pin_login', $user);
 
-        return response()->json(['user' => $user->only(['id', 'name', 'email', 'locale', 'theme'])]);
+        return response()->json([
+            'user' => $user->only(['id', 'name', 'email', 'locale', 'theme']),
+            'redirect_to' => \App\Modules\Identity\Support\HomeScreen::resolve($user),
+        ]);
     }
 }

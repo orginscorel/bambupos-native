@@ -25,10 +25,43 @@ class StaffController extends Controller
         $this->authorize('viewAny', User::class);
 
         // Katman 4: liste daima servis-tarafı kiracı süzgeciyle.
-        $staff = User::ofCurrentTenant()
-            ->with('roles:id,name')
-            ->orderBy('first_name')
-            ->paginate(50);
+        $query = User::ofCurrentTenant()
+            ->with(['roles:id,name,is_system', 'branch:id,name'])
+            ->withCount('personalPermissions as personal_overrides_count');
+
+        // Arama: ad / e-posta / personel kodu / telefon
+        if (($q = trim((string) $request->query('q', ''))) !== '') {
+            $query->where(function ($w) use ($q): void {
+                $w->where('name', 'like', "%{$q}%")
+                    ->orWhere('email', 'like', "%{$q}%")
+                    ->orWhere('staff_code', 'like', "%{$q}%")
+                    ->orWhere('phone', 'like', "%{$q}%");
+            });
+        }
+
+        if (($branchId = (int) $request->query('branch_id', 0)) > 0) {
+            $query->where('branch_id', $branchId);
+        }
+
+        if (($roleId = (int) $request->query('role_id', 0)) > 0) {
+            $query->whereHas('roles', fn ($r) => $r->where('roles.id', $roleId));
+        }
+
+        $status = (string) $request->query('status', '');
+        if ($status === 'active') {
+            $query->where('is_active', true);
+        } elseif ($status === 'passive') {
+            $query->where('is_active', false);
+        }
+
+        $staff = $query->orderBy('first_name')->paginate(50);
+
+        // pin_hash gizlidir; listeye yalnız var/yok bilgisi çıkar.
+        $staff->getCollection()->transform(function (User $u): User {
+            $u->setAttribute('has_pin', $u->pin_hash !== null);
+
+            return $u;
+        });
 
         return response()->json($staff);
     }
@@ -56,6 +89,7 @@ class StaffController extends Controller
             'hired_at' => ['nullable', 'date'],
             'password' => ['required', 'string', \Illuminate\Validation\Rules\Password::min(10)],
             'branch_id' => ['nullable', 'integer'],
+            'default_screen' => ['nullable', 'string', Rule::in(array_keys((array) config('authz.screens', [])))],
             'roles' => ['sometimes', 'array'],
             'roles.*' => ['integer'],
         ]);
@@ -89,6 +123,7 @@ class StaffController extends Controller
             'hired_at' => ['nullable', 'date'],
             'is_active' => ['sometimes', 'boolean'],
             'branch_id' => ['nullable', 'integer'],
+            'default_screen' => ['nullable', 'string', Rule::in(array_keys((array) config('authz.screens', [])))],
             'roles' => ['sometimes', 'array'],
             'roles.*' => ['integer'],
         ]);

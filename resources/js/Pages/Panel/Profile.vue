@@ -13,6 +13,7 @@ import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseCard from '@/Components/ui/BaseCard.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
+import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import BaseTabs from '@/Components/ui/BaseTabs.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
@@ -45,6 +46,31 @@ async function chooseTheme(value: Theme): Promise<void> {
         /* localStorage zaten güncel; kalıcılaştırma sonraki girişte tekrar denenir */
     } finally {
         savingTheme.value = false;
+    }
+}
+
+/* ================= Açılış ekranı tercihi (Personel-Yetki) ================= */
+const screenOptions = computed(() => {
+    const opts = ((page.props as Record<string, unknown>).auth as { screenOptions?: { key: string; label: string }[] } | undefined)
+        ?.screenOptions ?? [];
+    return [{ value: '', label: 'Otomatik (rolüme en uygun ekran)' }, ...opts.map((o) => ({ value: o.key, label: o.label }))];
+});
+const defaultScreen = ref<string>(
+    ((page.props as Record<string, unknown>).auth as { user?: { default_screen?: string | null } } | undefined)?.user
+        ?.default_screen ?? '',
+);
+const savingScreen = ref(false);
+
+async function chooseScreen(value: string): Promise<void> {
+    defaultScreen.value = value;
+    savingScreen.value = true;
+    try {
+        await api('/api/v1/auth/preferences', { method: 'PUT', body: { default_screen: value || null } });
+        success('Açılış ekranı kaydedildi', 'Bir sonraki girişinizde bu ekranla başlarsınız.');
+    } catch (e) {
+        danger('Kaydedilemedi', e instanceof ApiError ? e.displayMessage : 'Lütfen tekrar deneyin.');
+    } finally {
+        savingScreen.value = false;
     }
 }
 
@@ -367,6 +393,20 @@ onMounted(() => {
                         >
                             <AppIcon name="moon" :size="16" /> Koyu
                         </button>
+                    </div>
+
+                    <div class="mt-5 max-w-md border-t border-default pt-4">
+                        <FormField
+                            label="Varsayılan açılış ekranı"
+                            hint="Giriş yaptığınızda ilk düşeceğiniz ekran. Otomatik: rolünüze en uygun ekran seçilir."
+                        >
+                            <BaseSelect
+                                :model-value="defaultScreen"
+                                :options="screenOptions"
+                                :disabled="savingScreen"
+                                @update:model-value="chooseScreen(String($event))"
+                            />
+                        </FormField>
                     </div>
                 </BaseCard>
                 </div>

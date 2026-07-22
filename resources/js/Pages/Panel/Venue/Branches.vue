@@ -8,7 +8,7 @@ import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseCard from '@/Components/ui/BaseCard.vue';
-import BaseCheckbox from '@/Components/ui/BaseCheckbox.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
@@ -195,7 +195,7 @@ const columns: TableColumn[] = [
                 <FormField label="Saat dilimi" :error="formErrors.timezone">
                     <BaseInput v-model="form.timezone" placeholder="Europe/Istanbul" />
                 </FormField>
-                <BaseCheckbox v-model="form.is_active" label="Aktif" description="Pasif şubenin menüsü ve masaları müşteriye kapalıdır" />
+                <BaseSwitch v-model="form.is_active" label="Aktif" description="Pasif şubenin menüsü ve masaları müşteriye kapalıdır" />
                 <div class="flex justify-end gap-2 pt-2">
                     <BaseButton variant="secondary" @click="drawerOpen = false">Vazgeç</BaseButton>
                     <BaseButton type="submit" :loading="formBusy">{{ editing ? 'Kaydet' : 'Oluştur' }}</BaseButton>

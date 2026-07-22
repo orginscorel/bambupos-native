@@ -66,6 +66,23 @@ class RoleService
         return $role;
     }
 
+    /**
+     * Rol kopyalama: ad + izin seti klonlanır (is_system taşınmaz).
+     * Yetki yükseltme engeli kopyada da geçerlidir: kaynak rolde aktörün
+     * sahip olmadığı izin varsa kopyalanamaz.
+     */
+    public function copy(User $actor, Role $source, ?string $name = null): Role
+    {
+        $permissionIds = $source->permissions()->pluck('permissions.id')->all();
+
+        return $this->create(
+            $actor,
+            $name ?: ($source->name.' (Kopya)'),
+            $source->description,
+            $permissionIds,
+        );
+    }
+
     public function delete(Role $role): void
     {
         if ($role->is_system) {
