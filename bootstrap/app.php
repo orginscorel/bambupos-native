@@ -33,6 +33,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // ekranları. Middleware dosyanın içinde: public QR sipariş ucu
             // bilinçli oturumsuzdur (ADR-008, kimlik yalnız token).
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/orders.php');
+
+            // KDS domaini (Faz 4): mutfak/bar/komi ekranları + polling uçları.
+            // Middleware dosyanın içinde tanımlı (web + auth + tenant).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/kds.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

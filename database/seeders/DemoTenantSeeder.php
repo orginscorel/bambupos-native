@@ -52,6 +52,13 @@ class DemoTenantSeeder extends Seeder
                 'Kasiyer' => ['system' => false, 'perms' => $allPermissionIds->only([
                     'orders.view', 'payments.take', 'cash.view', 'cash.close',
                 ])->values()->all()],
+                // KDS (Faz-4): mutfak yalnız operasyon görür — fiyat/ciro izni YOK.
+                'Mutfak' => ['system' => false, 'perms' => $allPermissionIds->only([
+                    'kds.view',
+                ])->values()->all()],
+                'Komi' => ['system' => false, 'perms' => $allPermissionIds->only([
+                    'kds.deliver',
+                ])->values()->all()],
             ];
 
             $ownerRole = null;

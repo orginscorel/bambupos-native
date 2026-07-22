@@ -106,6 +106,9 @@ class ProductController extends Controller
             'option_groups' => OptionGroup::query()->with('options:id,option_group_id,name,price_minor')
                 ->orderBy('sort_order')->get(),
             'allergens' => Allergen::query()->orderBy('kind')->orderBy('sort_order')->get(),
+            // Hazırlama istasyonları (yerleşik + işletmenin kendi tanımları) —
+            // ürün → istasyon yönlendirmesi KDS ile aynı katalogdan beslenir.
+            'stations' => app(\App\Modules\Kds\Services\StationRegistry::class)->options(),
         ]);
     }
 
@@ -276,7 +279,16 @@ class ProductController extends Controller
             'channels.*' => [Rule::in(Product::CHANNELS)],
             'available_from' => ['nullable', 'date_format:H:i'],
             'available_until' => ['nullable', 'date_format:H:i'],
-            'station' => ['nullable', 'string', 'max:40'],
+            // İstasyon: yerleşik + işletmenin kendi tanımları (Kds StationRegistry).
+            'station' => [
+                'nullable', 'string', 'max:40',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value !== null && $value !== ''
+                        && ! app(\App\Modules\Kds\Services\StationRegistry::class)->isValid((string) $value)) {
+                        $fail('Geçersiz hazırlama istasyonu.');
+                    }
+                },
+            ],
 
             'track_stock' => ['sometimes', 'boolean'],
             'stock_quantity' => ['nullable', 'integer', 'min:0'],

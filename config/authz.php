@@ -18,6 +18,10 @@ return [
         'tables' => ['view', 'create', 'update', 'delete'],
         'customers' => ['view', 'create', 'update', 'delete'],
         'stock' => ['view', 'adjust'],
+        // KDS (Faz-4): view = mutfak/bar ekranı (operasyon bilgisi, FİNANS YOK),
+        // deliver = komi ekranı (teslim aldım / masaya götürdüm),
+        // manage = istasyon tanımları + personel-istasyon ataması.
+        'kds' => ['view', 'deliver', 'manage'],
         'reports' => ['view'],
         'staff' => ['view', 'manage'],
         'roles' => ['view', 'manage'],
@@ -39,6 +43,7 @@ return [
         'comp' => 'İkram',
         'change_price' => 'Fiyat değiştir',
         'take' => 'Ödeme al',
+        'deliver' => 'Teslim / servis (komi)',
         'close' => 'Kasa kapat',
         'adjust' => 'Stok düzelt',
         'manage' => 'Yönet',

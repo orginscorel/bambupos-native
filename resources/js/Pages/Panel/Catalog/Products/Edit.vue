@@ -38,6 +38,8 @@ const pageTitle = computed(() => (isNew.value ? 'Yeni Ürün' : 'Ürün Düzenle
 const categories = ref<CategoryRow[]>([]);
 const optionGroups = ref<OptionGroupRow[]>([]);
 const allergens = ref<AllergenRow[]>([]);
+// Sunucudan gelene kadar yerleşik liste (KDS istasyon kataloğu ile değişir).
+const stationOptions = ref<{ value: string; label: string }[]>([...STATION_OPTIONS]);
 
 const categoryOptions = computed(() => [
     { value: '', label: '— Kategorisiz —' },
@@ -144,12 +146,19 @@ function fillFrom(p: ProductRow): void {
 
 onMounted(async () => {
     try {
-        const dict = await api<{ categories: CategoryRow[]; option_groups: OptionGroupRow[]; allergens: AllergenRow[] }>(
-            '/api/v1/catalog/products/form-options',
-        );
+        const dict = await api<{
+            categories: CategoryRow[];
+            option_groups: OptionGroupRow[];
+            allergens: AllergenRow[];
+            stations?: { value: string; label: string }[];
+        }>('/api/v1/catalog/products/form-options');
         categories.value = dict.categories;
         optionGroups.value = dict.option_groups;
         allergens.value = dict.allergens;
+        // İstasyonlar sunucudan (yerleşik + işletmenin kendi tanımları — KDS).
+        if (dict.stations?.length) {
+            stationOptions.value = [{ value: '', label: '— Seçilmedi —' }, ...dict.stations];
+        }
 
         if (props.productId !== null) {
             const result = await api<{ product: ProductRow }>(`/api/v1/catalog/products/${props.productId}`);
@@ -708,7 +717,7 @@ const spicinessOptions = [
                                     <BaseInput v-model="form.available_until" type="time" />
                                 </FormField>
                                 <FormField label="Hazırlama istasyonu" :error="err('station')">
-                                    <BaseSelect v-model="form.station" :options="STATION_OPTIONS" />
+                                    <BaseSelect v-model="form.station" :options="stationOptions" />
                                 </FormField>
                             </div>
 
