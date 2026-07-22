@@ -16,10 +16,17 @@ class TableFactory extends Factory
 
     public function definition(): array
     {
+        $number = fake()->unique()->numberBetween(1, 900000);
+
         return [
             'tenant_id' => Tenant::factory(),
             'branch_id' => Branch::factory(),
-            'name' => 'Masa '.fake()->unique()->numberBetween(1, 5000),
+            'name' => 'Masa '.$number,
+            'number' => $number,
+            'capacity' => 4,
+            'shape' => 'square',
+            'status' => 'available',
+            'is_joinable' => true,
             'qr_token' => Table::generateQrToken(),
             'is_active' => true,
         ];

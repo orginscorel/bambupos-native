@@ -1,0 +1,204 @@
+<?php
+
+namespace Tests\Feature\Venue;
+
+use App\Modules\Tables\Models\Table;
+use App\Modules\Venue\Models\Area;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\InteractsWithTenancy;
+use Tests\TestCase;
+
+/**
+ * Masa yönetimi: tekil/toplu oluşturma, şube içi tekillik, durum alanı,
+ * toplu işlemler ve kiracı izolasyonu.
+ */
+class TableManagementTest extends TestCase
+{
+    use InteractsWithTenancy, RefreshDatabase;
+
+    private array $a;
+
+    private array $b;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seedPermissions();
+        $this->a = $this->makeTenantWithUser();
+        $this->b = $this->makeTenantWithUser();
+    }
+
+    public function test_masa_olusturma_qr_token_uretir_ve_numara_otomatik_artar(): void
+    {
+        $this->actingAs($this->a['user']);
+
+        $first = $this->postJson('/api/v1/venue/tables', [
+            'branch_id' => $this->a['branch']->id,
+            'name' => 'Pencere Kenarı',
+        ])->assertCreated()->json('table');
+
+        $second = $this->postJson('/api/v1/venue/tables', [
+            'branch_id' => $this->a['branch']->id,
+            'name' => 'Şömine Yanı',
+        ])->assertCreated()->json('table');
+
+        $this->assertSame(1, $first['number']);
+        $this->assertSame(2, $second['number']);
+
+        $token = Table::withoutTenancy()->find($first['id'])->qr_token;
+        $this->assertMatchesRegularExpression('/^[A-Z2-7]{26}$/', $token);
+        $this->assertStringContainsString('/m/'.$token, $first['menu_url']);
+    }
+
+    public function test_toplu_olusturma_teras_1_20(): void
+    {
+        $this->actingAs($this->a['user']);
+
+        $area = Area::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'branch_id' => $this->a['branch']->id,
+            'name' => 'Teras',
+            'type' => 'terrace',
+        ]);
+
+        $res = $this->postJson('/api/v1/venue/tables/bulk', [
+            'branch_id' => $this->a['branch']->id,
+            'area_id' => $area->id,
+            'name_prefix' => 'Teras',
+            'start' => 1,
+            'end' => 20,
+            'capacity' => 6,
+        ])->assertCreated();
+
+        $this->assertSame(20, $res->json('created_count'));
+
+        $tables = Table::withoutTenancy()->where('branch_id', $this->a['branch']->id)->get();
+        $this->assertCount(20, $tables);
+        $this->assertSame(20, $tables->pluck('qr_token')->unique()->count(), 'Her masanın token\'ı tekil olmalı');
+        $this->assertSame(range(1, 20), $tables->pluck('number')->sort()->values()->all());
+        $this->assertTrue($tables->every(fn (Table $t) => (int) $t->area_id === (int) $area->id));
+        $this->assertTrue($tables->contains(fn (Table $t) => $t->name === 'Teras 20'));
+    }
+
+    public function test_toplu_olusturmada_cakisan_numara_hepsini_reddeder(): void
+    {
+        $this->actingAs($this->a['user']);
+
+        Table::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'branch_id' => $this->a['branch']->id,
+            'name' => 'Bahçe 5',
+            'number' => 5,
+        ]);
+
+        $this->postJson('/api/v1/venue/tables/bulk', [
+            'branch_id' => $this->a['branch']->id,
+            'name_prefix' => 'Teras',
+            'start' => 1,
+            'end' => 10,
+        ])->assertUnprocessable();
+
+        // Ya hepsi ya hiçbiri: hiçbir "Teras" masası yazılmamış olmalı
+        $this->assertSame(0, Table::withoutTenancy()
+            ->where('branch_id', $this->a['branch']->id)
+            ->where('name', 'like', 'Teras%')->count());
+    }
+
+    public function test_ayni_masa_no_farkli_subede_kullanilabilir(): void
+    {
+        $this->actingAs($this->a['user']);
+
+        $otherBranch = \App\Modules\Tenancy\Models\Branch::factory()->create(['tenant_id' => $this->a['tenant']->id]);
+
+        $this->postJson('/api/v1/venue/tables', [
+            'branch_id' => $this->a['branch']->id, 'name' => 'Masa Bir', 'number' => 1,
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/venue/tables', [
+            'branch_id' => $otherBranch->id, 'name' => 'Masa Bir', 'number' => 1,
+        ])->assertCreated();
+
+        // Aynı şubede aynı no reddedilir
+        $this->postJson('/api/v1/venue/tables', [
+            'branch_id' => $this->a['branch']->id, 'name' => 'Başka Ad', 'number' => 1,
+        ])->assertUnprocessable();
+    }
+
+    public function test_durum_guncellenir_gecersiz_durum_reddedilir(): void
+    {
+        $this->actingAs($this->a['user']);
+
+        $table = Table::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'branch_id' => $this->a['branch']->id,
+        ]);
+
+        $res = $this->putJson("/api/v1/venue/tables/{$table->id}/status", ['status' => 'bill_requested'])
+            ->assertOk();
+
+        $this->assertSame('bill_requested', $res->json('table.status'));
+        $this->assertSame('Hesap istendi', $res->json('table.status_label'));
+        $this->assertNotEmpty($res->json('table.status_icon'), 'Durum ikonsuz olamaz (renk körlüğü desteği)');
+
+        $this->putJson("/api/v1/venue/tables/{$table->id}/status", ['status' => 'uydurma_durum'])
+            ->assertUnprocessable();
+    }
+
+    public function test_toplu_islem_yabanci_kiracinin_masalarini_etkilemez(): void
+    {
+        $aTable = Table::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'branch_id' => $this->a['branch']->id,
+        ]);
+        $bTable = Table::factory()->create([
+            'tenant_id' => $this->b['tenant']->id,
+            'branch_id' => $this->b['branch']->id,
+        ]);
+
+        $this->actingAs($this->a['user']);
+
+        $res = $this->postJson('/api/v1/venue/tables/bulk-action', [
+            'table_ids' => [$aTable->id, $bTable->id],
+            'action' => 'deactivate',
+        ])->assertOk();
+
+        $this->assertSame(1, $res->json('affected'));
+        $this->assertFalse((bool) Table::withoutTenancy()->find($aTable->id)->is_active);
+        $this->assertTrue((bool) Table::withoutTenancy()->find($bTable->id)->is_active, 'B\'nin masası etkilenmemeli');
+    }
+
+    public function test_a_kullanicisi_b_nin_masasini_guncelleyemez(): void
+    {
+        $bTable = Table::factory()->create([
+            'tenant_id' => $this->b['tenant']->id,
+            'branch_id' => $this->b['branch']->id,
+        ]);
+
+        $this->actingAs($this->a['user']);
+
+        $this->putJson("/api/v1/venue/tables/{$bTable->id}", ['name' => 'ele geçirildi'])->assertNotFound();
+        $this->putJson("/api/v1/venue/tables/{$bTable->id}/status", ['status' => 'paid'])->assertNotFound();
+        $this->deleteJson("/api/v1/venue/tables/{$bTable->id}")->assertNotFound();
+    }
+
+    public function test_masa_baska_kiracinin_alanina_tasinamaz(): void
+    {
+        $bArea = Area::factory()->create([
+            'tenant_id' => $this->b['tenant']->id,
+            'branch_id' => $this->b['branch']->id,
+        ]);
+
+        $aTable = Table::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'branch_id' => $this->a['branch']->id,
+        ]);
+
+        $this->actingAs($this->a['user']);
+
+        $this->putJson("/api/v1/venue/tables/{$aTable->id}", ['area_id' => $bArea->id])
+            ->assertUnprocessable();
+
+        $this->assertNull(Table::withoutTenancy()->find($aTable->id)->area_id);
+    }
+}

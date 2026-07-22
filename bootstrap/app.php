@@ -15,6 +15,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/identity.php');
 
+            // Venue domaini (Faz 2): şube/kat/alan/masa + QR (ADR-008).
+            // Middleware BİLİNÇLİ olarak dosyanın içinde tanımlı: public
+            // /m/{token} ucu oturumsuz kalmalı (ADR-011 tam-sayfa cache,
+            // cache'lenen yanıtta Set-Cookie olamaz).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/venue.php');
+
             // Ayarlar modülü: panelden yönetilen e-posta (SMTP) yapılandırması.
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/settings.php');
