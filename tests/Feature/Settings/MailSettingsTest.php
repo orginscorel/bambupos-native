@@ -25,6 +25,10 @@ class MailSettingsTest extends TestCase
     {
         parent::setUp();
         $this->seedPermissions();
+
+        // .env'deki PLATFORM_TENANT_ID (canlı: demo=1) teste sızmasın;
+        // platform işletmecisi her testte açıkça atanır.
+        config(['settings.platform_tenant_id' => null]);
     }
 
     /** @return array<string, mixed> */
