@@ -3,7 +3,252 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+/* ============================================================
+   QR Menü — Tasarım Token'ları (Faz 1)
+   ------------------------------------------------------------
+   Katman 1: --brand-*  → ham marka skalası (kiracı bazında
+             değiştirilebilir; varsayılan: turuncu-beyaz).
+   Katman 2: --ui-*     → semantik token'lar. Bileşenler YALNIZ
+             bunları kullanır. Kiracı teması ileride bir
+             <style> bloğuyla --brand-* / --ui-* değerlerini ezer;
+             yeniden build gerekmez.
+   Katman 3: @theme inline → Tailwind utility eşlemesi
+             (bg-primary, text-muted, border-default ...).
+   ------------------------------------------------------------
+   WCAG AA ölçümleri (kontrast, ölçüldü 2026-07-22):
+     #c2410c / #ffffff = 5.18  → birincil buton, link  (AA PASS)
+     #9a3412 / #ffffff = 7.31  → hover                 (AA PASS)
+     #ea580c / #ffffff = 3.56  → yalnız büyük metin/ikon/ring (≥3)
+     #f97316 / #ffffff = 2.80  → METİNDE KULLANILMAZ (dekoratif)
+     #fb923c / #1c1917 = 7.73  → koyu tema linki       (AA PASS)
+     #57534e / #ffffff = 7.63, #a8a29e / #1c1917 = 6.93 (muted)
+     durum renkleri: 15803d=5.02, b45309=5.02, dc2626=4.83,
+     2563eb=5.17 (beyaz üstünde ve beyaz metinle AA PASS)
+   ============================================================ */
+
+:root {
+    /* --- Katman 1: marka skalası (varsayılan turuncu) --- */
+    --brand-50: #fff7ed;
+    --brand-100: #ffedd5;
+    --brand-200: #fed7aa;
+    --brand-300: #fdba74;
+    --brand-400: #fb923c;
+    --brand-500: #f97316;
+    --brand-600: #ea580c;
+    --brand-700: #c2410c;
+    --brand-800: #9a3412;
+    --brand-900: #7c2d12;
+
+    /* --- Katman 2: semantik (açık tema) --- */
+    --ui-primary: var(--brand-700);          /* etkileşim rengi: AA-güvenli */
+    --ui-primary-hover: var(--brand-800);
+    --ui-primary-active: var(--brand-900);
+    --ui-on-primary: #ffffff;
+    --ui-primary-soft: var(--brand-50);      /* seçili satır, yumuşak zemin */
+    --ui-primary-soft-border: var(--brand-200);
+    --ui-accent: var(--brand-600);           /* dekoratif/büyük öğe vurgusu */
+    --ui-link: var(--brand-700);
+
+    --ui-surface: #ffffff;                   /* sayfa zemini */
+    --ui-surface-alt: #fafaf9;               /* panel gövdesi, tablo başlığı */
+    --ui-surface-raised: #ffffff;            /* kart, modal, drawer */
+    --ui-surface-inset: #f5f5f4;             /* input zemini, kod, iskelet */
+    --ui-overlay: rgb(28 25 23 / 0.55);
+
+    --ui-border: #e7e5e4;
+    --ui-border-strong: #d6d3d1;
+
+    --ui-text: #1c1917;
+    --ui-text-muted: #57534e;                /* 7.63:1 */
+    --ui-text-subtle: #79716b;               /* 4.79:1 — en açık izinli ton */
+    --ui-text-invert: #ffffff;
+
+    --ui-focus-ring: var(--brand-600);
+
+    /* durum renkleri: metin (beyaz zeminde AA) + yumuşak zemin + kenarlık */
+    --ui-success: #15803d;
+    --ui-success-soft: #f0fdf4;
+    --ui-success-border: #bbf7d0;
+    --ui-warning: #b45309;
+    --ui-warning-soft: #fffbeb;
+    --ui-warning-border: #fde68a;
+    --ui-danger: #dc2626;
+    --ui-danger-hover: #b91c1c;
+    --ui-danger-soft: #fef2f2;
+    --ui-danger-border: #fecaca;
+    --ui-info: #2563eb;
+    --ui-info-soft: #eff6ff;
+    --ui-info-border: #bfdbfe;
+    --ui-on-status: #ffffff;
+
+    /* --- tema bağımsız yapı token'ları --- */
+    --z-sticky: 20;
+    --z-dropdown: 30;
+    --z-drawer: 40;
+    --z-modal: 50;
+    --z-toast: 60;
+
+    --dur-fast: 120ms;
+    --dur-normal: 200ms;
+    --dur-slow: 300ms;
+
+    color-scheme: light;
+}
+
+/* --- Katman 2: semantik (koyu tema) ---
+   Tema, <html data-theme="dark|light"> ile seçilir; ilk yükte
+   app.blade.php'deki küçük satır-içi betik localStorage/sistem
+   tercihine göre atar (FOUC yok). */
+:root[data-theme='dark'] {
+    --ui-primary: var(--brand-700);          /* buton zemini sabit: beyaz metinle 5.18 */
+    --ui-primary-hover: var(--brand-600);
+    --ui-primary-active: var(--brand-500);
+    --ui-on-primary: #ffffff;
+    --ui-primary-soft: rgb(194 65 12 / 0.14);
+    --ui-primary-soft-border: rgb(251 146 60 / 0.35);
+    --ui-accent: var(--brand-400);
+    --ui-link: var(--brand-400);             /* 7.73:1 koyu zeminde */
+
+    --ui-surface: #171412;
+    --ui-surface-alt: #1c1917;
+    --ui-surface-raised: #242020;
+    --ui-surface-inset: #2b2624;
+    --ui-overlay: rgb(0 0 0 / 0.6);
+
+    --ui-border: #38322e;
+    --ui-border-strong: #4c443f;
+
+    --ui-text: #fafaf9;                      /* 16.7:1 */
+    --ui-text-muted: #b8b2ac;
+    --ui-text-subtle: #a09a94;
+    --ui-text-invert: #1c1917;
+
+    --ui-focus-ring: var(--brand-400);
+
+    --ui-success: #4ade80;                   /* 10.0:1 koyu zeminde */
+    --ui-success-soft: rgb(74 222 128 / 0.12);
+    --ui-success-border: rgb(74 222 128 / 0.32);
+    --ui-warning: #fbbf24;                   /* 10.5:1 */
+    --ui-warning-soft: rgb(251 191 36 / 0.12);
+    --ui-warning-border: rgb(251 191 36 / 0.32);
+    --ui-danger: #f87171;                    /* 6.3:1 */
+    --ui-danger-hover: #fca5a5;
+    --ui-danger-soft: rgb(248 113 113 / 0.12);
+    --ui-danger-border: rgb(248 113 113 / 0.32);
+    --ui-info: #60a5fa;                      /* 6.9:1 */
+    --ui-info-soft: rgb(96 165 250 / 0.12);
+    --ui-info-border: rgb(96 165 250 / 0.32);
+    --ui-on-status: #1c1917;
+
+    color-scheme: dark;
+}
+
+/* Tailwind `dark:` varyantı (gerekirse) data-theme'e bağlı */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* --- Katman 3: Tailwind utility eşlemesi --- */
+@theme inline {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+
+    --color-primary: var(--ui-primary);
+    --color-primary-hover: var(--ui-primary-hover);
+    --color-primary-active: var(--ui-primary-active);
+    --color-on-primary: var(--ui-on-primary);
+    --color-primary-soft: var(--ui-primary-soft);
+    --color-primary-soft-border: var(--ui-primary-soft-border);
+    --color-accent: var(--ui-accent);
+    --color-link: var(--ui-link);
+
+    --color-surface: var(--ui-surface);
+    --color-surface-alt: var(--ui-surface-alt);
+    --color-raised: var(--ui-surface-raised);
+    --color-inset: var(--ui-surface-inset);
+    --color-overlay: var(--ui-overlay);
+
+    --color-default: var(--ui-border);            /* border-default */
+    --color-strong: var(--ui-border-strong);
+
+    --color-body: var(--ui-text);
+    --color-muted: var(--ui-text-muted);
+    --color-subtle: var(--ui-text-subtle);
+    --color-invert: var(--ui-text-invert);
+
+    --color-ring-brand: var(--ui-focus-ring);
+
+    --color-success: var(--ui-success);
+    --color-success-soft: var(--ui-success-soft);
+    --color-success-border: var(--ui-success-border);
+    --color-warning: var(--ui-warning);
+    --color-warning-soft: var(--ui-warning-soft);
+    --color-warning-border: var(--ui-warning-border);
+    --color-danger: var(--ui-danger);
+    --color-danger-hover: var(--ui-danger-hover);
+    --color-danger-soft: var(--ui-danger-soft);
+    --color-danger-border: var(--ui-danger-border);
+    --color-info: var(--ui-info);
+    --color-info-soft: var(--ui-info-soft);
+    --color-info-border: var(--ui-info-border);
+    --color-on-status: var(--ui-on-status);
+
+    /* köşe yarıçapı ölçeği */
+    --radius-xs: 0.25rem;   /* 4px  — küçük rozet */
+    --radius-sm: 0.375rem;  /* 6px  — input, buton (sm) */
+    --radius-md: 0.5rem;    /* 8px  — buton, input */
+    --radius-lg: 0.75rem;   /* 12px — kart */
+    --radius-xl: 1rem;      /* 16px — modal, drawer */
+
+    /* gölgeler: hafif, profesyonel (cam/neon yok) */
+    --shadow-card: 0 1px 2px 0 rgb(28 25 23 / 0.05);
+    --shadow-dropdown: 0 4px 6px -1px rgb(28 25 23 / 0.08), 0 2px 4px -2px rgb(28 25 23 / 0.06);
+    --shadow-modal: 0 10px 15px -3px rgb(28 25 23 / 0.12), 0 4px 6px -4px rgb(28 25 23 / 0.08);
+}
+
+/* ============ temel (base) katmanı ============ */
+@layer base {
+    html {
+        font-family: var(--font-sans);
+        -webkit-tap-highlight-color: transparent;
+    }
+    body {
+        background-color: var(--ui-surface-alt);
+        color: var(--ui-text);
+        font-size: 0.9375rem; /* 15px — panel yoğunluğu için taban */
+        line-height: 1.5;
+    }
+
+    /* görünür odak: tüm etkileşimli öğelerde tutarlı */
+    :focus-visible {
+        outline: 2px solid var(--ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    ::selection {
+        background-color: var(--brand-200);
+        color: #1c1917;
+    }
+
+    /* hareket azaltma tercihi: tüm animasyon/geçişler kapanır */
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+    }
+}
+
+/* ============ paylaşılan küçük yardımcılar ============ */
+@layer utilities {
+    /* iskelet yükleme parıltısı (reduced-motion'da durur) */
+    .skeleton-shimmer {
+        animation: skeleton-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes skeleton-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.55; }
+    }
 }
