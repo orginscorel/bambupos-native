@@ -67,7 +67,7 @@ class HandleInertiaRequests extends Middleware
                 ->where('tenant_id', $tenant->getKey())
                 ->where('is_active', true)
                 ->orderBy('name')
-                ->get(['id', 'name', 'code']);
+                ->get(['id', 'name', 'code', 'timezone']); // timezone: panel saati şube dilimine göre gösterir
 
         $activeBranchId = (int) ($request->session()->get('panel.active_branch_id') ?: $user->branch_id);
 

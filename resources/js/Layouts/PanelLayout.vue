@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import type { NavItem } from '@/types/nav';
 import { defaultNavigation } from '@/config/navigation';
@@ -39,6 +39,73 @@ const navItems = computed<NavItem[]>(() => {
 
 const mobileItems = computed(() => navItems.value.filter((i) => i.mobile).slice(0, 4));
 const mobileNavOpen = ref(false);
+
+/* ===== Üst çubuk saati =====
+ * - Şube saat dilimi esastır (auth.branches[].timezone + activeBranchId).
+ * - İstemcinin duvar saatine güvenilmez: app.blade.php'deki
+ *   "app-server-epoch" meta'sından sunucu-istemci ofseti alınır.
+ * - Dakikada bir, dakika başına hizalı güncellenir; sekme arka
+ *   plandayken sayaç durur, öne gelince anında senkronlanır. */
+const branchTimezone = computed<string>(() => {
+    const auth = (page.props as Record<string, unknown>).auth as
+        | { branches?: { id: number | string; timezone?: string }[]; activeBranchId?: number | null }
+        | null
+        | undefined;
+    const active = auth?.branches?.find((b) => Number(b.id) === Number(auth?.activeBranchId));
+    return active?.timezone || 'Europe/Istanbul';
+});
+
+const serverOffsetMs = ref(0); // sunucu saati - istemci saati (ms)
+const nowMs = ref(Date.now());
+let clockTimer: ReturnType<typeof setTimeout> | undefined;
+
+const syncClock = () => {
+    nowMs.value = Date.now() + serverOffsetMs.value;
+};
+
+const scheduleClockTick = () => {
+    // bir sonraki dakika başına hizala (+250ms tampon) — saniyelik tick YOK
+    const wait = 60_000 - (nowMs.value % 60_000) + 250;
+    clockTimer = setTimeout(() => {
+        syncClock();
+        scheduleClockTick();
+    }, wait);
+};
+
+const onClockVisibility = () => {
+    if (document.hidden) {
+        if (clockTimer) clearTimeout(clockTimer);
+        clockTimer = undefined;
+    } else {
+        syncClock();
+        if (!clockTimer) scheduleClockTick();
+    }
+};
+
+onMounted(() => {
+    const epoch = Number(document.querySelector('meta[name="app-server-epoch"]')?.getAttribute('content'));
+    if (Number.isFinite(epoch)) serverOffsetMs.value = epoch - Date.now();
+    syncClock();
+    scheduleClockTick();
+    document.addEventListener('visibilitychange', onClockVisibility);
+});
+
+onBeforeUnmount(() => {
+    if (clockTimer) clearTimeout(clockTimer);
+    document.removeEventListener('visibilitychange', onClockVisibility);
+});
+
+/** Şube dilimine göre biçimle; dilim adı bozuksa yerel dilime düş. */
+const formatInBranchTz = (opts: Intl.DateTimeFormatOptions): string => {
+    try {
+        return new Intl.DateTimeFormat('tr-TR', { ...opts, timeZone: branchTimezone.value }).format(nowMs.value);
+    } catch {
+        return new Intl.DateTimeFormat('tr-TR', opts).format(nowMs.value);
+    }
+};
+
+const clockTime = computed(() => formatInBranchTz({ hour: '2-digit', minute: '2-digit' }));
+const clockDate = computed(() => formatInBranchTz({ day: 'numeric', month: 'long', weekday: 'long' }));
 
 const currentPath = computed(() => (typeof window !== 'undefined' ? window.location.pathname : ''));
 const isActive = (item: NavItem) =>
@@ -128,6 +195,16 @@ const isActive = (item: NavItem) =>
             <h1 v-if="title" class="hidden truncate text-sm font-semibold text-body sm:block">{{ title }}</h1>
 
             <div class="grow" />
+
+            <!-- Şube saati: dakikada bir güncellenir; dar ekranda tarih gizli -->
+            <div
+                class="flex shrink-0 items-center text-sm select-none"
+                :title="`Şube saati · ${branchTimezone}`"
+            >
+                <span class="hidden text-muted md:inline">{{ clockDate }}</span>
+                <span class="hidden text-subtle md:inline" aria-hidden="true">&nbsp;·&nbsp;</span>
+                <span class="font-bold text-body tabular-nums">{{ clockTime }}</span>
+            </div>
 
             <slot name="topbar-actions" />
 

@@ -11,7 +11,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>@yield('title', 'Menü')</title>
     <meta name="theme-color" content="#c2410c">
-    <link rel="stylesheet" href="/assets/menu.css?v=20260722">
+    {{-- Poppins ön yükleme (self-host): Türkçe menü metni latin + latin-ext'in
+         ikisini de kullanır; 4 dosya ≈ 27KB, font-display: swap ile bloklamaz --}}
+    <link rel="preload" href="/fonts/poppins-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/poppins-400-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/poppins-700-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/poppins-700-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/assets/menu.css?v=20260722.1">
     @stack('tenant-theme')
 </head>
 <body>
