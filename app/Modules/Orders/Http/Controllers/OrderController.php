@@ -356,6 +356,12 @@ class OrderController extends Controller
         return response()->json(['order' => $this->freshDetail($order)]);
     }
 
+    /**
+     * ESKİ ödeme ucu (Faz-3 uyumluluk) — Faz-5'ten itibaren kayıt
+     * `payments` tablosuna düşer (ADR-010 tek doğruluk kaynağı).
+     * 'card' = entegrasyonsuz POS kaydı (kayıt-onaylı, anında).
+     * Yeni ekranlar /api/v1/orders/{order}/payments ucunu kullanır.
+     */
     public function pay(Request $request, Order $order): JsonResponse
     {
         $this->authorize('update', $order);
@@ -366,7 +372,13 @@ class OrderController extends Controller
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $this->orders->addPayment($order, (int) $data['amount_minor'], $data['method'], $request->user(), $data['expected_version'] ?? null);
+        app(\App\Modules\Payments\Services\PaymentService::class)->pay($order, [
+            'method' => $data['method'] === 'card'
+                ? \App\Modules\Payments\Enums\PaymentMethod::CreditCard->value
+                : \App\Modules\Payments\Enums\PaymentMethod::Cash->value,
+            'amount_minor' => (int) $data['amount_minor'],
+            'provider' => $data['method'] === 'card' ? 'card_present' : null,
+        ], $request->user(), $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
@@ -385,6 +397,11 @@ class OrderController extends Controller
         return response()->json(['order' => $this->freshDetail($order)]);
     }
 
+    /**
+     * Adisyonun TAM iadesi — Faz-5'ten itibaren `payments` üzerinden
+     * yürür (her başarılı ödemeye iade satırı açılır; ADR-010).
+     * payments kaydı olmayan eski adisyonlar için eski yol korunur.
+     */
     public function refund(Request $request, Order $order): JsonResponse
     {
         $this->authorize('refund', $order);
@@ -394,7 +411,17 @@ class OrderController extends Controller
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $this->orders->refund($order, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        $hasPayments = \App\Modules\Payments\Models\Payment::withoutTenancy()
+            ->where('order_id', $order->getKey())
+            ->where('kind', 'payment')
+            ->exists();
+
+        if ($hasPayments) {
+            app(\App\Modules\Payments\Services\PaymentService::class)
+                ->refundOrderFully($order, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        } else {
+            $this->orders->refund($order, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        }
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }

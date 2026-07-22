@@ -48,6 +48,9 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Table::class, TablePolicy::class);
         Gate::policy(User::class, StaffPolicy::class);
         Gate::policy(Role::class, RolePolicy::class);
+        Gate::policy(\App\Modules\Payments\Models\Payment::class, \App\Modules\Payments\Policies\PaymentPolicy::class);
+        Gate::policy(\App\Modules\Payments\Models\CashRegister::class, \App\Modules\Payments\Policies\CashRegisterPolicy::class);
+        Gate::policy(\App\Modules\Payments\Models\CashSession::class, \App\Modules\Payments\Policies\CashSessionPolicy::class);
 
         Password::defaults(fn () => Password::min(10));
 

@@ -687,43 +687,197 @@ class OrderService
         });
     }
 
-    /** Ödeme kaydı (v1: kayıt amaçlı; Payments modülü ADR-010 ile gelecek). */
-    public function addPayment(Order $order, int $amountMinor, string $method, User $actor, ?int $expectedVersion = null): Order
-    {
-        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($amountMinor, $method, $actor): Order {
-            $status = $locked->statusEnum();
+    /* =========================================================
+     |  Payments modülü köprüsü (Faz-5, ADR-010) — payments tablosu
+     |  TEK doğruluk kaynağıdır; paid/refunded buradan TÜRETİLİR.
+     |  Bu metotlar YALNIZ withLockedOrder içinden (PaymentService)
+     |  çağrılır; kilit ve sürüm dışarıda alınmıştır.
+     * ========================================================= */
 
-            if (! $status->isOpen() || in_array($status, [OrderStatus::Draft, OrderStatus::PendingApproval], true)) {
-                throw ValidationException::withMessages(['payment' => ['Bu adisyon için ödeme alınamaz (durum: '.$status->label().').']]);
+    /**
+     * Tahsilat uygular (delta>0) ya da void geri alır (delta<0).
+     * Aşırı tahsil BURADA reddedilir (para değişmezi).
+     *
+     * @param  array<string, mixed>  $meta  order_events payload eki (payment_id vb.)
+     */
+    public function applyPaidDelta(Order $locked, int $deltaMinor, string $method, ?User $actor, array $meta = []): void
+    {
+        $from = $locked->statusEnum();
+
+        if ($deltaMinor === 0) {
+            return;
+        }
+
+        if ($deltaMinor > 0) {
+            if (! $from->isOpen() || in_array($from, [OrderStatus::Draft, OrderStatus::PendingApproval], true)) {
+                throw ValidationException::withMessages(['payment' => ['Bu adisyon için ödeme alınamaz (durum: '.$from->label().').']]);
             }
 
             $remaining = max(0, (int) $locked->total_minor - (int) $locked->paid_minor);
 
-            if ($amountMinor <= 0 || $amountMinor > $remaining) {
+            if ($deltaMinor > $remaining) {
                 throw ValidationException::withMessages(['amount_minor' => [
                     'Tutar 0 ile kalan tutar ('.Money::toDecimalString($remaining).' TL) arasında olmalı.',
                 ]]);
             }
 
-            $locked->paid_minor = (int) $locked->paid_minor + $amountMinor;
+            $locked->paid_minor = (int) $locked->paid_minor + $deltaMinor;
+        } else {
+            // Void geri alımı: tahsilat hiç olmamış sayılır.
+            $locked->paid_minor = max(0, (int) $locked->paid_minor + $deltaMinor);
+        }
 
-            $from = $status;
-            $to = (int) $locked->paid_minor >= (int) $locked->total_minor ? OrderStatus::Paid : OrderStatus::PartiallyPaid;
+        $paid = (int) $locked->paid_minor;
+        $total = (int) $locked->total_minor;
 
+        if ($total > 0 && $paid >= $total) {
+            $to = OrderStatus::Paid;
+            $locked->closed_at ??= now();
+        } elseif ($paid > 0) {
+            $to = OrderStatus::PartiallyPaid;
+            $locked->closed_at = null;
+        } else {
+            // Void ile sıfırlandı → ödeme aşamasına (hesap istendi) döner.
+            $to = OrderStatus::BillRequested;
+            $locked->closed_at = null;
+        }
+
+        $locked->status = $to->value;
+
+        $this->logEvent($locked, $deltaMinor > 0 ? 'payment_recorded' : 'payment_reversed', $actor, $meta + [
+            'amount_minor' => abs($deltaMinor),
+            'method' => $method,
+            'paid_minor' => $paid,
+            'total_minor' => $total,
+        ], $from->value, $to->value);
+
+        $this->tables->syncForOrder($locked, $to === OrderStatus::Paid ? OrderStatus::Paid : null);
+    }
+
+    /**
+     * İade uygular: refunded_minor artar (paid_minor DEĞİŞMEZ — brüt
+     * tahsilat tarihçesi korunur). Tamamı iade edilen ödenmiş adisyon
+     * Refunded durumuna geçer.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    public function applyRefundDelta(Order $locked, int $deltaMinor, ?User $actor, array $meta = []): void
+    {
+        if ($deltaMinor <= 0) {
+            throw ValidationException::withMessages(['amount_minor' => ['İade tutarı pozitif olmalı.']]);
+        }
+
+        $newRefunded = (int) $locked->refunded_minor + $deltaMinor;
+
+        if ($newRefunded > (int) $locked->paid_minor) {
+            throw ValidationException::withMessages(['amount_minor' => ['İade toplamı tahsil edilen tutarı aşamaz.']]);
+        }
+
+        $from = $locked->statusEnum();
+        $locked->refunded_minor = $newRefunded;
+
+        $to = $from;
+
+        if ($from === OrderStatus::Paid && $newRefunded >= (int) $locked->paid_minor && (int) $locked->paid_minor > 0) {
+            $to = OrderStatus::Refunded;
             $locked->status = $to->value;
+        }
 
-            if ($to === OrderStatus::Paid) {
-                $locked->closed_at = now();
+        $this->logEvent($locked, 'refund_applied', $actor, $meta + [
+            'amount_minor' => $deltaMinor,
+            'refunded_minor' => $newRefunded,
+            'paid_minor' => (int) $locked->paid_minor,
+        ], $from->value, $to->value);
+
+        if ($to === OrderStatus::Refunded) {
+            $this->tables->syncForOrder($locked, OrderStatus::Refunded);
+        }
+    }
+
+    /**
+     * Nakit yuvarlama düzeltmesi (±99 kuruş sınırı config'te). Toplam
+     * yeniden hesaplanır; iz order_events'e düşer.
+     */
+    public function applyRounding(Order $locked, int $roundingMinor, ?User $actor, string $context = 'cash_rounding'): void
+    {
+        $max = (int) config('payments.max_rounding_minor', 99);
+
+        if (abs($roundingMinor) > $max) {
+            throw ValidationException::withMessages(['rounding' => ["Yuvarlama en fazla ±{$max} kuruş olabilir."]]);
+        }
+
+        $previous = (int) $locked->rounding_minor;
+        $locked->rounding_minor = $roundingMinor;
+        $this->recomputeTotals($locked);
+
+        $this->logEvent($locked, 'rounding_applied', $actor, [
+            'context' => $context,
+            'previous_rounding_minor' => $previous,
+            'rounding_minor' => $roundingMinor,
+            'total_minor' => (int) $locked->total_minor,
+        ]);
+    }
+
+    /**
+     * Servis bedeli (prompt §15): yüzde ya da sabit tutar; kalemler
+     * değiştikçe yüzdeli bedel yeniden hesaplanır. KDV'siz eklenir
+     * (adisyon KDV dökümü kalem bazlıdır).
+     *
+     * @param  array{type: 'percent'|'amount', value: int|float, reason?: string|null}|null  $data  null → bedeli kaldır
+     */
+    public function applyServiceCharge(Order $order, ?array $data, User $actor, ?int $expectedVersion = null): Order
+    {
+        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($data, $actor): Order {
+            $this->assertItemsChangeable($locked);
+
+            if ((int) $locked->paid_minor > 0) {
+                throw ValidationException::withMessages(['service_charge' => ['Tahsilat başlayan adisyonda servis bedeli değiştirilemez.']]);
             }
 
-            $this->logEvent($locked, 'payment_recorded', $actor, [
-                'amount_minor' => $amountMinor,
-                'method' => $method,
-                'paid_minor' => (int) $locked->paid_minor,
+            $previous = [
+                'service_charge_minor' => (int) $locked->service_charge_minor,
                 'total_minor' => (int) $locked->total_minor,
-            ], $from->value, $to->value);
+            ];
 
-            $this->tables->syncForOrder($locked, $to === OrderStatus::Paid ? OrderStatus::Paid : null);
+            if ($data === null) {
+                $locked->service_charge_percent = null;
+                $locked->service_charge_minor = 0;
+                $locked->service_charge_reason = null;
+            } elseif ($data['type'] === 'percent') {
+                $percent = (float) $data['value'];
+                $maxPercent = (float) config('payments.max_service_charge_percent', 20);
+
+                if ($percent <= 0 || $percent > $maxPercent) {
+                    throw ValidationException::withMessages(['value' => ["Servis bedeli yüzdesi 0–{$maxPercent} aralığında olmalı."]]);
+                }
+
+                $locked->service_charge_percent = $percent;
+                $locked->service_charge_reason = $data['reason'] ?? null;
+            } else {
+                $amount = (int) $data['value'];
+
+                if ($amount <= 0 || $amount > (int) $locked->items_total_minor) {
+                    throw ValidationException::withMessages(['value' => ['Servis bedeli kalem toplamını aşamaz.']]);
+                }
+
+                $locked->service_charge_percent = null;
+                $locked->service_charge_minor = $amount;
+                $locked->service_charge_reason = $data['reason'] ?? null;
+            }
+
+            $this->recomputeTotals($locked);
+
+            $payload = [
+                'type' => $data['type'] ?? 'removed',
+                'value' => $data['value'] ?? 0,
+                'reason' => $data['reason'] ?? null,
+                'previous' => $previous,
+                'service_charge_minor' => (int) $locked->service_charge_minor,
+                'total_minor' => (int) $locked->total_minor,
+            ];
+
+            $this->logEvent($locked, 'service_charge_applied', $actor, $payload);
+            $this->audit->log('orders.service_charge_applied', $locked, $previous, $payload);
 
             return $locked;
         });
@@ -1107,11 +1261,18 @@ class OrderService
 
         $discount = min((int) $order->discount_minor, $itemsTotal);
 
+        // Yüzdeli servis bedeli (Faz-5) kalem toplamı değiştikçe yeniden hesaplanır.
+        if ($order->service_charge_percent !== null) {
+            $order->service_charge_minor = Money::percent($itemsTotal - $discount, (float) $order->service_charge_percent);
+        }
+
         $order->items_total_minor = $itemsTotal;
         $order->comp_total_minor = $compTotal;
         $order->vat_total_minor = $vatTotal;
         $order->discount_minor = $discount;
-        $order->total_minor = $itemsTotal - $discount;
+        $order->total_minor = max(0, $itemsTotal - $discount
+            + (int) ($order->service_charge_minor ?? 0)
+            + (int) ($order->rounding_minor ?? 0));
     }
 
     /* =========================================================

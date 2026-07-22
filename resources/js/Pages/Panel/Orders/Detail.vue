@@ -519,6 +519,11 @@ const eventTypeLabels: Record<string, string> = {
     split_out: 'Bölündü',
     split_from: 'Bölünerek açıldı',
     split_shares: 'Hesap payları',
+    // Payments modülü (Faz-5) olayları
+    payment_reversed: 'Ödeme iptal (void)',
+    refund_applied: 'İade işlendi',
+    service_charge_applied: 'Servis bedeli',
+    rounding_applied: 'Yuvarlama',
 };
 </script>
 
