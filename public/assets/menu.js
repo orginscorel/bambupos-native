@@ -225,17 +225,31 @@
     function writeCart(cart) {
         try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) { /* depolama kapalı */ }
     }
-    /* Satır birim fiyatı — kuruş-integer. Sunucuyla (OrderService) BİREBİR aynı
-       kural: varyant fiyatı taban fiyatın yerine geçer, seçilen TÜM seçenek
-       fiyatları toplanır. (free_limit sunucuda henüz uygulanmıyor; uygulanırsa
-       yalnız bu fonksiyon güncellenmeli — müşteriye asla eksik tutar gösterme.) */
+    /* Satır birim fiyatı — kuruş-integer. Sunucudaki OrderService ile BİREBİR
+       aynı kural olmalı; aksi halde müşterinin menüde gördüğü tutar ile kesilen
+       hesap tutmaz.
+
+       Kural:
+         1) Varyant seçiliyse onun fiyatı taban fiyatın YERİNE geçer.
+         2) Her seçenek grubunda "ücretsiz adet" (free_limit) varsa: seçilen
+            seçenekler fiyata göre BÜYÜKTEN KÜÇÜĞE sıralanır ve ilk `free`
+            tanesi ÜCRETSİZ sayılır (müşteri lehine), kalanlar kendi fiyatından
+            eklenir.
+       2026-07-22: Bu fonksiyon önceden free_limit'i yok sayıyordu — menüde
+       "2 sos ücretsiz" yazan üründe müşteriye ücret görünüyordu. Sunucu tarafı
+       düzeltilince buraya da uygulandı. */
     function unitPrice(p, vid, optIds) {
         var unit = p.p;
         if (vid != null) {
             for (var i = 0; i < p.v.length; i++) if (p.v[i].i === vid) { unit = p.v[i].p; break; }
         }
         p.g.forEach(function (g) {
-            g.o.forEach(function (o) { if (optIds.indexOf(o.i) !== -1) unit += o.p; });
+            var chosen = [];
+            g.o.forEach(function (o) { if (optIds.indexOf(o.i) !== -1) chosen.push(o.p); });
+            if (!chosen.length) return;
+            chosen.sort(function (a, b) { return b - a; });          // pahalıdan ucuza
+            var free = Math.max(0, g.free | 0);
+            for (var k = free; k < chosen.length; k++) unit += chosen[k];
         });
         return unit;
     }
@@ -548,8 +562,96 @@
         }).then(function () { btn.disabled = false; });
     });
 
+    /* ---------- görsel büyütme (lightbox) ----------
+       Kart görselinin tam boyutlusu ZATEN indirilen dosya (~800px WebP) —
+       aynı URL, ek istek yok. DOM ilk açılışta kurulur. Rozet (ikon+metin):
+       p.act === false → "Satışta değil" (payload bugün pasif ürün taşımaz;
+       alan gelirse hazır), p.out → Tükendi/servis dışı, yoksa "Satışta". */
+    var lb = null, lbClose = null, lbFocus = null, lbTouchY = null;
+    function svgIco(inner, size) {
+        size = size || 13;
+        return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
+    }
+    function buildLightbox() {
+        lb = document.createElement('div');
+        lb.className = 'm-lightbox';
+        lb.hidden = true;
+        lb.setAttribute('role', 'dialog');
+        lb.setAttribute('aria-modal', 'true');
+        lb.innerHTML = '<button type="button" class="m-lightbox__close" data-lb-close aria-label="' + esc(t('close')) + '">'
+            + svgIco('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>', 20) + '</button>'
+            + '<div class="m-lightbox__stage"><img class="m-lightbox__img" alt=""></div>'
+            + '<div class="m-lightbox__info"><p class="m-lightbox__name"></p>'
+            + '<p class="m-lightbox__row"><span class="m-lightbox__price"></span><span data-lb-badge></span></p></div>';
+        document.body.appendChild(lb);
+        lbClose = $('[data-lb-close]', lb);
+        lb.addEventListener('click', function (e) {
+            // × veya dışarı dokunma kapatır; görsel/bilgi şeridi kapatmaz
+            if (e.target.closest('[data-lb-close]')) { closeLightbox(); return; }
+            if (!e.target.closest('.m-lightbox__img,.m-lightbox__info')) closeLightbox();
+        });
+        // aşağı sürükleme = kapat; yalnız tek parmak (pinch'e karışma)
+        lb.addEventListener('touchstart', function (e) {
+            if (e.touches.length === 1) { lbTouchY = e.touches[0].clientY; lb.classList.add('is-drag'); }
+        }, { passive: true });
+        lb.addEventListener('touchmove', function (e) {
+            if (lbTouchY === null || e.touches.length !== 1) return;
+            var dy = e.touches[0].clientY - lbTouchY;
+            if (dy > 0) {
+                lb.style.transform = 'translateY(' + dy + 'px)';
+                lb.style.opacity = String(Math.max(0.4, 1 - dy / 480));
+                e.preventDefault();
+            }
+        }, { passive: false });
+        lb.addEventListener('touchend', function (e) {
+            if (lbTouchY === null) return;
+            var dy = (e.changedTouches[0] ? e.changedTouches[0].clientY : lbTouchY) - lbTouchY;
+            lbTouchY = null;
+            lb.classList.remove('is-drag');
+            if (dy > 90) closeLightbox();
+            else { lb.style.transform = ''; lb.style.opacity = ''; }
+        });
+    }
+    function openLightbox(pid) {
+        var p = DATA.products[pid];
+        if (!p || !p.img) return; // görselsiz ürün: tetiklenmez
+        if (!lb) buildLightbox();
+        var img = $('.m-lightbox__img', lb);
+        img.src = p.img;
+        img.alt = p.n;
+        lb.setAttribute('aria-label', p.n);
+        $('.m-lightbox__name', lb).textContent = p.n;
+        $('.m-lightbox__price', lb).textContent = fmt(p.p);
+        var no = p.act === false || p.out;
+        var key = p.act === false ? 'not_on_sale' : p.out ? (p.outr === 'window' ? 'off_hours' : 'sold_out') : 'on_sale';
+        $('[data-lb-badge]', lb).innerHTML = '<span class="m-badge ' + (no ? 'm-badge--no' : 'm-badge--ok') + '">'
+            + svgIco(no ? '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>'
+                        : '<path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/>')
+            + esc(t(key)) + '</span>';
+        lb.style.transform = ''; lb.style.opacity = '';
+        lb.hidden = false;
+        document.body.classList.add('m-lock');
+        lbFocus = document.activeElement;
+        lbClose.focus();
+    }
+    function closeLightbox() {
+        if (!lb || lb.hidden) return;
+        lb.hidden = true;
+        lb.style.transform = ''; lb.style.opacity = '';
+        if (!openSheet) document.body.classList.remove('m-lock');
+        if (lbFocus && lbFocus.focus) lbFocus.focus(); // odak tetikleyiciye döner
+        lbFocus = null;
+    }
+    document.addEventListener('keydown', function (e) {
+        if (!lb || lb.hidden) return;
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'Tab') { e.preventDefault(); lbClose.focus(); } // tek odak
+    });
+
     /* ---------- kart etkileşimleri ---------- */
     document.addEventListener('click', function (e) {
+        var zoom = e.target.closest && e.target.closest('[data-lightbox]');
+        if (zoom) { openLightbox(zoom.getAttribute('data-lightbox')); return; }
         var open = e.target.closest && e.target.closest('[data-detail]');
         if (open) { openDetail(open.getAttribute('data-detail')); return; }
         var add = e.target.closest && e.target.closest('[data-add]');

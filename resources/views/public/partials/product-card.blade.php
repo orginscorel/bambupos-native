@@ -51,7 +51,11 @@
     </div>
 
     @if (!empty($product['image']))
-        <img class="m-product__img" src="{{ $product['image'] }}" alt="" loading="lazy" decoding="async" width="88" height="88">
+        {{-- Dokununca büyütme (lightbox, menu.js): buton kart yüzeyini kaplayan
+             .m-product__open'ın ÜZERİNDE durur; görselsiz üründe tetikleyici yok --}}
+        <button type="button" class="m-product__zoom" data-lightbox="{{ $product['id'] }}" aria-label="{{ $product['name'] }} — {{ __('menu.js.zoom') }}">
+            <img class="m-product__img" src="{{ $product['image'] }}" alt="" loading="lazy" decoding="async" width="88" height="88">
+        </button>
     @else
         <span class="m-product__img m-product__img--empty" aria-hidden="true">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>

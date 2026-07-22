@@ -412,5 +412,53 @@ body {
 }
 body.m-lock { overflow: hidden; }
 
+/* ---------- görsel büyütme (lightbox) ----------
+   Aynı ~800px dosya kullanılır (ek istek yok). Arka plan her temada koyu;
+   bilgi şeridi --m-* değişkenleriyle açık/koyu temaya uyar. */
+.m-product__zoom {
+    position: relative; z-index: 1; flex-shrink: 0;
+    border: none; padding: 0; background: none;
+    border-radius: 10px; line-height: 0; cursor: zoom-in;
+}
+.m-lightbox {
+    position: fixed; inset: 0; z-index: 70;
+    display: flex; flex-direction: column;
+    background: rgb(0 0 0 / 0.88);
+    animation: m-fadein 140ms ease-out;
+    transition: transform 160ms ease-out, opacity 160ms ease-out; /* sürükleme geri-yaylanması */
+}
+.m-lightbox.is-drag { transition: none; }
+@keyframes m-fadein { from { opacity: 0; } to { opacity: 1; } }
+.m-lightbox__close {
+    position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 10px; z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; border: none; border-radius: 12px;
+    background: rgb(255 255 255 / 0.16); color: #fff; cursor: pointer;
+}
+.m-lightbox__stage {
+    flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+    padding: calc(64px + env(safe-area-inset-top)) 16px 16px;
+}
+.m-lightbox__img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px; }
+.m-lightbox__info {
+    background: var(--m-surface); color: var(--m-text);
+    border-radius: 16px 16px 0 0; box-shadow: var(--m-shadow);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+}
+.m-lightbox__name { font-size: 16px; font-weight: 700; }
+.m-lightbox__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.m-lightbox__price { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* durum rozeti: ikon + metin birlikte (yalnız renk değil); kontrast AA */
+.m-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700;
+}
+.m-badge--ok { background: #dcfce7; color: #166534; }
+.m-badge--no { background: #fee2e2; color: #991b1b; }
+@media (prefers-color-scheme: dark) {
+    .m-badge--ok { background: #14351f; color: #86efac; }
+    .m-badge--no { background: #431414; color: #fca5a5; }
+}
+
 /* ---------- alt bilgi ---------- */
 .m-footer { padding: 28px 0 12px; text-align: center; font-size: 12px; color: var(--m-text-muted); }
