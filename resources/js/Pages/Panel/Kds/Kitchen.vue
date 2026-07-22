@@ -9,6 +9,7 @@ import BaseModal from '@/Components/ui/BaseModal.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import KdsIcon from './KdsIcon.vue';
 import StationManager from './StationManager.vue';
+import './kds-theme.css';
 import {
     createKdsSound,
     createPollingFeed,
@@ -28,6 +29,7 @@ import {
  * MUTFAK / BAR EKRANI — tam ekran, dokunmatik, 2 metreden okunur.
  * Bar = aynı ekran, istasyon süzgeci "bar" (ya da ?istasyon=bar).
  * Gerçek zamanlılık: KdsFeed (bugün cursor'lı polling — ADR-006).
+ * Görsel dil: kds-theme.css (--kds-* katmanı, panel temasından bağımsız koyu).
  */
 const page = usePage();
 const meta = metaFromKdsProps(page.props as Record<string, unknown>);
@@ -290,18 +292,25 @@ function pendingItems(card: KdsOrderCard): KdsItem[] {
     return card.items.filter((i) => i.status !== 'ready');
 }
 
-function cardBorder(card: KdsOrderCard): string {
-    if (newOrderIds.value.has(card.id)) return 'border-sky-400 ring-4 ring-sky-400/40 kds-new';
+/** Kart çerçevesi: yeni > gecikmiş > uyarı > nötr (renk + üst şerit). */
+function cardStateClass(card: KdsOrderCard): string {
+    if (newOrderIds.value.has(card.id)) return 'kds-card--new';
     const sla = cardSla(card);
-    if (sla === 'late') return 'border-red-500 ring-2 ring-red-500/40';
-    if (sla === 'warn') return 'border-amber-400';
-    return 'border-slate-700';
+    if (sla === 'late') return 'kds-card--late';
+    if (sla === 'warn') return 'kds-card--warn';
+    return '';
 }
 
-function slaChipClass(level: SlaLevel): string {
-    if (level === 'late') return 'bg-red-600 text-white';
-    if (level === 'warn') return 'bg-amber-500 text-slate-950';
-    return 'bg-slate-700 text-slate-100';
+function slaBadgeClass(level: SlaLevel): string {
+    return level === 'late' ? 'kds-sla--late' : level === 'warn' ? 'kds-sla--warn' : 'kds-sla--ok';
+}
+
+/** Kalem süresi metin rengi (küçük süre etiketi). */
+function itemTimeClass(item: KdsItem): string {
+    const l = itemSla(item);
+    if (l === 'late') return 'text-[var(--kds-late)]';
+    if (l === 'warn') return 'text-[var(--kds-warn)]';
+    return 'text-[var(--kds-text-3)]';
 }
 
 const branchOptions = computed(() => branches.map((b) => ({ value: String(b.id), label: b.name })));
@@ -311,100 +320,114 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 <template>
     <Head :title="pageTitle" />
 
-    <div class="fixed inset-0 flex flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div class="kds-root fixed inset-0 flex flex-col overflow-hidden">
         <!-- ================= Üst çubuk ================= -->
-        <header class="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2">
-            <a
-                href="/panel"
-                class="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
-                aria-label="Panele dön"
-            >
+        <header
+            class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2.5"
+            style="background-color: var(--kds-bar); border-color: var(--kds-border)"
+        >
+            <a href="/panel" class="kds-btn kds-btn--neutral w-11 px-0" aria-label="Panele dön">
                 <AppIcon name="arrow-left" :size="22" />
             </a>
 
-            <h1 class="flex items-center gap-2 text-xl font-bold tracking-wide">
-                <KdsIcon :name="station === 'bar' ? 'glass' : 'flame'" :size="24" class="text-orange-400" />
+            <h1 class="flex items-center gap-2.5 text-xl font-bold tracking-wide">
+                <span
+                    class="flex h-9 w-9 items-center justify-center rounded-lg"
+                    style="background-color: var(--kds-accent-soft); color: var(--kds-accent)"
+                >
+                    <KdsIcon :name="station === 'bar' ? 'glass' : 'flame'" :size="22" />
+                </span>
                 {{ pageTitle }}
             </h1>
 
-            <span
-                class="ml-1 rounded-full bg-slate-800 px-3 py-1 text-base font-semibold text-slate-300"
-                :title="'Bekleyen kalem'"
-            >
-                {{ totalPending }} bekleyen
+            <!-- Sayaçlar: sayı + etiket + (gecikende) ikon — yalnız renge güvenmez -->
+            <span class="kds-chip kds-num text-base" title="Bekleyen kalem">
+                <strong class="text-lg" style="color: var(--kds-text)">{{ totalPending }}</strong>
+                bekleyen
             </span>
 
             <span
                 v-if="lateCount > 0"
-                class="flex items-center gap-1 rounded-full bg-red-600 px-3 py-1 text-base font-bold text-white"
+                class="kds-chip kds-late-badge kds-num text-base"
+                style="background-color: var(--kds-late-fill); color: #fff"
                 role="alert"
             >
                 <AppIcon name="alert-triangle" :size="18" />
-                {{ lateCount }} GECİKEN
+                <strong class="text-lg">{{ lateCount }}</strong>
+                GECİKEN
             </span>
 
-            <div class="ml-auto flex items-center gap-2">
-                <BaseSelect
-                    v-if="branchOptions.length > 1"
-                    :model-value="String(branchId)"
-                    :options="branchOptions"
-                    class="w-40"
-                    @update:model-value="selectBranch(String($event))"
-                />
+            <div class="ml-auto flex flex-wrap items-center gap-2">
+                <div v-if="branchOptions.length > 1" class="kds-select w-44">
+                    <BaseSelect
+                        :model-value="String(branchId)"
+                        :options="branchOptions"
+                        @update:model-value="selectBranch(String($event))"
+                    />
+                </div>
 
-                <a
-                    v-if="meta.canDeliver"
-                    href="/panel/komi"
-                    class="flex h-11 items-center gap-2 rounded-lg bg-slate-800 px-3 text-base font-semibold text-slate-200 hover:bg-slate-700"
-                >
+                <a v-if="meta.canDeliver" href="/panel/komi" class="kds-btn kds-btn--neutral text-base">
                     <KdsIcon name="tray" :size="20" />
                     Komi
                 </a>
 
                 <button
                     v-if="meta.canManageStations"
-                    class="flex h-11 items-center gap-2 rounded-lg bg-slate-800 px-3 text-base font-semibold text-slate-200 hover:bg-slate-700"
+                    class="kds-btn kds-btn--neutral text-base"
                     @click="showStations = true"
                 >
                     <AppIcon name="settings" :size="20" />
                     İstasyonlar
                 </button>
 
-                <button
-                    class="flex h-11 w-11 items-center justify-center rounded-lg text-slate-200"
-                    :class="soundOn ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-slate-800 hover:bg-slate-700'"
-                    :aria-label="soundOn ? 'Sesi kapat' : 'Sesi aç'"
-                    :title="soundOn ? 'Yeni sipariş sesi: AÇIK' : 'Yeni sipariş sesi: KAPALI'"
-                    @click="toggleSound"
+                <!-- görünüm anahtarları: tek grup halinde -->
+                <div
+                    class="flex items-center gap-1 rounded-xl p-1"
+                    style="background-color: var(--kds-inset)"
                 >
-                    <KdsIcon :name="soundOn ? 'volume-on' : 'volume-off'" :size="22" />
-                </button>
-
-                <button
-                    class="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700"
-                    :aria-label="compact ? 'Normal görünüm' : 'Yoğun görünüm'"
-                    :title="compact ? 'Normal görünüm' : 'Yoğun görünüm (daha çok kart)'"
-                    @click="toggleCompact"
-                >
-                    <AppIcon name="dashboard" :size="22" />
-                </button>
-
-                <button
-                    class="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700"
-                    :aria-label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
-                    @click="toggleFullscreen"
-                >
-                    <KdsIcon :name="isFullscreen ? 'compress' : 'expand'" :size="22" />
-                </button>
+                    <button
+                        class="kds-btn w-11 min-h-[2.25rem] rounded-lg px-0"
+                        :style="soundOn
+                            ? 'background-color: var(--kds-ok-fill); color: #fff'
+                            : 'background-color: transparent; color: var(--kds-text-2)'"
+                        :aria-label="soundOn ? 'Sesi kapat' : 'Sesi aç'"
+                        :title="soundOn ? 'Yeni sipariş sesi: AÇIK' : 'Yeni sipariş sesi: KAPALI'"
+                        @click="toggleSound"
+                    >
+                        <KdsIcon :name="soundOn ? 'volume-on' : 'volume-off'" :size="21" />
+                    </button>
+                    <button
+                        class="kds-btn w-11 min-h-[2.25rem] rounded-lg px-0"
+                        :style="compact
+                            ? 'background-color: var(--kds-inset-hover); color: var(--kds-text)'
+                            : 'background-color: transparent; color: var(--kds-text-2)'"
+                        :aria-label="compact ? 'Normal görünüm' : 'Yoğun görünüm'"
+                        :title="compact ? 'Normal görünüm' : 'Yoğun görünüm (daha çok kart)'"
+                        @click="toggleCompact"
+                    >
+                        <AppIcon name="dashboard" :size="21" />
+                    </button>
+                    <button
+                        class="kds-btn w-11 min-h-[2.25rem] rounded-lg px-0"
+                        style="background-color: transparent; color: var(--kds-text-2)"
+                        :aria-label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
+                        @click="toggleFullscreen"
+                    >
+                        <KdsIcon :name="isFullscreen ? 'compress' : 'expand'" :size="21" />
+                    </button>
+                </div>
             </div>
         </header>
 
-        <!-- ================= İstasyon süzgeci + özet ================= -->
-        <div class="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-2">
+        <!-- ================= İstasyon süzgeci ================= -->
+        <div
+            class="flex flex-wrap items-center gap-2 border-b px-4 py-2.5"
+            style="background-color: var(--kds-bg); border-color: var(--kds-border)"
+        >
             <button
                 v-if="showAllChip"
-                class="h-11 rounded-full px-4 text-base font-bold"
-                :class="station === '' ? 'bg-orange-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
+                class="kds-pill"
+                :class="station === '' ? 'kds-pill--active' : ''"
                 @click="selectStation('')"
             >
                 Tümü
@@ -412,15 +435,15 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
             <button
                 v-for="s in stationChips"
                 :key="s.key"
-                class="h-11 rounded-full px-4 text-base font-bold"
-                :class="station === s.key ? 'bg-orange-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'"
+                class="kds-pill"
+                :class="station === s.key ? 'kds-pill--active' : ''"
                 @click="selectStation(s.key)"
             >
                 {{ s.name }}
                 <span
                     v-for="row in summary.filter((r) => r.station === s.key && r.pending > 0)"
                     :key="row.station ?? '_'"
-                    class="ml-1 rounded-full bg-slate-950/40 px-2 py-0.5 text-sm"
+                    class="kds-pill__count kds-num"
                 >
                     {{ row.pending }}
                 </span>
@@ -428,136 +451,173 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
         </div>
 
         <!-- ================= Kuyruk ================= -->
-        <main class="flex-1 overflow-y-auto p-3">
-            <div v-if="loading" class="flex h-full items-center justify-center text-2xl text-slate-400">
+        <main class="flex-1 overflow-y-auto" :class="compact ? 'p-3' : 'p-4'">
+            <div
+                v-if="loading"
+                class="flex h-full items-center justify-center gap-3 text-2xl"
+                style="color: var(--kds-text-2)"
+            >
+                <span class="kds-live-dot h-3 w-3 rounded-full" style="background-color: var(--kds-accent)" />
                 Kuyruk yükleniyor…
             </div>
 
-            <div
-                v-else-if="orders.length === 0"
-                class="flex h-full flex-col items-center justify-center gap-3 text-slate-400"
-            >
-                <AppIcon name="check-circle" :size="64" class="text-emerald-500" />
-                <p class="text-3xl font-bold">Bekleyen sipariş yok</p>
-                <p class="text-lg">Yeni sipariş geldiğinde burada belirir<span v-if="soundOn"> ve ses çalar</span>.</p>
+            <!-- Boş durum: sakin, bilgilendirici -->
+            <div v-else-if="orders.length === 0" class="flex h-full flex-col items-center justify-center gap-5 px-6">
+                <span
+                    class="flex h-28 w-28 items-center justify-center rounded-full border"
+                    style="background-color: var(--kds-card); border-color: var(--kds-border-strong); color: var(--kds-ok)"
+                >
+                    <AppIcon name="check-circle" :size="56" />
+                </span>
+                <div class="text-center">
+                    <p class="text-3xl font-bold">Bekleyen sipariş yok</p>
+                    <p class="mt-2 text-lg" style="color: var(--kds-text-2)">
+                        Yeni sipariş geldiğinde burada belirir<span v-if="soundOn"> ve ses çalar</span>.
+                    </p>
+                </div>
+                <span class="kds-chip text-sm font-medium">
+                    <span class="kds-live-dot h-2.5 w-2.5 rounded-full" style="background-color: var(--kds-ok)" />
+                    Canlı — her {{ meta.config.poll_interval_seconds }} saniyede bir yenilenir
+                </span>
             </div>
 
             <div
                 v-else
-                class="grid gap-3"
-                :class="compact ? 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'"
+                class="grid items-start"
+                :class="compact ? 'gap-3' : 'gap-4'"
+                :style="`grid-template-columns: repeat(auto-fill, minmax(${compact ? '300px' : '370px'}, 1fr))`"
             >
-                <article
-                    v-for="card in orders"
-                    :key="card.id"
-                    class="flex flex-col overflow-hidden rounded-xl border-2 bg-slate-900"
-                    :class="cardBorder(card)"
-                >
-                    <!-- Kart başlığı -->
-                    <div class="flex items-start justify-between gap-2 border-b border-slate-800 px-3 py-2">
+                <article v-for="card in orders" :key="card.id" class="kds-card" :class="cardStateClass(card)">
+                    <!-- Kart başlığı: MASA en baskın öğe -->
+                    <div
+                        class="flex items-start justify-between gap-3 border-b px-4 pb-2.5 pt-2"
+                        style="border-color: var(--kds-border); background-color: var(--kds-card-head)"
+                    >
                         <div class="min-w-0">
-                            <div class="flex items-center gap-2">
-                                <span class="truncate text-2xl font-black leading-tight">
-                                    {{ card.table_name ?? card.customer_name ?? `Sipariş #${card.id}` }}
-                                </span>
-                                <span
-                                    class="flex shrink-0 items-center gap-1 rounded-md bg-slate-800 px-2 py-0.5 text-sm font-bold uppercase tracking-wide text-slate-300"
-                                >
+                            <p
+                                class="truncate font-bold leading-tight tracking-tight"
+                                :class="compact ? 'text-2xl' : 'text-3xl'"
+                            >
+                                {{ card.table_name ?? card.customer_name ?? `Sipariş #${card.id}` }}
+                            </p>
+                            <p
+                                class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm font-medium"
+                                style="color: var(--kds-text-3)"
+                            >
+                                <span class="inline-flex items-center gap-1 uppercase tracking-wide">
                                     <AppIcon :name="card.channel_icon" :size="14" />
                                     {{ card.channel_label }}
                                 </span>
-                            </div>
-                            <div class="mt-0.5 flex flex-wrap items-center gap-x-3 text-base text-slate-400">
-                                <span v-if="card.area_name">{{ card.area_name }}</span>
-                                <span v-if="card.waiter" class="flex items-center gap-1">
-                                    <AppIcon name="user" :size="14" /> {{ card.waiter }}
+                                <span v-if="card.area_name">· {{ card.area_name }}</span>
+                                <span v-if="card.waiter" class="inline-flex items-center gap-1">
+                                    · <AppIcon name="user" :size="14" /> {{ card.waiter }}
                                 </span>
-                                <span v-if="card.guest_count" class="flex items-center gap-1">
-                                    <AppIcon name="users" :size="14" /> {{ card.guest_count }}
+                                <span v-if="card.guest_count" class="inline-flex items-center gap-1">
+                                    · <AppIcon name="users" :size="14" /> {{ card.guest_count }}
                                 </span>
-                            </div>
+                            </p>
                         </div>
 
-                        <!-- SLA: renk + ikon + süre metni birlikte -->
-                        <span
-                            class="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-lg font-black"
-                            :class="slaChipClass(cardSla(card))"
-                        >
-                            <KdsIcon :name="cardSla(card) === 'ok' ? 'clock' : 'timer'" :size="20" />
-                            {{ slaText(waitMinutes(card.placed_at)) }}
-                            <span v-if="cardSla(card) === 'late'" class="text-sm font-bold">GECİKTİ</span>
-                            <span v-else-if="cardSla(card) === 'warn'" class="text-sm font-bold">UYARI</span>
+                        <!-- SLA: renk + ikon + süre + durum SÖZCÜĞÜ birlikte -->
+                        <span class="kds-sla shrink-0" :class="slaBadgeClass(cardSla(card))">
+                            <span class="kds-num flex items-center gap-1.5 text-lg font-bold leading-none">
+                                <KdsIcon :name="cardSla(card) === 'ok' ? 'clock' : 'timer'" :size="18" />
+                                {{ slaText(waitMinutes(card.placed_at)) }}
+                            </span>
+                            <span class="mt-0.5 text-[11px] font-bold tracking-widest">
+                                {{ cardSla(card) === 'late' ? 'GECİKTİ' : cardSla(card) === 'warn' ? 'UYARI' : 'SÜRE' }}
+                            </span>
                         </span>
                     </div>
 
                     <!-- Sipariş notu -->
                     <p
                         v-if="card.note"
-                        class="flex items-start gap-2 border-b border-slate-800 bg-sky-950/60 px-3 py-2 text-lg font-semibold text-sky-200"
+                        class="flex items-start gap-2 border-b px-4 py-2 text-base font-medium"
+                        style="background-color: var(--kds-note); border-color: var(--kds-border); color: var(--kds-info)"
                     >
-                        <AppIcon name="info" :size="20" class="mt-0.5 shrink-0" />
+                        <AppIcon name="info" :size="18" class="mt-0.5 shrink-0" />
                         {{ card.note }}
                     </p>
 
                     <!-- Kalemler -->
-                    <ul class="flex-1 divide-y divide-slate-800">
-                        <li v-for="item in card.items" :key="item.id" class="px-3 py-2">
-                            <div class="flex items-start justify-between gap-2">
-                                <div class="min-w-0">
-                                    <p class="text-xl font-bold leading-snug" :class="item.status === 'ready' ? 'text-emerald-400' : ''">
-                                        <span class="mr-1 inline-block rounded-md bg-slate-800 px-2 text-orange-300">{{ item.qty }}×</span>
+                    <ul class="flex-1 divide-y" style="border-color: var(--kds-border); --tw-divide-opacity: 1">
+                        <li
+                            v-for="item in card.items"
+                            :key="item.id"
+                            class="px-4"
+                            :class="compact ? 'py-2' : 'py-2.5'"
+                            :style="`border-color: var(--kds-border);${item.status === 'ready' ? 'background-color: rgb(74 222 128 / 0.05)' : ''}`"
+                        >
+                            <div class="flex items-start gap-3">
+                                <span class="kds-qty shrink-0" :class="item.status === 'ready' ? 'kds-qty--done' : ''">
+                                    {{ item.qty }}×
+                                </span>
+
+                                <div class="min-w-0 flex-1">
+                                    <p
+                                        class="font-bold leading-snug"
+                                        :class="compact ? 'text-lg' : 'text-xl'"
+                                        :style="item.status === 'ready' ? 'color: var(--kds-text-3)' : ''"
+                                    >
                                         {{ item.name }}
-                                        <span v-if="item.variant_name" class="text-slate-400">— {{ item.variant_name }}</span>
+                                        <span
+                                            v-if="item.variant_name"
+                                            class="font-medium"
+                                            style="color: var(--kds-text-2)"
+                                        >
+                                            — {{ item.variant_name }}
+                                        </span>
                                     </p>
-                                    <p v-if="item.options.length" class="mt-0.5 text-base text-slate-400">
+                                    <p v-if="item.options.length" class="mt-0.5 text-base" style="color: var(--kds-text-2)">
                                         {{ item.options.join(' · ') }}
                                     </p>
-                                    <p v-if="item.note" class="mt-0.5 text-base font-semibold text-sky-300">
+                                    <p v-if="item.note" class="mt-0.5 text-base font-medium" style="color: var(--kds-info)">
                                         Not: {{ item.note }}
                                     </p>
 
-                                    <!-- ALERJEN — belirgin -->
-                                    <p
-                                        v-if="item.allergens.length"
-                                        class="mt-1 flex flex-wrap items-center gap-1.5"
-                                        role="alert"
-                                    >
-                                        <span
-                                            class="flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-base font-black text-white"
-                                        >
-                                            <AppIcon name="alert-triangle" :size="16" />
+                                    <!-- ALERJEN — ikinci en baskın öğe -->
+                                    <p v-if="item.allergens.length" class="mt-1.5 flex flex-wrap items-center gap-1.5" role="alert">
+                                        <span class="kds-allergen text-sm">
+                                            <AppIcon name="alert-triangle" :size="15" />
                                             ALERJEN
                                         </span>
-                                        <span
-                                            v-for="a in item.allergens"
-                                            :key="a.name"
-                                            class="rounded-md border border-red-500 px-2 py-0.5 text-base font-bold text-red-300"
-                                        >
+                                        <span v-for="a in item.allergens" :key="a.name" class="kds-allergen-tag text-sm">
                                             {{ a.name }}
                                         </span>
                                     </p>
 
-                                    <!-- Diyet etiketleri (vegan vb.) — nötr, alerjenle karışmaz -->
+                                    <!-- Diyet etiketleri — nötr, alerjenle karışmaz -->
                                     <p v-if="item.diets.length" class="mt-1 flex flex-wrap items-center gap-1.5">
-                                        <span
-                                            v-for="d in item.diets"
-                                            :key="d"
-                                            class="rounded-md border border-slate-600 px-2 py-0.5 text-sm font-semibold text-slate-400"
-                                        >
-                                            {{ d }}
-                                        </span>
+                                        <span v-for="d in item.diets" :key="d" class="kds-diet-tag text-sm">{{ d }}</span>
                                     </p>
 
-                                    <p v-if="!station" class="mt-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                    <p
+                                        v-if="!station"
+                                        class="mt-1 text-xs font-bold uppercase tracking-widest"
+                                        style="color: var(--kds-text-3)"
+                                    >
                                         {{ item.station_label }}
                                     </p>
+
+                                    <!-- Geri al: bilinçli olarak SOL tarafta — sağdaki
+                                         "Hazır/Başlat" sütunundan uzak (yanlış dokunma) -->
+                                    <button
+                                        v-if="item.status === 'ready'"
+                                        class="kds-btn kds-btn--ghost mt-2 text-sm"
+                                        :disabled="busy"
+                                        title="Yanlışlıkla hazır işaretlendiyse geri al"
+                                        @click="undoItem(card, item)"
+                                    >
+                                        <KdsIcon name="undo" :size="15" /> Geri al
+                                    </button>
                                 </div>
 
-                                <!-- Kalem eylemi -->
-                                <div class="flex shrink-0 flex-col items-end gap-1.5">
+                                <!-- Sağ sütun: süre + birincil eylem -->
+                                <div class="flex shrink-0 flex-col items-end gap-2">
                                     <span
-                                        class="flex items-center gap-1 text-sm font-bold"
-                                        :class="itemSla(item) === 'late' ? 'text-red-400' : itemSla(item) === 'warn' ? 'text-amber-300' : 'text-slate-500'"
+                                        class="kds-num flex items-center gap-1 text-sm font-bold"
+                                        :class="itemTimeClass(item)"
                                     >
                                         <KdsIcon name="clock" :size="14" />
                                         {{ slaText(waitMinutes(item.created_at)) }}
@@ -565,7 +625,7 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 
                                     <button
                                         v-if="['placed', 'sent_to_station'].includes(item.status)"
-                                        class="h-12 min-w-[7rem] rounded-lg bg-sky-600 px-3 text-lg font-bold text-white hover:bg-sky-500"
+                                        class="kds-btn kds-btn--info kds-btn--lg min-w-[7.5rem]"
                                         :disabled="busy"
                                         @click="advance(card, item, 'accepted')"
                                     >
@@ -573,7 +633,7 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                                     </button>
                                     <button
                                         v-else-if="item.status === 'accepted'"
-                                        class="h-12 min-w-[7rem] rounded-lg bg-amber-500 px-3 text-lg font-bold text-slate-950 hover:bg-amber-400"
+                                        class="kds-btn kds-btn--warn kds-btn--lg min-w-[7.5rem]"
                                         :disabled="busy"
                                         @click="advance(card, item, 'preparing')"
                                     >
@@ -581,7 +641,7 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                                     </button>
                                     <button
                                         v-else-if="item.status === 'preparing'"
-                                        class="h-12 min-w-[7rem] rounded-lg bg-emerald-600 px-3 text-lg font-bold text-white hover:bg-emerald-500"
+                                        class="kds-btn kds-btn--success kds-btn--lg min-w-[7.5rem]"
                                         :disabled="busy"
                                         @click="advance(card, item, 'ready')"
                                     >
@@ -589,50 +649,45 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                                     </button>
                                     <span
                                         v-else-if="item.status === 'ready'"
-                                        class="flex items-center gap-1 text-lg font-bold text-emerald-400"
+                                        class="flex items-center gap-1.5 text-lg font-bold"
+                                        style="color: var(--kds-ok)"
                                     >
                                         <AppIcon name="check-circle" :size="20" /> Hazır
                                     </span>
 
-                                    <div class="flex gap-1.5">
-                                        <!-- Geri al (yanlış işaret) -->
-                                        <button
-                                            v-if="item.status === 'ready'"
-                                            class="flex h-10 items-center gap-1 rounded-lg bg-slate-800 px-2.5 text-base font-semibold text-slate-300 hover:bg-slate-700"
-                                            :disabled="busy"
-                                            title="Yanlışlıkla hazır işaretlendiyse geri al"
-                                            @click="undoItem(card, item)"
-                                        >
-                                            <KdsIcon name="undo" :size="16" /> Geri al
-                                        </button>
-                                        <!-- İstasyon transferi -->
-                                        <button
-                                            v-if="!['ready'].includes(item.status)"
-                                            class="flex h-10 items-center gap-1 rounded-lg bg-slate-800 px-2.5 text-base font-semibold text-slate-300 hover:bg-slate-700"
-                                            :disabled="busy"
-                                            title="Başka istasyona transfer et"
-                                            @click="openTransfer(card, item)"
-                                        >
-                                            <KdsIcon name="swap" :size="16" />
-                                        </button>
-                                    </div>
+                                    <!-- İstasyon transferi: ikincil, hayalet -->
+                                    <button
+                                        v-if="item.status !== 'ready'"
+                                        class="kds-btn kds-btn--ghost w-11 px-0"
+                                        :disabled="busy"
+                                        title="Başka istasyona transfer et"
+                                        :aria-label="'Transfer: ' + item.name"
+                                        @click="openTransfer(card, item)"
+                                    >
+                                        <KdsIcon name="swap" :size="17" />
+                                    </button>
                                 </div>
                             </div>
                         </li>
                     </ul>
 
                     <!-- Kart altı: tümü hazır -->
-                    <div class="border-t border-slate-800 p-2">
+                    <div class="border-t p-2.5" style="border-color: var(--kds-border)">
                         <button
                             v-if="pendingItems(card).length > 0"
-                            class="h-14 w-full rounded-lg bg-emerald-600 text-xl font-black text-white hover:bg-emerald-500"
+                            class="kds-btn kds-btn--success h-14 w-full text-lg font-bold tracking-wide"
                             :disabled="busy"
                             @click="allReady(card)"
                         >
+                            <AppIcon name="check-circle" :size="22" />
                             TÜMÜ HAZIR ({{ pendingItems(card).length }})
                         </button>
-                        <p v-else class="flex h-12 items-center justify-center gap-2 text-lg font-bold text-emerald-400">
-                            <KdsIcon name="tray" :size="22" />
+                        <p
+                            v-else
+                            class="flex h-12 items-center justify-center gap-2 rounded-lg text-base font-bold"
+                            style="background-color: rgb(74 222 128 / 0.1); color: var(--kds-ok)"
+                        >
+                            <KdsIcon name="tray" :size="20" />
                             Servis bekliyor — komi çağrıldı
                         </p>
                     </div>
@@ -642,11 +697,7 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
     </div>
 
     <!-- ================= Transfer modalı ================= -->
-    <BaseModal
-        :open="transferTarget !== null"
-        title="İstasyon transferi"
-        @close="transferTarget = null"
-    >
+    <BaseModal :open="transferTarget !== null" title="İstasyon transferi" @close="transferTarget = null">
         <div v-if="transferTarget" class="space-y-4">
             <p class="text-base">
                 <strong>{{ transferTarget.item.qty }}× {{ transferTarget.item.name }}</strong>
@@ -655,13 +706,13 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
             <BaseSelect v-model="transferStation" :options="transferOptions" placeholder="Hedef istasyon seçin" />
             <div class="flex justify-end gap-2">
                 <button
-                    class="h-11 rounded-lg bg-slate-200 px-4 font-semibold text-slate-800 dark:bg-slate-700 dark:text-slate-100"
+                    class="h-11 rounded-lg bg-inset px-4 font-semibold text-body"
                     @click="transferTarget = null"
                 >
                     Vazgeç
                 </button>
                 <button
-                    class="h-11 rounded-lg bg-orange-500 px-4 font-bold text-white disabled:opacity-50"
+                    class="h-11 rounded-lg bg-primary px-4 font-bold text-on-primary disabled:opacity-50"
                     :disabled="!transferStation || busy"
                     @click="doTransfer"
                 >
@@ -676,13 +727,3 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 
     <ToastHost />
 </template>
-
-<style scoped>
-@keyframes kds-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55); }
-    50% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
-}
-.kds-new {
-    animation: kds-pulse 1.2s ease-in-out 6;
-}
-</style>
