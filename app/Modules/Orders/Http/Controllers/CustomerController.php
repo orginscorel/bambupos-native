@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Modules\Ordering\Http\Controllers;
+namespace App\Modules\Orders\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Ordering\Models\Customer;
+use App\Modules\Orders\Models\Customer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 

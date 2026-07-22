@@ -28,6 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
             // /m/{token} ucu oturumsuz kalmalı (ADR-011 tam-sayfa cache,
             // cache'lenen yanıtta Set-Cookie olamaz).
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/venue.php');
+
+            // Orders domaini (Faz 3): sipariş/adisyon çekirdeği + garson
+            // ekranları. Middleware dosyanın içinde: public QR sipariş ucu
+            // bilinçli oturumsuzdur (ADR-008, kimlik yalnız token).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/orders.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

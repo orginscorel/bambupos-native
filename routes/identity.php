@@ -10,8 +10,7 @@ use App\Modules\Identity\Http\Controllers\RoleController;
 use App\Modules\Identity\Http\Controllers\SessionController;
 use App\Modules\Identity\Http\Controllers\StaffController;
 use App\Modules\Identity\Http\Controllers\TwoFactorController;
-use App\Modules\Ordering\Http\Controllers\CustomerController;
-use App\Modules\Ordering\Http\Controllers\OrderController;
+use App\Modules\Orders\Http\Controllers\CustomerController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
 use App\Modules\Tables\Http\Controllers\TableController;
 use Illuminate\Support\Facades\Route;
@@ -55,8 +54,7 @@ Route::prefix('api/v1')->group(function (): void {
         Route::apiResource('customers', CustomerController::class);
         Route::apiResource('tables', TableController::class)->parameters(['tables' => 'table']);
         Route::post('tables/{table}/rotate-qr', [TableController::class, 'rotateQr'])->name('tables.rotate-qr');
-        Route::apiResource('orders', OrderController::class)->only(['index', 'store', 'show']);
-        Route::post('orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
+        // Sipariş uçları Faz-3'te routes/orders.php'ye taşındı (aynı URI'ler).
         Route::get('reports/summary', [ReportController::class, 'summary'])->name('reports.summary');
     });
 });

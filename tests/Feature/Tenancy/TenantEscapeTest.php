@@ -3,8 +3,8 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Modules\Catalog\Models\Product;
-use App\Modules\Ordering\Models\Customer;
-use App\Modules\Ordering\Models\Order;
+use App\Modules\Orders\Models\Customer;
+use App\Modules\Orders\Models\Order;
 use App\Modules\Tables\Models\Table;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithTenancy;

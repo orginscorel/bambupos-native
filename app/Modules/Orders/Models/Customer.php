@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Ordering\Models;
+namespace App\Modules\Orders\Models;
 
 use App\Modules\Identity\Concerns\Auditable;
 use App\Modules\Tenancy\Concerns\BelongsToTenant;
@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/** Faz-1 iskeletinden taşındı (Ordering → Orders). */
 class Customer extends Model
 {
     /** @use HasFactory<CustomerFactory> */

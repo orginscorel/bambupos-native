@@ -2,7 +2,7 @@
 
 namespace Database\Factories;
 
-use App\Modules\Ordering\Models\Customer;
+use App\Modules\Orders\Models\Customer;
 use App\Modules\Tenancy\Models\Tenant;
 use Illuminate\Database\Eloquent\Factories\Factory;
 

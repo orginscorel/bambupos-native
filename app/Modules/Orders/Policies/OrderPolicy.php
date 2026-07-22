@@ -1,11 +1,15 @@
 <?php
 
-namespace App\Modules\Ordering\Policies;
+namespace App\Modules\Orders\Policies;
 
 use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Policies\TenantOwnedPolicy;
-use App\Modules\Ordering\Models\Order;
+use App\Modules\Orders\Models\Order;
 
+/**
+ * İkram/indirim/iptal/iade AYRI izinlerdir (config/authz.php: orders.*).
+ * Kiracı eşitliği her eylemde yeniden doğrulanır (ADR-004 katman 2).
+ */
 class OrderPolicy extends TenantOwnedPolicy
 {
     protected string $module = 'orders';

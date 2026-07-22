@@ -4,8 +4,8 @@ namespace App\Modules\Reporting\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Catalog\Models\Product;
-use App\Modules\Ordering\Models\Customer;
-use App\Modules\Ordering\Models\Order;
+use App\Modules\Orders\Models\Customer;
+use App\Modules\Orders\Models\Order;
 use App\Modules\Tables\Models\Table;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
