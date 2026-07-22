@@ -1,0 +1,45 @@
+# --- Security: block sensitive files (defense in depth; app root is outside docroot) ---
+<FilesMatch "^\.env|^\.env\..*|composer\.(json|lock)|package(-lock)?\.json|artisan$|\.(git|sh|bak|sql|log|yml|yaml|lock|ini)$">
+    Require all denied
+</FilesMatch>
+
+RedirectMatch 404 "(?i)/\.(git|env|htaccess|htpasswd)"
+RedirectMatch 404 "(?i)^/(vendor|storage/framework|storage/logs|database|bootstrap/cache)(/|$)"
+
+# --- Security headers ---
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-XSS-Protection "0"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+# --- No directory listing ---
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Handle X-XSRF-Token Header
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
