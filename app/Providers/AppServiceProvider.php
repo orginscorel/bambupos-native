@@ -2,7 +2,15 @@
 
 namespace App\Providers;
 
+use App\Modules\Catalog\Models\Allergen;
+use App\Modules\Catalog\Models\Category;
+use App\Modules\Catalog\Models\Menu;
+use App\Modules\Catalog\Models\OptionGroup;
 use App\Modules\Catalog\Models\Product;
+use App\Modules\Catalog\Policies\AllergenPolicy;
+use App\Modules\Catalog\Policies\CategoryPolicy;
+use App\Modules\Catalog\Policies\MenuPolicy;
+use App\Modules\Catalog\Policies\OptionGroupPolicy;
 use App\Modules\Catalog\Policies\ProductPolicy;
 use App\Modules\Identity\Models\Role;
 use App\Modules\Identity\Models\User;
@@ -31,6 +39,10 @@ class AppServiceProvider extends ServiceProvider
     {
         // Katman 2: policy kayıtları
         Gate::policy(Product::class, ProductPolicy::class);
+        Gate::policy(Category::class, CategoryPolicy::class);
+        Gate::policy(OptionGroup::class, OptionGroupPolicy::class);
+        Gate::policy(Allergen::class, AllergenPolicy::class);
+        Gate::policy(Menu::class, MenuPolicy::class);
         Gate::policy(Order::class, OrderPolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Table::class, TablePolicy::class);
