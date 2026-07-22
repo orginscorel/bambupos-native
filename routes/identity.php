@@ -5,6 +5,7 @@ use App\Modules\Identity\Http\Controllers\AuditLogController;
 use App\Modules\Identity\Http\Controllers\LoginController;
 use App\Modules\Identity\Http\Controllers\PasswordResetController;
 use App\Modules\Identity\Http\Controllers\PinController;
+use App\Modules\Identity\Http\Controllers\ProfileController;
 use App\Modules\Identity\Http\Controllers\RoleController;
 use App\Modules\Identity\Http\Controllers\SessionController;
 use App\Modules\Identity\Http\Controllers\StaffController;
@@ -32,6 +33,11 @@ Route::prefix('api/v1')->group(function (): void {
         Route::get('auth/sessions', [SessionController::class, 'index'])->name('auth.sessions');
         Route::delete('auth/sessions/{hashedId}', [SessionController::class, 'destroy'])->name('auth.sessions.destroy');
         Route::post('auth/logout-other-devices', [SessionController::class, 'destroyOthers'])->name('auth.sessions.others');
+
+        // Kendi hesabı (profil)
+        Route::put('auth/password', [ProfileController::class, 'updatePassword'])->name('auth.password.update');
+        Route::put('auth/preferences', [ProfileController::class, 'updatePreferences'])->name('auth.preferences');
+        Route::post('auth/active-branch', [ProfileController::class, 'setActiveBranch'])->name('auth.active-branch');
 
         // PIN + 2FA
         Route::post('auth/pin', [PinController::class, 'store'])->name('auth.pin.set');

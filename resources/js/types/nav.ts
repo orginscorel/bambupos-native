@@ -7,6 +7,8 @@ export interface NavItem {
     /** AppIcon adı */
     icon: string;
     href: string;
+    /** true ise yalnız birebir yol eşleşmesinde aktif sayılır (ör. /panel kökü) */
+    exact?: boolean;
     /** Gerekli izin anahtarı (ör. "orders.view"); boşsa herkes görür */
     permission?: string;
     /** Rozet sayısı (ör. bekleyen sipariş) */

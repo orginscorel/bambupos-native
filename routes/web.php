@@ -1,14 +1,51 @@
 <?php
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+/*
+|--------------------------------------------------------------------------
+| Giriş noktası: karşılama sayfası yok.
+| Oturum varsa panel, yoksa giriş ekranı.
+|--------------------------------------------------------------------------
+*/
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'laravelVersion' => app()->version(),
-        'phpVersion' => PHP_VERSION,
-    ]);
+    return Auth::guard('web')->check()
+        ? redirect()->route('panel.dashboard')
+        : redirect()->route('login');
 })->name('home');
+
+/*
+|--------------------------------------------------------------------------
+| Kimlik ekranları (yalnız misafir; oturum varsa /panel'e yönlenir)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('guest')->group(function (): void {
+    Route::get('/giris', fn () => Inertia::render('Auth/Login'))->name('login');
+
+    Route::get('/giris/pin', fn () => Inertia::render('Auth/PinLogin'))->name('login.pin');
+
+    Route::get('/parola-sifirla', fn () => Inertia::render('Auth/ForgotPassword'))->name('password.request');
+
+    // ResetPassword::createUrlUsing bu adresi üretir (AppServiceProvider).
+    Route::get('/reset-password', function () {
+        return Inertia::render('Auth/ResetPassword', [
+            'token' => (string) request()->query('token', ''),
+            'email' => (string) request()->query('email', ''),
+        ]);
+    })->name('password.reset');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Panel ekranları (oturum + kiracı bağlamı zorunlu)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:web', 'tenant'])->prefix('panel')->group(function (): void {
+    Route::get('/', fn () => Inertia::render('Panel/Dashboard'))->name('panel.dashboard');
+    Route::get('/profil', fn () => Inertia::render('Panel/Profile'))->name('panel.profile');
+});
 
 /*
 |--------------------------------------------------------------------------

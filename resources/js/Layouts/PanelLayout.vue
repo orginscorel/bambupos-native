@@ -42,7 +42,9 @@ const mobileNavOpen = ref(false);
 
 const currentPath = computed(() => (typeof window !== 'undefined' ? window.location.pathname : ''));
 const isActive = (item: NavItem) =>
-    currentPath.value === item.href || currentPath.value.startsWith(item.href + '/');
+    item.exact
+        ? currentPath.value === item.href
+        : currentPath.value === item.href || currentPath.value.startsWith(item.href + '/');
 </script>
 
 <template>

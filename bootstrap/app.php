@@ -24,6 +24,23 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => \App\Modules\Tenancy\Http\Middleware\EnsureTenantContext::class,
         ]);
+
+        // Kimliksiz API isteği: YÖNLENDİRME YOK, 401 JSON.
+        //
+        // 2026-07-22: `/api/v1/*` uçlarına oturumsuz istek 500 döndürüyordu.
+        // Sebep: Laravel'in varsayılan davranışı misafiri `login` ADLI rotaya
+        // yönlendirmek; bu projede öyle bir rota yok (giriş ucu `auth.login`),
+        // dolayısıyla "Route [login] not defined" fırlatılıp 500'e dönüşüyordu.
+        // API tüketicisi zaten yönlendirme değil, durum kodu bekler.
+        // `null` döndürmek Authenticate middleware'ini 401'e düşürür.
+        $middleware->redirectGuestsTo(
+            fn (Request $request) => ($request->is('api/*') || $request->expectsJson())
+                ? null
+                : '/giris',
+        );
+
+        // Oturumu olan kullanıcı misafir sayfalarına (giriş vb.) gelirse panele.
+        $middleware->redirectUsersTo('/panel');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

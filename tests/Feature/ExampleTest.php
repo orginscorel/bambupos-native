@@ -2,18 +2,34 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     */
-    public function test_the_application_returns_a_successful_response(): void
+    /** Karşılama sayfası yok: misafir kök adresten giriş ekranına yönlenir. */
+    public function test_guest_is_redirected_from_root_to_login(): void
     {
-        $response = $this->get('/');
+        $this->get('/')->assertRedirect('/giris');
+    }
 
-        $response->assertStatus(200);
+    public function test_login_screen_renders(): void
+    {
+        $this->get('/giris')->assertOk();
+    }
+
+    public function test_pin_login_screen_renders(): void
+    {
+        $this->get('/giris/pin')->assertOk();
+    }
+
+    public function test_password_reset_screens_render(): void
+    {
+        $this->get('/parola-sifirla')->assertOk();
+        $this->get('/reset-password?token=abc&email=a%40b.c')->assertOk();
+    }
+
+    public function test_guest_cannot_open_panel(): void
+    {
+        $this->get('/panel')->assertRedirect('/giris');
     }
 }
