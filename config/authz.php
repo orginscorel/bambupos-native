@@ -24,6 +24,7 @@ return [
         'branches' => ['view', 'manage'],
         'theme' => ['manage'],
         'integrations' => ['manage'],
+        'settings' => ['view', 'manage'],
         'audit' => ['view'],
     ],
 

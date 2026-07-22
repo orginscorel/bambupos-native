@@ -14,6 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // Kimlik/panel API'si (oturum tabanlı; Inertia paneli bunları kullanır).
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/identity.php');
+
+            // Ayarlar modülü: panelden yönetilen e-posta (SMTP) yapılandırması.
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(__DIR__.'/../routes/settings.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
