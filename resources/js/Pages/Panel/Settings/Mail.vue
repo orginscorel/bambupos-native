@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { authFromPage } from '@/types/auth';
 import { useToast } from '@/composables/useToast';
@@ -63,6 +63,14 @@ interface MailForm {
 const page = usePage();
 const auth = computed(() => authFromPage(page.props as Record<string, unknown>));
 const { success, danger } = useToast();
+
+/** Ayarlar alt sekmeleri (E-posta / İşletme-Marka). navigation.ts'te tek
+ *  "Ayarlar" girişi var (/panel/ayarlar/e-posta); bu sayfaya buradan geçilir. */
+const settingsTabs = [
+    { href: '/panel/ayarlar/e-posta', label: 'E-posta' },
+    { href: '/panel/ayarlar/isletme', label: 'İşletme / Marka' },
+];
+const isActiveTab = (href: string) => page.url.startsWith(href);
 
 /* ================= Durum ================= */
 
@@ -285,6 +293,17 @@ const passwordPlaceholder = computed(() =>
 
     <PanelShell title="E-posta Ayarları">
         <div class="mx-auto flex w-full max-w-3xl flex-col gap-5">
+            <div class="flex gap-1 overflow-x-auto border-b border-default">
+                <Link
+                    v-for="tab in settingsTabs"
+                    :key="tab.href"
+                    :href="tab.href"
+                    class="-mb-px inline-flex h-10 items-center gap-1.5 border-b-2 px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--dur-fast)"
+                    :class="isActiveTab(tab.href) ? 'border-primary text-primary' : 'border-transparent text-muted hover:border-strong hover:text-body'"
+                >
+                    {{ tab.label }}
+                </Link>
+            </div>
 
             <!-- ================= Yükleniyor ================= -->
             <template v-if="loading">

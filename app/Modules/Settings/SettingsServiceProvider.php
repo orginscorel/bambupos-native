@@ -4,11 +4,13 @@ namespace App\Modules\Settings;
 
 use App\Modules\Settings\Mail\RuntimeMailManager;
 use App\Modules\Settings\Services\MailConfigurator;
+use App\Modules\Settings\Support\PublicMenuBranding;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Events\NotificationFailed;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -47,5 +49,10 @@ class SettingsServiceProvider extends ServiceProvider
         $clear = fn () => $this->app->make(MailConfigurator::class)->hintTenant(null);
         Event::listen(NotificationSent::class, $clear);
         Event::listen(NotificationFailed::class, $clear);
+
+        // Public menü (venue.menu) başlığına marka verisi: logo + kategori
+        // renk/ikon meta'sı. Marka alanı bu modülün malı; Venue modülüne
+        // dokunmadan composer ile bağlanır (çerezsiz → tam-sayfa cache korunur).
+        View::composer('venue.menu', PublicMenuBranding::class);
     }
 }

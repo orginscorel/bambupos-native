@@ -13,6 +13,8 @@
 
 return [
     'title_suffix' => 'Menü',
+    'table_label' => 'Masa',
+    'categories_label' => 'Menü kategorileri',
     'search_placeholder' => 'Menüde ara…',
     'filters' => 'Filtrele',
     'menu_empty' => 'Bu şube menüsünü henüz yayınlamadı. Lütfen personelden basılı menü isteyin.',

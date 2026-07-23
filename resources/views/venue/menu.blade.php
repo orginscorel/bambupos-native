@@ -11,15 +11,22 @@
 @section('content')
     <header class="m-header">
         <div class="m-header__row">
-            <span class="m-header__logo" aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
-            </span>
+            {{-- İşletme logosu (Ayarlar > İşletme / Marka). Logo yoksa kasıtlı
+                 yedek: marka renkli dairede işletme adının baş harfi. --}}
+            @if (!empty($brandLogoUrl))
+                <img class="m-header__logo m-header__logo--img" src="{{ $brandLogoUrl }}"
+                     alt="" width="44" height="44" decoding="async">
+            @else
+                <span class="m-header__logo" aria-hidden="true">{{ mb_strtoupper(mb_substr(trim($tenantName), 0, 1), 'UTF-8') }}</span>
+            @endif
             <div class="m-header__meta">
                 <h1 class="m-header__name">{{ $tenantName }}</h1>
-                <p class="m-header__table">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                    {{ $branchName }}@if ($tableLabel) — Masa: {{ $tableLabel }} @endif
-                </p>
+                @if ($tableLabel)
+                    <p class="m-header__table">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        {{ __('menu.table_label') }}: {{ $tableLabel }}
+                    </p>
+                @endif
             </div>
         </div>
         {{-- Servis istekleri: aynı public API'ye bağlanır; uç yoksa dürüst mesaj (sahte başarı yok) --}}

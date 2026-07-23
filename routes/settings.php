@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Settings\Http\Controllers\BrandingSettingsController;
 use App\Modules\Settings\Http\Controllers\MailSettingsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -21,8 +22,18 @@ Route::middleware(['auth:web', 'tenant'])->group(function (): void {
         return Inertia::render('Panel/Settings/Mail');
     })->name('panel.settings.mail');
 
+    // Panel ekranı — İşletme / Marka (logo; public menü başlığında gösterilir)
+    Route::get('/panel/ayarlar/isletme', function () {
+        abort_unless(request()->user()->hasPermission('settings.manage'), 403);
+
+        return Inertia::render('Panel/Settings/Branding');
+    })->name('panel.settings.branding');
+
     // API
     Route::prefix('api/v1/settings')->group(function (): void {
+        Route::get('branding', [BrandingSettingsController::class, 'show'])->name('settings.branding.show');
+        Route::post('branding/logo', [BrandingSettingsController::class, 'uploadLogo'])->name('settings.branding.logo.upload');
+        Route::delete('branding/logo', [BrandingSettingsController::class, 'destroyLogo'])->name('settings.branding.logo.destroy');
         Route::get('mail', [MailSettingsController::class, 'show'])->name('settings.mail.show');
         Route::put('mail/{scope}', [MailSettingsController::class, 'update'])
             ->whereIn('scope', ['tenant', 'platform'])
