@@ -5,26 +5,32 @@ import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
 import ToastHost from '@/Components/ui/ToastHost.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
+import BaseBadge from '@/Components/ui/BaseBadge.vue';
+import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
+import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
-import './kds-theme.css';
 import {
     createKdsSound,
     createPollingFeed,
+    forceDarkTheme,
     getOrNull,
     metaFromKdsProps,
     minutesSince,
     slaText,
+    waitChipClass,
     type KdsFeed,
     type RunnerItem,
     type RunnerPayload,
+    type SlaLevel,
 } from './kds';
 
 /**
- * KOMİ EKRANI — hazır ürünler: masa/salon, ürün, hazırlayan istasyon,
- * bekleme süresi, öncelik (en uzun bekleyen üstte), alerjen notu.
- * "Teslim aldım" (pickup) ve "Masaya götürdüm" (served) AYRI adımlardır —
- * görsel dil mutfakla ortak (kds-theme.css), iş akışı iki adımlı şerit.
+ * KOMİ EKRANI — mutfağın "hazır" verdiği ürünler; en uzun bekleyen üstte.
+ * Satır üç soruya bakışta cevap verir: nereye (büyük başlık) · ne (ürün) ·
+ * ne kadar acil (yalnız bekleme çipi renklenir). Akış iki adımdır:
+ * "Teslim aldım" → "Masaya götürdüm"; yanlış işaret için geri alma vardır.
+ * Görsel dil mutfak ekranıyla ve panelin geri kalanıyla birebir aynıdır.
  */
 const page = usePage();
 const meta = metaFromKdsProps(page.props as Record<string, unknown>);
@@ -97,10 +103,12 @@ async function restartFeed(): Promise<void> {
     feed.start();
 }
 
+let releaseTheme: (() => void) | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 const clockTick = ref(Date.now());
 
 onMounted(() => {
+    releaseTheme = forceDarkTheme();
     void restartFeed();
     const unlock = () => sound.unlock();
     window.addEventListener('pointerdown', unlock, { once: true });
@@ -110,6 +118,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     feed?.stop();
     if (clockTimer) clearInterval(clockTimer);
+    releaseTheme?.();
 });
 
 function waitMinutes(iso: string | null): number {
@@ -122,16 +131,10 @@ const sorted = computed(() =>
     [...items.value].sort((a, b) => new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime()),
 );
 
-/** Bekleme aciliyeti: 5+ dk gecikmiş, 2+ dk uyarı. */
-function waitLevel(item: RunnerItem): 'ok' | 'warn' | 'late' {
+/** Servis aciliyeti: 5+ dk gecikmiş, 2+ dk uyarı (yemek soğur). */
+function waitLevel(item: RunnerItem): SlaLevel {
     const m = waitMinutes(item.updated_at);
     return m >= 5 ? 'late' : m >= 2 ? 'warn' : 'ok';
-}
-
-function rowStateClass(item: RunnerItem): string {
-    if (newItemIds.value.has(item.id)) return 'kds-card--new';
-    const l = waitLevel(item);
-    return l === 'late' ? 'kds-card--late' : l === 'warn' ? 'kds-card--warn' : '';
 }
 
 const busy = ref(false);
@@ -216,190 +219,130 @@ function selectBranch(id: string): void {
 <template>
     <Head title="Komi Ekranı" />
 
-    <div class="kds-root fixed inset-0 flex flex-col overflow-hidden">
-        <!-- ================= Üst çubuk ================= -->
-        <header
-            class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2.5"
-            style="background-color: var(--kds-bar); border-color: var(--kds-border)"
-        >
-            <a href="/panel" class="kds-btn kds-btn--neutral w-11 px-0" aria-label="Panele dön">
-                <AppIcon name="arrow-left" :size="22" />
-            </a>
+    <div class="fixed inset-0 flex flex-col overflow-hidden bg-surface-alt text-body">
+        <!-- ================= Üst çubuk (mutfakla aynı dil) ================= -->
+        <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2">
+            <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
+                <AppIcon name="arrow-left" :size="20" />
+            </BaseButton>
 
-            <h1 class="flex items-center gap-2.5 text-xl font-bold tracking-wide">
-                <span
-                    class="flex h-9 w-9 items-center justify-center rounded-lg"
-                    style="background-color: var(--kds-accent-soft); color: var(--kds-accent)"
-                >
-                    <KdsIcon name="tray" :size="22" />
-                </span>
-                Komi Ekranı
-            </h1>
+            <h1 class="text-lg font-semibold">Komi Ekranı</h1>
 
-            <span class="kds-chip kds-num text-base" title="Servis bekleyen hazır ürün">
-                <strong class="text-lg" style="color: var(--kds-text)">{{ items.length }}</strong>
-                hazır ürün
-            </span>
+            <span class="text-sm text-muted tabular-nums">{{ items.length }} hazır ürün</span>
 
-            <span v-if="items.length > 1" class="hidden text-sm font-medium sm:inline" style="color: var(--kds-text-3)">
-                En uzun bekleyen üstte
-            </span>
-
-            <div class="ml-auto flex flex-wrap items-center gap-2">
-                <div v-if="branchOptions.length > 1" class="kds-select w-44">
+            <div class="ml-auto flex flex-wrap items-center gap-1.5">
+                <div v-if="branchOptions.length > 1" class="w-44">
                     <BaseSelect
                         :model-value="String(branchId)"
                         :options="branchOptions"
                         @update:model-value="selectBranch(String($event))"
                     />
                 </div>
-                <div class="flex items-center gap-1 rounded-xl p-1" style="background-color: var(--kds-inset)">
-                    <button
-                        class="kds-btn w-11 min-h-[2.25rem] rounded-lg px-0"
-                        :style="soundOn
-                            ? 'background-color: var(--kds-ok-fill); color: #fff'
-                            : 'background-color: transparent; color: var(--kds-text-2)'"
-                        :aria-label="soundOn ? 'Sesi kapat' : 'Sesi aç'"
-                        @click="toggleSound"
-                    >
-                        <KdsIcon :name="soundOn ? 'volume-on' : 'volume-off'" :size="21" />
-                    </button>
-                    <button
-                        class="kds-btn w-11 min-h-[2.25rem] rounded-lg px-0"
-                        style="background-color: transparent; color: var(--kds-text-2)"
-                        :aria-label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
-                        @click="toggleFullscreen"
-                    >
-                        <KdsIcon :name="isFullscreen ? 'compress' : 'expand'" :size="21" />
-                    </button>
-                </div>
+
+                <BaseButton
+                    variant="ghost"
+                    size="lg"
+                    icon-only
+                    :label="soundOn ? 'Yeni ürün sesi: açık' : 'Yeni ürün sesi: kapalı'"
+                    :class="soundOn ? '' : 'text-subtle'"
+                    @click="toggleSound"
+                >
+                    <KdsIcon :name="soundOn ? 'volume-on' : 'volume-off'" :size="20" />
+                </BaseButton>
+
+                <BaseButton
+                    variant="ghost"
+                    size="lg"
+                    icon-only
+                    :label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
+                    @click="toggleFullscreen"
+                >
+                    <KdsIcon :name="isFullscreen ? 'compress' : 'expand'" :size="20" />
+                </BaseButton>
             </div>
         </header>
 
         <!-- ================= Servis kuyruğu ================= -->
         <main class="flex-1 overflow-y-auto p-4">
-            <div
-                v-if="loading"
-                class="flex h-full items-center justify-center gap-3 text-2xl"
-                style="color: var(--kds-text-2)"
-            >
-                <span class="kds-live-dot h-3 w-3 rounded-full" style="background-color: var(--kds-accent)" />
-                Liste yükleniyor…
+            <p v-if="loading" class="flex h-full items-center justify-center text-muted">Liste yükleniyor…</p>
+
+            <div v-else-if="sorted.length === 0" class="flex h-full items-center justify-center">
+                <EmptyState
+                    icon="check-circle"
+                    title="Taşınacak ürün yok"
+                    :description="`Mutfak 'hazır' verdiğinde ürünler burada görünür — ekran her ${meta.config.poll_interval_seconds} saniyede bir kendini yeniler.`"
+                />
             </div>
 
-            <div v-else-if="sorted.length === 0" class="flex h-full flex-col items-center justify-center gap-5 px-6">
-                <span
-                    class="flex h-28 w-28 items-center justify-center rounded-full border"
-                    style="background-color: var(--kds-card); border-color: var(--kds-border-strong); color: var(--kds-ok)"
+            <ul v-else class="mx-auto flex max-w-6xl flex-col gap-3">
+                <li
+                    v-for="item in sorted"
+                    :key="item.id"
+                    class="rounded-lg border bg-raised shadow-card"
+                    :class="newItemIds.has(item.id) ? 'border-primary-soft-border' : 'border-default'"
                 >
-                    <KdsIcon name="tray" :size="52" />
-                </span>
-                <div class="text-center">
-                    <p class="text-3xl font-bold">Taşınacak ürün yok</p>
-                    <p class="mt-2 text-lg" style="color: var(--kds-text-2)">
-                        Mutfak "hazır" verdiğinde ürünler burada belirir<span v-if="soundOn"> ve ses çalar</span>.
-                    </p>
-                </div>
-                <span class="kds-chip text-sm font-medium">
-                    <span class="kds-live-dot h-2.5 w-2.5 rounded-full" style="background-color: var(--kds-ok)" />
-                    Canlı — her {{ meta.config.poll_interval_seconds }} saniyede bir yenilenir
-                </span>
-            </div>
-
-            <ul v-else class="mx-auto max-w-[1600px] space-y-3">
-                <li v-for="item in sorted" :key="item.id" class="kds-card" :class="rowStateClass(item)">
-                    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-                        <!-- HEDEF: en baskın öğe — komi nereye gideceğini uzaktan okur -->
-                        <div class="min-w-[11rem]">
-                            <p class="text-3xl font-bold leading-none tracking-tight">
+                    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+                        <!-- NEREYE: en baskın öğe -->
+                        <div class="min-w-40">
+                            <p class="text-2xl font-semibold leading-tight">
                                 {{ item.table_name ?? item.channel_label }}
                             </p>
-                            <p class="mt-1.5 text-sm font-medium" style="color: var(--kds-text-3)">
-                                <span v-if="item.area_name">{{ item.area_name }} · </span>{{ item.channel_label }}
-                                <span v-if="item.waiter"> · {{ item.waiter }}</span>
+                            <p class="mt-0.5 text-sm text-muted">
+                                <template v-if="item.area_name">{{ item.area_name }}</template><template v-if="item.area_name && item.waiter"> · </template><template v-if="item.waiter">{{ item.waiter }}</template>
                             </p>
                         </div>
 
-                        <!-- Ürün -->
-                        <div class="min-w-0 flex-1 basis-72">
-                            <p class="flex flex-wrap items-center gap-2">
-                                <span class="kds-qty">{{ item.qty }}×</span>
-                                <span class="text-xl font-bold leading-snug">
-                                    {{ item.name }}
-                                    <span v-if="item.variant_name" class="font-medium" style="color: var(--kds-text-2)">
-                                        — {{ item.variant_name }}
-                                    </span>
-                                </span>
+                        <!-- NE: ürün -->
+                        <div class="min-w-0 flex-1 basis-64">
+                            <p class="text-lg font-semibold leading-snug">
+                                <span class="tabular-nums">{{ item.qty }}×</span>
+                                {{ item.name }}<span v-if="item.variant_name" class="font-normal text-muted"> — {{ item.variant_name }}</span>
                             </p>
-                            <p class="mt-1 flex flex-wrap items-center gap-x-2 text-base" style="color: var(--kds-text-2)">
-                                <span class="inline-flex items-center gap-1">
-                                    <KdsIcon name="flame" :size="14" /> {{ item.station_label }}
-                                </span>
-                                <span v-if="item.note" class="font-medium" style="color: var(--kds-info)">
-                                    · Not: {{ item.note }}
-                                </span>
+                            <p class="mt-0.5 text-sm text-muted">
+                                {{ item.station_label }}<span v-if="item.note" class="font-medium text-info"> · Not: {{ item.note }}</span>
                             </p>
-                            <p v-if="item.allergens.length" class="mt-1.5 flex flex-wrap items-center gap-1.5" role="alert">
-                                <span class="kds-allergen text-sm">
-                                    <AppIcon name="alert-triangle" :size="14" /> ALERJEN
-                                </span>
-                                <span v-for="a in item.allergens" :key="a.name" class="kds-allergen-tag text-sm">
+                            <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <BaseBadge v-for="a in item.allergens" :key="a.name" variant="danger" no-icon>
+                                    <AppIcon name="alert-triangle" :size="12" />
                                     {{ a.name }}
-                                </span>
-                                <span v-for="d in item.diets" :key="d" class="kds-diet-tag text-sm">{{ d }}</span>
+                                </BaseBadge>
+                                <BaseBadge v-for="d in item.diets" :key="d" variant="neutral">{{ d }}</BaseBadge>
                             </p>
                         </div>
 
-                        <!-- Bekleme (hazır olalı): renk + ikon + metin + etiket -->
-                        <span class="kds-sla shrink-0" :class="`kds-sla--${waitLevel(item)}`" title="Hazır olalı geçen süre">
-                            <span class="kds-num flex items-center gap-1.5 text-lg font-bold leading-none">
-                                <KdsIcon :name="waitLevel(item) === 'ok' ? 'clock' : 'timer'" :size="18" />
-                                {{ slaText(waitMinutes(item.updated_at)) }}
-                            </span>
-                            <span class="mt-0.5 text-[11px] font-bold tracking-widest">
-                                {{ waitLevel(item) === 'late' ? 'SOĞUYOR' : 'BEKLİYOR' }}
-                            </span>
+                        <!-- NE KADAR ACİL: tek çip (hazır olalı geçen süre) -->
+                        <span
+                            class="inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-lg font-semibold tabular-nums"
+                            :class="waitChipClass(waitLevel(item))"
+                            title="Hazır olalı geçen süre"
+                        >
+                            {{ slaText(waitMinutes(item.updated_at)) }}<template v-if="waitLevel(item) === 'late'">&nbsp;· gecikti</template>
                         </span>
 
-                        <!-- İki adımlı akış: 1 Teslim al → 2 Masaya götür -->
-                        <div class="flex shrink-0 flex-wrap items-center gap-3">
-                            <template v-if="!item.picked_up_at">
-                                <button class="kds-btn kds-btn--info h-14 px-5 text-lg" :disabled="busy" @click="pickup(item)">
-                                    <KdsIcon name="hand" :size="22" />
-                                    <span><span class="mr-1.5 opacity-75">1</span>Teslim aldım</span>
-                                </button>
-                                <!-- 2. adım ipucu: henüz pasif -->
-                                <span
-                                    class="hidden items-center gap-2 rounded-[0.625rem] border border-dashed px-4 text-base font-bold lg:inline-flex"
-                                    style="border-color: var(--kds-border-strong); color: var(--kds-text-3); min-height: 3.5rem"
-                                >
-                                    <KdsIcon name="tray" :size="20" />
-                                    <span><span class="mr-1.5">2</span>Masaya götür</span>
-                                </span>
-                            </template>
+                        <!-- İki adım: Teslim aldım → Masaya götürdüm -->
+                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                            <BaseButton v-if="!item.picked_up_at" size="lg" :disabled="busy" @click="pickup(item)">
+                                Teslim aldım
+                            </BaseButton>
                             <template v-else>
-                                <!-- geri al: birincil butondan uzakta, "alındı" çipinin solunda -->
-                                <button
-                                    class="kds-btn kds-btn--ghost w-11 px-0"
+                                <!-- geri al: birincil butondan uzakta, grubun solunda -->
+                                <BaseButton
+                                    variant="ghost"
+                                    size="lg"
+                                    icon-only
+                                    label="Teslim işaretini geri al"
                                     :disabled="busy"
-                                    title="Teslim işaretini geri al"
-                                    aria-label="Teslim işaretini geri al"
                                     @click="undoPickup(item)"
                                 >
-                                    <KdsIcon name="undo" :size="17" />
-                                </button>
-                                <span class="kds-chip text-sm" style="color: var(--kds-ok)">
-                                    <AppIcon name="check" :size="16" />
+                                    <KdsIcon name="undo" :size="16" />
+                                </BaseButton>
+                                <span class="inline-flex items-center gap-1 text-sm font-medium text-success">
+                                    <AppIcon name="check" :size="14" />
                                     {{ item.picked_up_by ?? 'Alındı' }}
                                 </span>
-                                <button
-                                    class="kds-btn kds-btn--success h-14 px-5 text-lg"
-                                    :disabled="busy"
-                                    @click="delivered(item)"
-                                >
-                                    <KdsIcon name="tray" :size="22" />
-                                    <span><span class="mr-1.5 opacity-75">2</span>Masaya götürdüm</span>
-                                </button>
+                                <BaseButton size="lg" :disabled="busy" @click="delivered(item)">
+                                    Masaya götürdüm
+                                </BaseButton>
                             </template>
                         </div>
                     </div>
@@ -410,27 +353,19 @@ function selectBranch(id: string): void {
         <!-- Son götürülenler: yanlış işareti geri alma şeridi -->
         <footer
             v-if="recentDelivered.length > 0"
-            class="flex flex-wrap items-center gap-2 border-t px-4 py-2.5"
-            style="background-color: var(--kds-bar); border-color: var(--kds-border)"
+            class="flex flex-wrap items-center gap-2 border-t border-default bg-raised px-4 py-2"
         >
-            <span class="text-sm font-bold uppercase tracking-wider" style="color: var(--kds-text-3)">
-                Son götürülenler
-            </span>
+            <span class="text-xs font-medium uppercase tracking-wide text-subtle">Son götürülenler</span>
             <span
                 v-for="r in recentDelivered"
                 :key="r.id"
-                class="flex items-center gap-2.5 rounded-lg py-1 pl-3 pr-1"
-                style="background-color: var(--kds-inset); color: var(--kds-text-2)"
+                class="inline-flex items-center gap-1 rounded-md border border-default bg-inset py-0.5 pl-3 pr-1 text-sm text-muted"
             >
-                <span class="text-base font-medium">{{ r.label }}</span>
-                <button
-                    class="kds-btn kds-btn--ghost text-sm"
-                    :disabled="busy"
-                    title="Yanlış işaretlendiyse geri al"
-                    @click="undoServe(r.id)"
-                >
-                    <KdsIcon name="undo" :size="14" /> Geri al
-                </button>
+                {{ r.label }}
+                <BaseButton variant="ghost" size="lg" :disabled="busy" @click="undoServe(r.id)">
+                    <KdsIcon name="undo" :size="14" />
+                    Geri al
+                </BaseButton>
             </span>
         </footer>
     </div>

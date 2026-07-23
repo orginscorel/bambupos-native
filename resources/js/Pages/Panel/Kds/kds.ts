@@ -209,6 +209,39 @@ export async function getOrNull<T>(path: string): Promise<T | null> {
 }
 
 /* =========================================================
+ |  Tema: KDS her zaman koyu — panelin KENDİ koyu teması zorlanır
+ |  (ayrı --kds-* paleti YOK; --ui-* token'ları aynen kullanılır).
+ * ========================================================= */
+
+let kdsDarkCount = 0;
+let savedTheme: string | undefined;
+
+/**
+ * KDS ekranı süresince <html data-theme="dark"> sabitlenir; böylece tüm
+ * --ui-* token'ları ve Components/ui bileşenleri panelin koyu temasıyla
+ * birebir aynı görünür. localStorage'a DOKUNULMAZ — kullanıcının panel
+ * tema tercihi değişmez; dönüş fonksiyonu eski temayı geri yükler.
+ * Sayaç, Inertia sayfa geçişinde mount/unmount sırası ne olursa olsun
+ * (Mutfak → Komi) temanın yanlışlıkla geri dönmesini engeller.
+ */
+export function forceDarkTheme(): () => void {
+    if (typeof document === 'undefined') return () => {};
+    const el = document.documentElement;
+    if (kdsDarkCount === 0) {
+        savedTheme = el.dataset.theme;
+        el.dataset.theme = 'dark';
+    }
+    kdsDarkCount++;
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        kdsDarkCount--;
+        if (kdsDarkCount === 0) el.dataset.theme = savedTheme ?? 'light';
+    };
+}
+
+/* =========================================================
  |  SLA (bekleme süresi) — renk + ikon + metin BİRLİKTE
  * ========================================================= */
 
@@ -228,6 +261,17 @@ export function slaLevel(waitMinutes: number, targetMinutes: number, lateRatio: 
 export function slaText(mins: number): string {
     if (mins < 60) return `${mins} dk`;
     return `${Math.floor(mins / 60)} sa ${String(mins % 60).padStart(2, '0')} dk`;
+}
+
+/**
+ * Bekleme çipi sınıfları — panel rozet dilinin (BaseBadge) büyütülmüş hali.
+ * Tek sinyal ilkesi: aciliyet YALNIZ bu çipte renklenir; "late" durumunda
+ * metne "gecikti" sözcüğü eklenir (renk körlüğü desteği ekranda).
+ */
+export function waitChipClass(level: SlaLevel): string {
+    if (level === 'late') return 'border-danger-border bg-danger-soft text-danger';
+    if (level === 'warn') return 'border-warning-border bg-warning-soft text-warning';
+    return 'border-default bg-inset text-muted';
 }
 
 /* =========================================================

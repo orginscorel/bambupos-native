@@ -2,15 +2,19 @@
 import { ref, watch } from 'vue';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
-import BaseModal from '@/Components/ui/BaseModal.vue';
-import BaseInput from '@/Components/ui/BaseInput.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
+import BaseBadge from '@/Components/ui/BaseBadge.vue';
+import BaseButton from '@/Components/ui/BaseButton.vue';
+import BaseInput from '@/Components/ui/BaseInput.vue';
+import BaseModal from '@/Components/ui/BaseModal.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
+import BaseTabs from '@/Components/ui/BaseTabs.vue';
 import type { StationRow } from './kds';
 
 /**
  * İstasyon tanımları (kds.manage): yerleşikler salt-okunur, işletmenin
  * kendi istasyonları eklenir/pasifleştirilir/silinir + personel-istasyon
- * ataması ("yalnız kendi istasyonunu görsün").
+ * ataması ("yalnız kendi istasyonunu görsün"). Panel bileşen diliyle.
  */
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
@@ -22,7 +26,7 @@ const assignments = ref<{ id: number; name: string; position: string | null; sta
 const loading = ref(false);
 const busy = ref(false);
 const newName = ref('');
-const tab = ref<'stations' | 'assignments'>('stations');
+const tab = ref('stations');
 
 async function load(): Promise<void> {
     loading.value = true;
@@ -95,99 +99,96 @@ function toggleAssignment(user: { id: number; station_keys: string[] }, key: str
 
 <template>
     <BaseModal :open="open" title="İstasyon Yönetimi" size="lg" @close="emit('close')">
-        <div class="mb-4 flex gap-2">
-            <button
-                class="h-10 rounded-lg px-4 font-semibold"
-                :class="tab === 'stations' ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'"
-                @click="tab = 'stations'"
-            >
-                İstasyonlar
-            </button>
-            <button
-                class="h-10 rounded-lg px-4 font-semibold"
-                :class="tab === 'assignments' ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'"
-                @click="tab = 'assignments'"
-            >
-                Personel Ataması
-            </button>
-        </div>
+        <p v-if="loading" class="py-6 text-center text-muted">Yükleniyor…</p>
 
-        <p v-if="loading" class="py-6 text-center">Yükleniyor…</p>
-
-        <!-- ==== İstasyon listesi + ekleme ==== -->
-        <div v-else-if="tab === 'stations'" class="space-y-3">
-            <div class="flex gap-2">
-                <BaseInput v-model="newName" placeholder="Yeni istasyon adı (ör. Pizza Fırını)" class="flex-1" @keyup.enter="addStation" />
-                <button
-                    class="flex h-11 items-center gap-1 rounded-lg bg-orange-500 px-4 font-bold text-white disabled:opacity-50"
-                    :disabled="!newName.trim() || busy"
-                    @click="addStation"
-                >
-                    <AppIcon name="plus" :size="18" /> Ekle
-                </button>
-            </div>
-
-            <ul class="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
-                <li v-for="s in stations" :key="s.key" class="flex items-center gap-3 px-3 py-2">
-                    <span class="font-semibold" :class="s.is_active ? '' : 'line-through opacity-50'">{{ s.name }}</span>
-                    <span class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">{{ s.key }}</span>
-                    <span
-                        v-if="s.is_builtin"
-                        class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                    >
-                        yerleşik
-                    </span>
-                    <span class="ml-auto flex gap-1.5">
-                        <button
-                            v-if="!s.is_builtin"
-                            class="h-9 rounded-lg bg-slate-200 px-3 text-sm font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-                            :disabled="busy"
-                            @click="toggleActive(s)"
-                        >
-                            {{ s.is_active ? 'Pasifleştir' : 'Aktifleştir' }}
-                        </button>
-                        <button
-                            v-if="!s.is_builtin"
-                            class="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-950"
-                            :disabled="busy"
-                            aria-label="İstasyonu sil"
-                            @click="removeStation(s)"
-                        >
-                            <AppIcon name="trash" :size="16" />
-                        </button>
-                    </span>
-                </li>
-            </ul>
-            <p class="text-sm text-slate-500">
-                Yerleşik istasyonlar silinemez. Ürünler istasyonlara <strong>Menü → Ürün → Operasyon</strong> kartından yönlendirilir.
-            </p>
-        </div>
-
-        <!-- ==== Personel ataması ==== -->
-        <div v-else class="space-y-3">
-            <p class="text-sm text-slate-500">
-                Atama yapılan personel mutfak ekranında <strong>yalnız kendi istasyonlarını</strong> görür ve işaretler.
-                Ataması olmayan personel tüm istasyonları görür.
-            </p>
-            <ul class="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
-                <li v-for="u in assignments" :key="u.id" class="px-3 py-2">
-                    <p class="font-semibold">{{ u.name }} <span v-if="u.position" class="text-sm font-normal text-slate-500">— {{ u.position }}</span></p>
-                    <div class="mt-1.5 flex flex-wrap gap-1.5">
-                        <button
-                            v-for="s in stations.filter((x) => x.is_active)"
-                            :key="s.key"
-                            class="h-9 rounded-full px-3 text-sm font-semibold"
-                            :class="u.station_keys.includes(s.key)
-                                ? 'bg-orange-500 text-white'
-                                : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'"
-                            :disabled="busy"
-                            @click="toggleAssignment(u, s.key)"
-                        >
-                            {{ s.name }}
-                        </button>
+        <BaseTabs
+            v-else
+            v-model="tab"
+            :tabs="[
+                { key: 'stations', label: 'İstasyonlar' },
+                { key: 'assignments', label: 'Personel Ataması', icon: 'users' },
+            ]"
+        >
+            <!-- ==== İstasyon listesi + ekleme ==== -->
+            <template #stations>
+                <div class="flex flex-col gap-3">
+                    <div class="flex gap-2">
+                        <BaseInput
+                            v-model="newName"
+                            placeholder="Yeni istasyon adı (ör. Pizza Fırını)"
+                            class="flex-1"
+                            @keyup.enter="addStation"
+                        />
+                        <BaseButton :disabled="!newName.trim() || busy" @click="addStation">
+                            <AppIcon name="plus" :size="16" />
+                            Ekle
+                        </BaseButton>
                     </div>
-                </li>
-            </ul>
-        </div>
+
+                    <ul class="divide-y divide-default rounded-lg border border-default">
+                        <li v-for="s in stations" :key="s.key" class="flex flex-wrap items-center gap-2 px-3 py-2">
+                            <span class="font-medium" :class="s.is_active ? '' : 'line-through opacity-55'">{{ s.name }}</span>
+                            <BaseBadge variant="neutral">{{ s.key }}</BaseBadge>
+                            <BaseBadge v-if="s.is_builtin" variant="neutral">yerleşik</BaseBadge>
+                            <span v-if="!s.is_builtin" class="ml-auto flex items-center gap-2">
+                                <BaseSwitch
+                                    :model-value="s.is_active"
+                                    :busy="busy"
+                                    :aria-label="s.is_active ? `${s.name} istasyonunu pasifleştir` : `${s.name} istasyonunu aktifleştir`"
+                                    @update:model-value="toggleActive(s)"
+                                />
+                                <BaseButton
+                                    variant="ghost"
+                                    icon-only
+                                    :label="`${s.name} istasyonunu sil`"
+                                    :disabled="busy"
+                                    class="text-danger"
+                                    @click="removeStation(s)"
+                                >
+                                    <AppIcon name="trash" :size="16" />
+                                </BaseButton>
+                            </span>
+                        </li>
+                    </ul>
+                    <p class="text-sm text-muted">
+                        Yerleşik istasyonlar silinemez. Ürünler istasyonlara <strong>Menü → Ürün → Operasyon</strong>
+                        kartından yönlendirilir.
+                    </p>
+                </div>
+            </template>
+
+            <!-- ==== Personel ataması ==== -->
+            <template #assignments>
+                <div class="flex flex-col gap-3">
+                    <p class="text-sm text-muted">
+                        Atama yapılan personel mutfak ekranında <strong>yalnız kendi istasyonlarını</strong> görür ve
+                        işaretler. Ataması olmayan personel tüm istasyonları görür.
+                    </p>
+                    <ul class="divide-y divide-default rounded-lg border border-default">
+                        <li v-for="u in assignments" :key="u.id" class="px-3 py-2.5">
+                            <p class="font-medium">
+                                {{ u.name }}
+                                <span v-if="u.position" class="text-sm font-normal text-muted">— {{ u.position }}</span>
+                            </p>
+                            <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                <button
+                                    v-for="s in stations.filter((x) => x.is_active)"
+                                    :key="s.key"
+                                    type="button"
+                                    class="inline-flex h-9 items-center rounded-full border px-3 text-sm font-medium transition-colors"
+                                    :class="u.station_keys.includes(s.key)
+                                        ? 'border-primary bg-primary text-on-primary'
+                                        : 'border-default bg-raised text-body hover:bg-inset'"
+                                    :disabled="busy"
+                                    @click="toggleAssignment(u, s.key)"
+                                >
+                                    {{ s.name }}
+                                </button>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </template>
+        </BaseTabs>
     </BaseModal>
 </template>
