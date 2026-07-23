@@ -10,24 +10,24 @@
 
 @section('content')
     <header class="m-header">
-        <div class="m-header__row">
-            {{-- İşletme logosu (Ayarlar > İşletme / Marka). Logo yoksa kasıtlı
-                 yedek: marka renkli dairede işletme adının baş harfi. --}}
+        {{-- Ortalanmış kimlik bloğu: kafenin logosu (Ayarlar > İşletme / Marka)
+             ortada ve büyük gösterilir — "avatar" değil, marka vitrinidir.
+             Logo yoksa kasıtlı yedek: marka renkli dairede baş harf.
+             Masa bilgisi altında küçük/ikincil kalır; başlık şişmez. --}}
+        <div class="m-header__identity">
             @if (!empty($brandLogoUrl))
                 <img class="m-header__logo m-header__logo--img" src="{{ $brandLogoUrl }}"
-                     alt="" width="44" height="44" decoding="async">
+                     alt="{{ $tenantName }}" width="76" height="76" decoding="async">
             @else
                 <span class="m-header__logo" aria-hidden="true">{{ mb_strtoupper(mb_substr(trim($tenantName), 0, 1), 'UTF-8') }}</span>
             @endif
-            <div class="m-header__meta">
-                <h1 class="m-header__name">{{ $tenantName }}</h1>
-                @if ($tableLabel)
-                    <p class="m-header__table">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                        {{ __('menu.table_label') }}: {{ $tableLabel }}
-                    </p>
-                @endif
-            </div>
+            <h1 class="m-header__name">{{ $tenantName }}</h1>
+            @if ($tableLabel)
+                <p class="m-header__table">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    {{ __('menu.table_label') }}: {{ $tableLabel }}
+                </p>
+            @endif
         </div>
         {{-- Servis istekleri: aynı public API'ye bağlanır; uç yoksa dürüst mesaj (sahte başarı yok) --}}
         <div class="m-services" role="group" aria-label="Servis istekleri">

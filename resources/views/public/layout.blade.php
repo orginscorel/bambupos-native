@@ -17,11 +17,11 @@
     <link rel="preload" href="/fonts/poppins-400-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-700-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-700-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/assets/menu.css?v=20260723.2">
+    <link rel="stylesheet" href="/assets/menu.css?v=20260723.3">
     @stack('tenant-theme')
 </head>
 <body>
     @yield('content')
-    <script src="/assets/menu.js?v=20260723.2" defer></script>
+    <script src="/assets/menu.js?v=20260723.3" defer></script>
 </body>
 </html>
