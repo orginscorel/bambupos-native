@@ -112,11 +112,7 @@ class ReservationTableSync
     {
         return Order::withoutTenancy()
             ->where('table_id', $table->id)
-            ->whereNotIn('status', [
-                OrderStatus::Paid->value,
-                OrderStatus::Cancelled->value,
-                OrderStatus::Refunded->value,
-            ])
+            ->whereNotIn('status', OrderStatus::closedValues())
             ->exists();
     }
 

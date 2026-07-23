@@ -53,6 +53,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\App\Modules\Payments\Models\CashSession::class, \App\Modules\Payments\Policies\CashSessionPolicy::class);
         Gate::policy(\App\Modules\Reservations\Models\Reservation::class, \App\Modules\Reservations\Policies\ReservationPolicy::class);
         Gate::policy(\App\Modules\Reservations\Models\WaitlistEntry::class, \App\Modules\Reservations\Policies\WaitlistEntryPolicy::class);
+        Gate::policy(\App\Modules\Receivables\Models\Receivable::class, \App\Modules\Receivables\Policies\ReceivablePolicy::class);
 
         Password::defaults(fn () => Password::min(10));
 

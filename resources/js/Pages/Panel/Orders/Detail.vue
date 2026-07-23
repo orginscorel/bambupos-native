@@ -14,6 +14,7 @@ import BaseInput from '@/Components/ui/BaseInput.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
 import BaseRadioGroup from '@/Components/ui/BaseRadioGroup.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import DropdownItem from '@/Components/ui/DropdownItem.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
@@ -35,6 +36,7 @@ import {
     type OrderItemRow,
     type OrderSummary,
 } from './orders';
+import { fetchActiveReceivables, type ReceivableRow as ReceivableOption } from '../Receivables/receivables';
 
 const page = usePage();
 const meta = metaFromProps(page.props as Record<string, unknown>);
@@ -439,6 +441,79 @@ async function submitMerge(): Promise<void> {
     }
 }
 
+/* Borca taşı (Borçlar/Cari) — açık ama ödenmemiş adisyonu bir cariye
+   atar: adisyon 'debt_transferred' terminal durumuna geçer (paid DEĞİL),
+   masa boşalır. Bkz. resources/js/Pages/Panel/Receivables. */
+const debtModal = ref(false);
+const debtReceivables = ref<ReceivableOption[]>([]);
+const debtReceivableId = ref('');
+const debtReason = ref('');
+const debtNewName = ref('');
+const debtNewPhone = ref('');
+const debtCreatingNew = ref(false);
+const debtBusy = ref(false);
+
+async function openDebtTransfer(): Promise<void> {
+    debtModal.value = true;
+    anyModalOpen.value = true;
+    debtReceivableId.value = '';
+    debtReason.value = '';
+    debtNewName.value = '';
+    debtNewPhone.value = '';
+    debtCreatingNew.value = false;
+    try {
+        debtReceivables.value = await fetchActiveReceivables();
+    } catch {
+        debtReceivables.value = [];
+    }
+}
+
+const debtOptions = computed(() =>
+    debtReceivables.value.map((r) => ({ value: String(r.id), label: `${r.name}${r.phone ? ' · ' + r.phone : ''} — bakiye ${money(r.balance_minor)} ₺` })),
+);
+
+async function submitDebtTransfer(): Promise<void> {
+    if (debtBusy.value || !debtReason.value.trim()) return;
+    debtBusy.value = true;
+    try {
+        let receivableId = debtReceivableId.value;
+
+        if (debtCreatingNew.value) {
+            if (!debtNewName.value.trim()) {
+                danger('Cari adı gerekli', '');
+                debtBusy.value = false;
+                return;
+            }
+            const created = await api<{ receivable: { id: number } }>('/api/v1/receivables', {
+                method: 'POST',
+                body: { name: debtNewName.value.trim(), phone: debtNewPhone.value || null },
+            });
+            receivableId = String(created.receivable.id);
+        }
+
+        if (!receivableId) {
+            danger('Cari seçilmedi', 'Var olan bir cari seçin ya da yeni cari oluşturun.');
+            debtBusy.value = false;
+            return;
+        }
+
+        const ok = await runOp(`/api/v1/orders/${orderId}/transfer-to-debt`, {
+            receivable_id: Number(receivableId),
+            reason: debtReason.value.trim(),
+            expected_version: order.value?.version,
+        }, 'Adisyon borca taşındı');
+
+        if (ok) {
+            debtModal.value = false;
+            anyModalOpen.value = false;
+        }
+    } catch (e) {
+        danger('Borca taşınamadı', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen bir hata oluştu.');
+    } finally {
+        debtBusy.value = false;
+    }
+}
+
 /* Böl */
 const splitModal = ref(false);
 const splitMode = ref<string>('items');
@@ -584,6 +659,9 @@ const eventTypeLabels: Record<string, string> = {
                             <DropdownItem v-if="order.is_open" icon="inbox" @click="openMerge">Birleştir</DropdownItem>
                             <DropdownItem v-if="order.is_open" icon="chart" @click="openSplit">Böl</DropdownItem>
                             <DropdownItem v-if="order.is_open" icon="pencil" @click="openDiscount">İndirim uygula</DropdownItem>
+                            <DropdownItem v-if="order.is_open && order.remaining_minor > 0" icon="inbox" @click="openDebtTransfer">
+                                Borca taşı
+                            </DropdownItem>
                             <DropdownItem v-if="order.is_open && order.paid_minor === 0" icon="x-circle" danger @click="openReason('order_cancel')">
                                 Adisyonu iptal et
                             </DropdownItem>
@@ -936,6 +1014,44 @@ const eventTypeLabels: Record<string, string> = {
             <template #footer>
                 <BaseButton variant="secondary" @click="closeModal(() => (mergeModal = false))">Vazgeç</BaseButton>
                 <BaseButton :disabled="!mergeSource" :loading="opBusy" @click="submitMerge">Birleştir</BaseButton>
+            </template>
+        </BaseModal>
+
+        <!-- Borca taşı -->
+        <BaseModal :open="debtModal" title="Adisyonu borca taşı" size="sm" @close="closeModal(() => (debtModal = false))">
+            <div class="flex flex-col gap-3">
+                <p class="text-sm text-muted">
+                    Kalan tutar (<strong>{{ order?.remaining_display }} ₺</strong>) seçilen cariye borç olarak yazılır; adisyon
+                    <strong>ödendi SAYILMAZ</strong>, ama masa boşalır — başka müşteri sipariş verebilir.
+                </p>
+
+                <BaseSwitch v-model="debtCreatingNew" label="Yeni cari oluştur" />
+
+                <FormField v-if="!debtCreatingNew" label="Cari" required hint="Bakiyesi olan cariler de listelenir; borç üstüne eklenir.">
+                    <BaseSelect v-model="debtReceivableId" :options="debtOptions" placeholder="Cari seçin" />
+                </FormField>
+                <template v-else>
+                    <FormField label="Cari adı" required>
+                        <BaseInput v-model="debtNewName" placeholder="ör. Ahmet Bey" />
+                    </FormField>
+                    <FormField label="Telefon">
+                        <BaseInput v-model="debtNewPhone" inputmode="tel" />
+                    </FormField>
+                </template>
+
+                <FormField label="Açıklama" required hint="Denetim kaydına düşer (kim, ne zaman, neden).">
+                    <BaseInput v-model="debtReason" placeholder="ör. Müşteri sonra ödeyecek" />
+                </FormField>
+            </div>
+            <template #footer>
+                <BaseButton variant="secondary" @click="closeModal(() => (debtModal = false))">Vazgeç</BaseButton>
+                <BaseButton
+                    :loading="debtBusy"
+                    :disabled="debtReason.trim().length < 3 || (!debtCreatingNew && !debtReceivableId) || (debtCreatingNew && !debtNewName.trim())"
+                    @click="submitDebtTransfer"
+                >
+                    Borca taşı
+                </BaseButton>
             </template>
         </BaseModal>
 

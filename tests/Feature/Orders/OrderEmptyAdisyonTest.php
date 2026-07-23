@@ -89,18 +89,52 @@ class OrderEmptyAdisyonTest extends TestCase
         $this->assertSame('available', Table::withoutTenancy()->find($table->id)->status->value);
     }
 
-    public function test_bir_adisyon_bosalsa_da_masadaki_diger_acik_adisyon_masayi_dolu_tutar(): void
+    /**
+     * KURAL DEĞİŞİKLİĞİ (Adisyon-Cari, 2026-07-23): "masada birden fazla
+     * açık adisyon olamaz" — bu test ÖNCEDEN aynı masada 2 AYRI açık
+     * adisyon açılabildiğini varsayıyordu ("biri boşalsa da diğeri masayı
+     * dolu tutar"). O senaryo artık MÜMKÜN DEĞİL: aynı masaya ikinci
+     * "adisyon aç" isteği YENİ adisyon YARATMAZ — var olana idempotent
+     * biçimde döner (bkz. OrderService::open + orders_tenant_table_open_slot_unique).
+     * Test artık TAM O YENİ DAVRANIŞI + adisyon boşalma kuralının tek
+     * adisyon üzerinde hâlâ doğru çalıştığını doğruluyor.
+     */
+    public function test_masada_tek_acik_adisyon_ikinci_acma_istegi_ayni_adisyona_eklenir(): void
     {
         $table = $this->makeTable($this->a);
-        $kalan = $this->openOrderWithItems($table, 1);
-        $bosalan = $this->openOrderWithItems($table, 1);
 
-        $this->deleteJson("/api/v1/orders/{$bosalan['orderId']}/items/{$bosalan['itemIds'][0]}")->assertOk();
+        $first = $this->postJson('/api/v1/orders', [
+            'branch_id' => $this->a['branch']->id, 'channel' => 'table', 'table_id' => $table->id,
+        ])->assertCreated();
+        $orderId = $first->json('order.id');
 
-        // Boşalan kapandı, diğeri açık → masa hâlâ "Sipariş alındı"
-        $this->assertSame('cancelled', Order::withoutTenancy()->find($bosalan['orderId'])->status);
-        $this->assertSame('placed', Order::withoutTenancy()->find($kalan['orderId'])->status);
+        // Aynı masaya ikinci "aç" isteği (garson ikinci kez tıkladı / iki
+        // terminalden aynı anda geldi): YENİ adisyon açılmaz, 200 ile var
+        // olanı döner (201 DEĞİL — yeni kaynak oluşmadı).
+        $second = $this->postJson('/api/v1/orders', [
+            'branch_id' => $this->a['branch']->id, 'channel' => 'table', 'table_id' => $table->id,
+        ])->assertOk();
+        $this->assertSame($orderId, $second->json('order.id'));
+
+        $this->assertSame(1, Order::withoutTenancy()->where('table_id', $table->id)
+            ->whereNotIn('status', ['paid', 'cancelled', 'refunded', 'debt_transferred'])
+            ->count());
+
+        $p1 = $this->makeProduct($this->a, ['name' => 'Kalem A']);
+        $p2 = $this->makeProduct($this->a, ['name' => 'Kalem B']);
+        $item1 = $this->postJson("/api/v1/orders/{$orderId}/items", ['product_id' => $p1->id, 'qty' => 1])
+            ->assertCreated()->json('order.items.0.id');
+        $res = $this->postJson("/api/v1/orders/{$orderId}/items", ['product_id' => $p2->id, 'qty' => 1])->assertCreated();
+        $item2 = collect($res->json('order.items'))->firstWhere('name', 'Kalem B')['id'];
+
+        // Bir kalem kaldırılınca adisyon hâlâ açık, masa dolu.
+        $this->deleteJson("/api/v1/orders/{$orderId}/items/{$item1}")->assertOk();
         $this->assertSame('order_taken', Table::withoutTenancy()->find($table->id)->status->value);
+
+        // Son kalem de kaldırılınca adisyon otomatik kapanır, masa boşalır.
+        $this->deleteJson("/api/v1/orders/{$orderId}/items/{$item2}")->assertOk();
+        $this->assertSame('cancelled', Order::withoutTenancy()->find($orderId)->status);
+        $this->assertSame('available', Table::withoutTenancy()->find($table->id)->status->value);
     }
 
     public function test_rezerve_masa_adisyon_bosalinca_ezilmez(): void

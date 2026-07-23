@@ -62,6 +62,10 @@ class Order extends Model
             'placed_at' => 'datetime',
             'closed_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            // Adisyon-Cari (§ Borçlar): tek-adisyon kuralı + borca taşıma.
+            'is_split_child' => 'boolean',
+            'debt_amount_minor' => 'integer',
+            'debt_transferred_at' => 'datetime',
         ];
     }
 
@@ -115,6 +119,12 @@ class Order extends Model
     public function openedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'opened_by_id');
+    }
+
+    /** Borca taşındıysa (statusEnum()===DebtTransferred) atandığı cari. */
+    public function debtReceivable(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Receivables\Models\Receivable::class, 'debt_receivable_id');
     }
 
     protected static function newFactory(): Factory

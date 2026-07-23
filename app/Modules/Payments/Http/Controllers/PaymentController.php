@@ -38,7 +38,7 @@ class PaymentController extends Controller
             ->with(['table:id,name,number', 'items'])
             ->whereNotIn('status', [
                 OrderStatus::Draft->value, OrderStatus::PendingApproval->value,
-                OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value,
+                ...OrderStatus::closedValues(),
             ]);
 
         if ($request->filled('branch_id')) {

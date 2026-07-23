@@ -117,7 +117,7 @@ class ServiceRequestController extends Controller
             $openOrders = Order::withoutTenancy()
                 ->where('tenant_id', $table->tenant_id)
                 ->where('table_id', $table->getKey())
-                ->whereNotIn('status', [OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value])
+                ->whereNotIn('status', OrderStatus::closedValues())
                 ->get();
 
             $transitioned = false;

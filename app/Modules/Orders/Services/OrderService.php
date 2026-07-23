@@ -107,6 +107,27 @@ class OrderService
         }
 
         return DB::transaction(function () use ($data, $channel, $status, $table, $actor): Order {
+            // TEK AÇIK ADİSYON KURALI (Adisyon-Cari): masaya bağlı kanalda
+            // (table/qr) masa satırı KİLİTLENİR — aynı masaya eşzamanlı iki
+            // "aç" isteği bu noktada sıraya girer (ikinci istek birincinin
+            // commit'ini bekler). Kilit altında masada zaten açık bir
+            // adisyon varsa YENİSİ AÇILMAZ; var olan İDEMPOTENT biçimde
+            // geri döner (garson ikinci kez "masa aç" tıklarsa/aynı anda
+            // iki istek gelirse ikisi de aynı adisyona düşer). DB düzeyinde
+            // de garanti: orders.table_open_slot üretilmiş sütunu + UNIQUE
+            // (tenant_id, table_open_slot) — bu kilit yarışı kaybetsе bile
+            // ikinci INSERT veritabanı hatasıyla reddedilir (bkz. migration
+            // 2026_07_23_190100 ve findOpenPrimaryOrderForTable).
+            if ($table !== null) {
+                Table::withoutTenancy()->where('id', $table->getKey())->lockForUpdate()->first();
+
+                $existing = $this->findOpenPrimaryOrderForTable((int) $table->tenant_id, (int) $table->getKey());
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
+
             $order = new Order([
                 'status' => $status->value,
                 'channel' => $channel->value,
@@ -131,6 +152,25 @@ class OrderService
 
             return $order;
         });
+    }
+
+    /**
+     * Masadaki (split-child DAHİL) en uygun AÇIK adisyonu bulur:
+     * gerçek ana adisyon (is_split_child=false) varsa o, yoksa en eski
+     * açık split parçası (böl sonrası ana adisyon ödenip kapandıysa yeni
+     * gelen sipariş kalan tek açık parçaya yazılır — masada asla ikinci
+     * bir "sıfırdan" adisyon açılmaz). SATIR KİLİDİYLE döner.
+     */
+    private function findOpenPrimaryOrderForTable(int $tenantId, int $tableId): ?Order
+    {
+        return Order::withoutTenancy()
+            ->where('tenant_id', $tenantId)
+            ->where('table_id', $tableId)
+            ->whereNotIn('status', OrderStatus::closedValues())
+            ->orderBy('is_split_child')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->first();
     }
 
     /* =========================================================
@@ -797,6 +837,52 @@ class OrderService
     }
 
     /**
+     * Borçlar/Cari modülü köprüsü: açık ama ödenmemiş adisyonu TERMİNAL
+     * "Borca taşındı" durumuna geçirir. `payments` köprüsüyle AYNI desen
+     * (applyPaidDelta/applyRefundDelta): kilit ve sürüm DIŞARIDA
+     * (ReceivableService::transferOrderToDebt) alınır; bu metot yalnız
+     * ZATEN KİLİTLİ $locked üzerinde çalışır. Masa BOŞALIR (§ TableStatus
+     * Available — Paid/Cancelled/Refunded ile aynı davranış).
+     *
+     * Para kuralı: transfer edilen tutar = kalan bakiye (total-paid), bu
+     * DEĞER ReceivableService tarafından hesaplanıp buraya verilir — burada
+     * yeniden hesaplanmaz (tek doğruluk kaynağı çağıran tarafta kalır ve
+     * cari deftere de AYNI tutar yazılır; iki taraf tutarsız olamaz).
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    public function markDebtTransferred(Order $locked, int $receivableId, int $amountMinor, User $actor, array $meta = []): void
+    {
+        $from = $locked->statusEnum();
+
+        if (! $from->isOpen()) {
+            throw ValidationException::withMessages(['order' => ['Yalnız açık adisyon borca taşınabilir (durum: '.$from->label().').']]);
+        }
+
+        if ($amountMinor <= 0) {
+            throw ValidationException::withMessages(['order' => ['Borca taşınacak kalan tutar sıfırın üzerinde olmalı.']]);
+        }
+
+        $locked->status = OrderStatus::DebtTransferred->value;
+        $locked->debt_receivable_id = $receivableId;
+        $locked->debt_amount_minor = $amountMinor;
+        $locked->debt_transferred_at = now();
+        $locked->debt_transferred_by_id = $actor->getKey();
+        $locked->closed_at ??= now();
+
+        $payload = $meta + [
+            'receivable_id' => $receivableId,
+            'amount_minor' => $amountMinor,
+            'performed_by' => $actor->getKey(),
+        ];
+
+        $this->logEvent($locked, 'debt_transferred', $actor, $payload, $from->value, OrderStatus::DebtTransferred->value);
+        $this->audit->log('orders.debt_transferred', $locked, ['status' => $from->value], $payload);
+
+        $this->tables->syncForOrder($locked, OrderStatus::DebtTransferred);
+    }
+
+    /**
      * Nakit yuvarlama düzeltmesi (±99 kuruş sınırı config'te). Toplam
      * yeniden hesaplanır; iz order_events'e düşer.
      */
@@ -966,6 +1052,18 @@ class OrderService
                 throw ValidationException::withMessages(['table_id' => ['Adisyon zaten bu masada.']]);
             }
 
+            // Tek-adisyon kuralı: hedef masada zaten açık bir adisyon varsa
+            // taşıma REDDEDİLİR (üzerine binmez) — personel önce birleştirme
+            // (merge) yolunu kullanmalı.
+            Table::withoutTenancy()->where('id', $target->getKey())->lockForUpdate()->first();
+            $targetOpen = $this->findOpenPrimaryOrderForTable((int) $locked->tenant_id, (int) $target->getKey());
+
+            if ($targetOpen !== null) {
+                throw ValidationException::withMessages(['table_id' => [
+                    'Hedef masada zaten açık bir adisyon var (#'.$targetOpen->getKey().'). Önce birleştirin (merge) ya da o adisyonu kapatın.',
+                ]]);
+            }
+
             $locked->table_id = $target->getKey();
 
             if (! $locked->channelEnum()->usesTable()) {
@@ -1133,6 +1231,14 @@ class OrderService
             $newOrder->table_id = $locked->table_id;
             $newOrder->opened_by_id = $actor->getKey();
             $newOrder->placed_at = $locked->placed_at;
+            // Tek-adisyon kuralının BİLİNÇLİ istisnası: aynı masada ayrı
+            // hesap istenen personel eylemi (§12.2 böl). is_split_child=true
+            // olduğu için orders.table_open_slot ÜRETİLMİŞ SÜTUNU NULL olur
+            // ve UNIQUE(tenant_id, table_open_slot) bunu ENGELLEMEZ — ama
+            // masaya YENİ gelen sipariş yine TEK bir açık adisyona (ana
+            // adisyon açıksa o, kapandıysa kalan split parçası) yazılır;
+            // bkz. findOpenPrimaryOrderForTable.
+            $newOrder->is_split_child = true;
             $newOrder->save();
 
             foreach ($items as $item) {
@@ -1381,15 +1487,14 @@ class OrderService
         return $table;
     }
 
-    /** Hedef masadaki açık adisyon; yoksa yeni açılır. */
+    /** Hedef masadaki açık adisyon (tek-adisyon kuralı); yoksa yeni açılır. */
     private function openOrderForTable(Order $context, Table $table, User $actor): Order
     {
-        $existing = Order::withoutTenancy()
-            ->where('tenant_id', $context->tenant_id)
-            ->where('table_id', $table->getKey())
-            ->whereNotIn('status', [OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value])
-            ->orderByDesc('id')
-            ->first();
+        // Masa satırı kilitlenir: aynı anda iki kalem-taşıma isteği aynı
+        // hedef masada iki ayrı adisyon açamaz (open() ile aynı desen).
+        Table::withoutTenancy()->where('id', $table->getKey())->lockForUpdate()->first();
+
+        $existing = $this->findOpenPrimaryOrderForTable((int) $context->tenant_id, (int) $table->getKey());
 
         if ($existing !== null) {
             return $existing;
@@ -1520,6 +1625,38 @@ class OrderService
     public function createPublicOrder(Table $table, array $data): Order
     {
         return DB::transaction(function () use ($table, $data): Order {
+            // TEK AÇIK ADİSYON KURALI: aynı masanın QR'ını okuyan ikinci
+            // müşteri (adisyon kapanmadan) YENİ adisyon AÇAMAZ — siparişi
+            // var olan adisyona yazılır (kullanıcı kuralı, aynen open()
+            // deki gibi masa satırı kilitlenir + kontrol edilir).
+            Table::withoutTenancy()->where('id', $table->getKey())->lockForUpdate()->first();
+
+            $existing = $this->findOpenPrimaryOrderForTable((int) $table->tenant_id, (int) $table->getKey());
+
+            if ($existing !== null) {
+                foreach ($data['items'] as $itemData) {
+                    $this->buildItem($existing, $itemData, null);
+                }
+
+                if (isset($data['note']) && trim((string) $data['note']) !== '') {
+                    $existing->note = trim((string) (($existing->note !== null ? $existing->note.' | ' : '').$data['note']));
+                }
+
+                $this->recomputeTotals($existing);
+                $existing->version = (int) $existing->version + 1;
+                $existing->save();
+
+                $this->logEvent($existing, 'items_added_public', null, [
+                    'channel' => OrderChannel::Qr->value,
+                    'source' => 'public',
+                    'attached_to_existing_order' => true,
+                ]);
+
+                $this->tables->syncForOrder($existing);
+
+                return $existing;
+            }
+
             $order = new Order([
                 'status' => OrderStatus::PendingApproval->value,
                 'channel' => OrderChannel::Qr->value,

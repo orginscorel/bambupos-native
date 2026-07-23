@@ -52,7 +52,7 @@ class OrderController extends Controller
         }
 
         if ($request->boolean('open')) {
-            $query->whereNotIn('status', [OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value]);
+            $query->whereNotIn('status', OrderStatus::closedValues());
         }
 
         $orders = $query->latest('id')->paginate(min((int) $request->query('per_page', 50), 200));
@@ -81,7 +81,7 @@ class OrderController extends Controller
         $openOrders = Order::query()
             ->with(['table:id,name,number', 'items'])
             ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
-            ->whereNotIn('status', [OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value])
+            ->whereNotIn('status', OrderStatus::closedValues())
             ->orderBy('id')
             ->get();
 
@@ -172,7 +172,12 @@ class OrderController extends Controller
 
         $order = $this->orders->open($data, $request->user());
 
-        return response()->json(['order' => OrderPresenter::summary($order->fresh(['table']))], 201);
+        // Tek-adisyon kuralı: masada zaten açık adisyon varsa YENİSİ
+        // açılmaz, var olan İDEMPOTENT biçimde döner (201 DEĞİL, 200 —
+        // yeni kaynak oluşmadı).
+        $status = $order->wasRecentlyCreated ? 201 : 200;
+
+        return response()->json(['order' => OrderPresenter::summary($order->fresh(['table']))], $status);
     }
 
     /* ---------------- Kalemler ---------------- */

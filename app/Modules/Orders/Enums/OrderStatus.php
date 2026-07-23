@@ -29,6 +29,15 @@ enum OrderStatus: string
     case Paid = 'paid';
     case Cancelled = 'cancelled';
     case Refunded = 'refunded';
+    // Borçlar/Cari (Adisyon-Cari): açık ama ödenmemiş adisyon bir cariye
+    // atandığında geçilen TERMİNAL durum — 'paid' DEĞİLDİR (para henüz
+    // tahsil edilmedi, cari bakiyesine borç olarak yazıldı). Masa BOŞALIR.
+    // Yalnız ReceivableService::transferOrderToDebt üzerinden atanır (bkz.
+    // OrderService::markDebtTransferred) — transitions() makinesine
+    // GİRMEZ (Paid/Cancelled/Refunded ile aynı desen: applyPaidDelta/
+    // cancel/refund de canTransitionTo() yerine doğrudan durum kontrolü
+    // yapar; bu yeni durum da öyle).
+    case DebtTransferred = 'debt_transferred';
 
     /**
      * İzinli geçişler. Anahtar yoksa o durumdan çıkış yoktur (terminal).
@@ -51,7 +60,7 @@ enum OrderStatus: string
             self::BillRequested => [self::Served, self::PartiallyPaid, self::Paid, self::Cancelled],
             self::PartiallyPaid => [self::PartiallyPaid, self::Paid, self::Cancelled],
             self::Paid => [self::Refunded],
-            self::Cancelled, self::Refunded => [],
+            self::Cancelled, self::Refunded, self::DebtTransferred => [],
         };
     }
 
@@ -60,16 +69,35 @@ enum OrderStatus: string
         return in_array($to, $this->transitions(), true);
     }
 
+    /**
+     * Masayı/adisyonu kapatan TÜM terminal durumlar (Adisyon-Cari): tek
+     * açık-adisyon kuralı + masa senkronu + kasiyer/rezervasyon "açık mı"
+     * sorguları TEK buradan beslenir — yeni bir terminal durum eklenirse
+     * yalnız burası güncellenir.
+     *
+     * @return array<int, self>
+     */
+    public static function closedCases(): array
+    {
+        return [self::Paid, self::Cancelled, self::Refunded, self::DebtTransferred];
+    }
+
+    /** @return array<int, string> */
+    public static function closedValues(): array
+    {
+        return array_map(fn (self $s): string => $s->value, self::closedCases());
+    }
+
     /** Adisyon hâlâ operasyonel olarak açık mı (masayı meşgul eder mi)? */
     public function isOpen(): bool
     {
-        return ! in_array($this, [self::Paid, self::Cancelled, self::Refunded], true);
+        return ! in_array($this, self::closedCases(), true);
     }
 
     /** Kaleme dokunulabilir mi (ekle/çıkar/değiştir)? */
     public function allowsItemChanges(): bool
     {
-        return ! in_array($this, [self::Paid, self::Cancelled, self::Refunded], true);
+        return ! in_array($this, self::closedCases(), true);
     }
 
     /** Mutfak-aşaması (kalemlerden türetilen) durumlar. */
@@ -99,6 +127,7 @@ enum OrderStatus: string
             self::Paid => 'Ödendi',
             self::Cancelled => 'İptal',
             self::Refunded => 'İade',
+            self::DebtTransferred => 'Borca taşındı',
         };
     }
 
@@ -121,6 +150,7 @@ enum OrderStatus: string
             self::Paid => 'check-circle',
             self::Cancelled => 'x-circle',
             self::Refunded => 'arrow-left',
+            self::DebtTransferred => 'inbox',
         };
     }
 
@@ -133,7 +163,7 @@ enum OrderStatus: string
             self::AwaitingService, self::BillRequested, self::PartiallyPaid => 'warning',
             self::Placed, self::SentToStation, self::Accepted, self::Served => 'info',
             self::Ready, self::Paid => 'success',
-            self::Cancelled, self::Refunded => 'danger',
+            self::Cancelled, self::Refunded, self::DebtTransferred => 'danger',
         };
     }
 

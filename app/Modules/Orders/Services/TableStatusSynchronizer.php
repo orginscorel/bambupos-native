@@ -50,7 +50,7 @@ class TableStatusSynchronizer
     {
         $openStatuses = Order::withoutTenancy()
             ->where('table_id', $table->id)
-            ->whereNotIn('status', [OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value])
+            ->whereNotIn('status', OrderStatus::closedValues())
             ->pluck('status')
             ->map(fn (string $s): OrderStatus => OrderStatus::tryFrom($s) ?? OrderStatus::Placed);
 
@@ -96,7 +96,7 @@ class TableStatusSynchronizer
             OrderStatus::BillRequested => TableStatus::BillRequested,
             OrderStatus::PartiallyPaid => TableStatus::PartiallyPaid,
             OrderStatus::Paid => TableStatus::Paid,
-            OrderStatus::Cancelled, OrderStatus::Refunded => TableStatus::Available,
+            OrderStatus::Cancelled, OrderStatus::Refunded, OrderStatus::DebtTransferred => TableStatus::Available,
         };
     }
 
@@ -116,7 +116,7 @@ class TableStatusSynchronizer
             OrderStatus::Served => 9,
             OrderStatus::BillRequested => 10,
             OrderStatus::PartiallyPaid => 11,
-            OrderStatus::Paid, OrderStatus::Cancelled, OrderStatus::Refunded => -1,
+            OrderStatus::Paid, OrderStatus::Cancelled, OrderStatus::Refunded, OrderStatus::DebtTransferred => -1,
         };
     }
 }

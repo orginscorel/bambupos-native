@@ -21,6 +21,10 @@ return [
         // durum geçişleri + kapora takibi.
         'reservations' => ['view', 'create', 'update', 'delete', 'manage', 'view_sensitive'],
         'customers' => ['view', 'create', 'update', 'delete'],
+        // Borçlar/Cari (Adisyon-Cari): view/create/update = cari kaydı
+        // yönetimi; transfer = "adisyonu borca taşı" (garson da yapabilir,
+        // para GİRİŞİ doğurmaz); collect = TAHSİLAT (para kaydı — hassas).
+        'receivables' => ['view', 'create', 'update', 'transfer', 'collect'],
         'stock' => ['view', 'adjust'],
         // KDS (Faz-4): view = mutfak/bar ekranı (operasyon bilgisi, FİNANS YOK),
         // deliver = komi ekranı (teslim aldım / masaya götürdüm),
@@ -52,6 +56,8 @@ return [
         'adjust' => 'Stok düzelt',
         'manage' => 'Yönet',
         'view_sensitive' => 'Hassas notları gör',
+        'transfer' => 'Borca taşı',
+        'collect' => 'Tahsilat al',
     ],
 
     // Yetki matrisi başlıkları (UI)
@@ -63,6 +69,7 @@ return [
         'tables' => 'Masalar',
         'reservations' => 'Rezervasyonlar',
         'customers' => 'Müşteriler',
+        'receivables' => 'Borçlar / Cari',
         'stock' => 'Stok',
         'kds' => 'Mutfak Ekranı (KDS)',
         'reports' => 'Raporlar',
@@ -90,6 +97,8 @@ return [
         'catalog.change_price' => 'Satış fiyatlarını değiştirir.',
         'catalog.delete' => 'Ürün/kategori siler.',
         'stock.adjust' => 'Stok sayımlarını elle değiştirir.',
+        'receivables.transfer' => 'Adisyonu ödenmemiş borca çevirir; masa boşalır ama tahsilat sonraya kalır.',
+        'receivables.collect' => 'Cari tahsilat kaydı oluşturur; kasaya nakit/kart girişini temsil eder.',
         'reservations.delete' => 'Rezervasyon kaydını kalıcı siler.',
         'reservations.view_sensitive' => 'Alerji notu gibi hassas müşteri sağlık verisini görür.',
         'staff.manage' => 'Personel hesabı açar/kapatır, PIN sıfırlar.',
@@ -127,6 +136,7 @@ return [
                 'reservations.view', 'reservations.create', 'reservations.update',
                 'reservations.delete', 'reservations.manage', 'reservations.view_sensitive',
                 'customers.view', 'customers.create', 'customers.update',
+                'receivables.view', 'receivables.create', 'receivables.update', 'receivables.transfer', 'receivables.collect',
                 'stock.view', 'stock.adjust',
                 'kds.view', 'kds.deliver', 'kds.manage',
                 'reports.view',
@@ -145,6 +155,8 @@ return [
                 'tables.view',
                 'reservations.view', 'reservations.create', 'reservations.update',
                 'customers.view',
+                // Adisyonu borca taşıyabilir (masa boşalır); tahsilat YOK (kasiyer/yönetici işi).
+                'receivables.view', 'receivables.transfer',
             ],
         ],
         'kasiyer' => [
@@ -155,6 +167,8 @@ return [
                 'payments.take',
                 'cash.view', 'cash.close',
                 'tables.view',
+                // Cari tahsilatı da kasiyer alır (aynı "ödeme alma" sorumluluğu).
+                'receivables.view', 'receivables.collect',
             ],
         ],
         'mutfak' => [

@@ -39,7 +39,7 @@ class RepairTableStatuses extends Command
             /* 1) Boş ama açık adisyonlar: aktif (iptal olmayan) kalemi yok,
              *    tahsilatı yok → otomatik kapat. */
             $emptyOpen = Order::withoutTenancy()
-                ->whereNotIn('status', [OrderStatus::Paid->value, OrderStatus::Cancelled->value, OrderStatus::Refunded->value])
+                ->whereNotIn('status', OrderStatus::closedValues())
                 ->where('paid_minor', 0)
                 ->where('created_at', '<=', now()->subMinutes($grace))
                 ->whereDoesntHave('items', fn ($q) => $q->where('status', '!=', 'cancelled'))

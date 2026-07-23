@@ -71,6 +71,15 @@ return Application::configure(basePath: dirname(__DIR__))
             // kuyruklu dışa aktarma. identity.php'deki eski /reports/summary
             // ucundan SONRA kaydedilir; {report} joker deseni onu ezmez.
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/reports.php');
+
+            // Sürüm notları (Surum-Changelog): panel sayfası + alt bilgi
+            // rozetinin okuduğu hafif JSON. Middleware dosyanın içinde
+            // (web + auth + tenant); tenant'a özel veri taşımaz.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/changelog.php');
+
+            // Borçlar/Cari (Adisyon-Cari): "adisyonu borca taşı" + tahsilat.
+            // Middleware dosyanın içinde (web + auth + tenant); public uç yoktur.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/receivables.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
