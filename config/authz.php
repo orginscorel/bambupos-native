@@ -16,6 +16,10 @@ return [
         'payments' => ['take', 'refund'],
         'cash' => ['view', 'close'],
         'tables' => ['view', 'create', 'update', 'delete'],
+        // Rezervasyon (Faz-9): view_sensitive = alerji notu gibi hassas
+        // müşteri verisini görme (view'dan AYRI izin); manage = onay/iptal/
+        // durum geçişleri + kapora takibi.
+        'reservations' => ['view', 'create', 'update', 'delete', 'manage', 'view_sensitive'],
         'customers' => ['view', 'create', 'update', 'delete'],
         'stock' => ['view', 'adjust'],
         // KDS (Faz-4): view = mutfak/bar ekranı (operasyon bilgisi, FİNANS YOK),
@@ -47,6 +51,7 @@ return [
         'close' => 'Kasa kapat',
         'adjust' => 'Stok düzelt',
         'manage' => 'Yönet',
+        'view_sensitive' => 'Hassas notları gör',
     ],
 
     // Yetki matrisi başlıkları (UI)
@@ -56,6 +61,7 @@ return [
         'payments' => 'Ödemeler',
         'cash' => 'Kasa',
         'tables' => 'Masalar',
+        'reservations' => 'Rezervasyonlar',
         'customers' => 'Müşteriler',
         'stock' => 'Stok',
         'kds' => 'Mutfak Ekranı (KDS)',
@@ -84,6 +90,8 @@ return [
         'catalog.change_price' => 'Satış fiyatlarını değiştirir.',
         'catalog.delete' => 'Ürün/kategori siler.',
         'stock.adjust' => 'Stok sayımlarını elle değiştirir.',
+        'reservations.delete' => 'Rezervasyon kaydını kalıcı siler.',
+        'reservations.view_sensitive' => 'Alerji notu gibi hassas müşteri sağlık verisini görür.',
         'staff.manage' => 'Personel hesabı açar/kapatır, PIN sıfırlar.',
         'roles.manage' => 'Rol ve yetki setlerini değiştirir.',
         'audit.view' => 'Tüm denetim kayıtlarını görür.',
@@ -116,6 +124,8 @@ return [
                 'orders.view', 'orders.create', 'orders.update', 'orders.cancel', 'orders.discount', 'orders.comp',
                 'payments.take', 'cash.view', 'cash.close',
                 'tables.view', 'tables.create', 'tables.update', 'tables.delete',
+                'reservations.view', 'reservations.create', 'reservations.update',
+                'reservations.delete', 'reservations.manage', 'reservations.view_sensitive',
                 'customers.view', 'customers.create', 'customers.update',
                 'stock.view', 'stock.adjust',
                 'kds.view', 'kds.deliver', 'kds.manage',
@@ -133,6 +143,7 @@ return [
                 'catalog.view',
                 'orders.view', 'orders.create', 'orders.update', 'orders.discount', 'orders.comp',
                 'tables.view',
+                'reservations.view', 'reservations.create', 'reservations.update',
                 'customers.view',
             ],
         ],

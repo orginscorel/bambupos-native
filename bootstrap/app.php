@@ -46,6 +46,31 @@ return Application::configure(basePath: dirname(__DIR__))
             // Personel-Yetki: personel/rol ekranları + kişi bazlı izin
             // istisnaları + PIN/işten çıkarma uçları (middleware dosya içinde).
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/staff.php');
+
+            // Inventory domaini (Faz 6, §17): stok + depo + reçete + sayım +
+            // satın alma. Middleware dosyanın içinde (web + auth + tenant);
+            // public uç yoktur.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/inventory.php');
+
+            // Reservations domaini (Faz-9): rezervasyon + bekleme listesi.
+            // Middleware dosyanın içinde: public QR talep ucu bilinçli
+            // oturumsuz (ADR-008), müşteri onay/iptal sayfası token kimlikli.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/reservations.php');
+
+            // Kiosk domaini (Faz 8): self-servis sipariş ekranı + cihaz
+            // yönetimi. Middleware dosyanın içinde: kiosk uçları bilinçli
+            // oturumsuzdur (kimlik = opak cihaz token'ı, ADR-008 deseni).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/kiosk.php');
+
+            // Shifts domaini (Faz-7): vardiya planlama + mesai takibi.
+            // Middleware dosyanın içinde: device-clock ucu bilinçli
+            // oturumsuz/CSRF dışıdır (kimlik = X-Device-Token + PIN).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/shifts.php');
+
+            // Reports domaini (Faz-10): rol bazlı panel açılışı + raporlar +
+            // kuyruklu dışa aktarma. identity.php'deki eski /reports/summary
+            // ucundan SONRA kaydedilir; {report} joker deseni onu ezmez.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/reports.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

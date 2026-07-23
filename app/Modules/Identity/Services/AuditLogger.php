@@ -21,6 +21,9 @@ class AuditLogger
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
+        // Rezervasyon (Faz-9): sağlık verisi + public onay bağlantısı
+        'allergy_note',
+        'confirmation_token',
     ];
 
     public function __construct(private readonly TenantContext $context)
