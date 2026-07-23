@@ -77,6 +77,8 @@ final class KdsPresenter
             'qty' => (int) $item->qty,
             'name' => $item->name,
             'variant_name' => $item->variant_name,
+            // Kart görseli: yalnız görsel yol — fiyat/ciro alanı DEĞİL (KdsFinancialLeakTest).
+            'image_url' => $item->product?->images?->first()?->url,
             'note' => $item->note,
             'status' => $status->value,
             'status_label' => $status->label(),

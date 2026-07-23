@@ -134,6 +134,8 @@ class KdsService
                 'items.options',
                 'items.product:id,prep_minutes',
                 'items.product.allergens:id,name,kind,icon,color',
+                // Kart görseli: relation zaten is_primary DESC sıralı — presenter ->first() alır.
+                'items.product.images:id,product_id,path,is_primary,sort_order',
             ])
             ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
             ->whereIn('status', self::KITCHEN_ORDER_STATUSES)
@@ -195,6 +197,7 @@ class KdsService
                 'items.options',
                 'items.product:id,prep_minutes',
                 'items.product.allergens:id,name,kind,icon,color',
+                'items.product.images:id,product_id,path,is_primary,sort_order',
             ])
             ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
             ->whereIn('status', self::KITCHEN_ORDER_STATUSES)

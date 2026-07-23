@@ -11,6 +11,7 @@ import BaseModal from '@/Components/ui/BaseModal.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
+import KdsItemImage from './KdsItemImage.vue';
 import StationManager from './StationManager.vue';
 import {
     createKdsSound,
@@ -30,14 +31,18 @@ import {
 } from './kds';
 
 /**
- * MUTFAK / BAR EKRANI — tam ekran, dokunmatik.
- * Bar = aynı ekran, istasyon süzgeci "bar".
+ * MUTFAK / BAR EKRANI — BAĞIMSIZ tam ekran, dokunmatik (panel kabuğuna
+ * GÖMÜLÜ DEĞİL, kasıtlı: ~2 metreden okunan bir duvar/tezgah ekranı, panelin
+ * dar içerik alanına sığmaz). Bar = aynı ekran, istasyon süzgeci "bar".
  *
- * Görsel dil = PANELİN KENDİSİ: --ui-* token'ları + Components/ui bileşenleri;
- * KDS süresince panelin koyu teması zorlanır (forceDarkTheme). Kart üç soruya
- * bakışta cevap verir: hangi masa (büyük başlık) · ne yapılacak (kalem +
- * tek eylem) · ne kadar acil (yalnız bekleme çipi renklenir).
- * Fiyat/ciro bu ekranda YOKTUR.
+ * Görsel dil PANELİN --ui-* token'larını (koyu tema zorlanır — forceDarkTheme)
+ * ve Components/ui bileşenlerini kullanır; ekrana özgü düzen/aralık/görsel
+ * yerleşim bu dosyada kalır (Components/ui değişmez). Kart üç soruya bakışta
+ * cevap verir: hangi masa (büyük başlık) · ne yapılacak (görsel + kalem +
+ * TEK eylem) · ne kadar acil (yalnız bekleme çipi renklenir). Ürün görseli
+ * (varsa) DESTEKLEYİCİDİR — asla masa/ürün adını küçültmez ya da "…" ile
+ * kırpmaz. Renk yalnız alerjen ve gecikmede güçlü konuşur; diyet etiketi
+ * sessiz düz metindir. Fiyat/ciro bu ekranda YOKTUR.
  */
 const page = usePage();
 const meta = metaFromKdsProps(page.props as Record<string, unknown>);
@@ -221,6 +226,14 @@ async function runAction(fn: () => Promise<unknown>, okMsg: string): Promise<voi
     }
 }
 
+/** Kalemin zincirdeki O ANKİ adımı — karttaki TEK primary buton budur. */
+function nextStep(item: KdsItem): { to: string; label: string } | null {
+    if (item.status === 'placed' || item.status === 'sent_to_station') return { to: 'accepted', label: 'Kabul' };
+    if (item.status === 'accepted') return { to: 'preparing', label: 'Başlat' };
+    if (item.status === 'preparing') return { to: 'ready', label: 'Hazır' };
+    return null;
+}
+
 function advance(card: KdsOrderCard, item: KdsItem, to: string): void {
     void runAction(
         () => api(`/api/v1/kds/items/${item.id}/status`, { method: 'POST', body: { to, expected_version: card.version } }),
@@ -325,13 +338,11 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 
             <span class="text-sm text-muted tabular-nums">{{ totalPending }} bekleyen</span>
 
-            <span
-                v-if="lateCount > 0"
-                role="alert"
-                class="inline-flex items-center gap-1.5 rounded-full border border-danger-border bg-danger-soft px-3 py-1 text-sm font-semibold text-danger tabular-nums"
-            >
-                <AppIcon name="alert-triangle" :size="14" />
-                {{ lateCount }} gecikti
+            <span v-if="lateCount > 0" role="alert" class="inline-flex">
+                <BaseBadge variant="danger" no-icon>
+                    <AppIcon name="alert-triangle" :size="13" />
+                    {{ lateCount }} gecikti
+                </BaseBadge>
             </span>
 
             <div class="ml-auto flex flex-wrap items-center gap-1.5">
@@ -424,20 +435,20 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                 />
             </div>
 
-            <div v-else class="grid items-start gap-4" style="grid-template-columns: repeat(auto-fill, minmax(340px, 1fr))">
+            <div v-else class="grid items-start gap-4" style="grid-template-columns: repeat(auto-fill, minmax(380px, 1fr))">
                 <article
                     v-for="card in orders"
                     :key="card.id"
-                    class="flex flex-col overflow-hidden rounded-lg border bg-raised shadow-card"
+                    class="flex flex-col overflow-hidden rounded-xl border bg-raised shadow-card"
                     :class="cardBorderClass(card)"
                 >
-                    <!-- Başlık: HANGİ MASA (büyük) · NE KADAR ACİL (tek çip) -->
-                    <div class="flex items-start justify-between gap-3 border-b border-default px-4 py-3">
+                    <!-- Başlık: HANGİ MASA (büyük, hiç kırpılmaz) · NE KADAR ACİL (tek çip) -->
+                    <div class="flex items-start justify-between gap-3 border-b border-default px-4 py-3.5">
                         <div class="min-w-0">
-                            <p class="truncate text-2xl font-semibold leading-tight">
+                            <p class="text-2xl font-semibold leading-tight text-balance">
                                 {{ card.table_name ?? card.customer_name ?? `Sipariş #${card.id}` }}
                             </p>
-                            <p class="mt-0.5 truncate text-sm text-muted">
+                            <p class="mt-1 text-sm text-muted">
                                 {{ card.channel_label }}<template v-if="card.area_name"> · {{ card.area_name }}</template><template v-if="card.waiter"> · {{ card.waiter }}</template>
                             </p>
                         </div>
@@ -455,29 +466,31 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                         Not: {{ card.note }}
                     </p>
 
-                    <!-- Kalemler: adet · ad · (varsa) not/alerjen + TEK eylem -->
+                    <!-- Kalemler: görsel · adet+ad (hiç kırpılmaz) · (varsa) not/alerjen + TEK eylem -->
                     <ul class="flex-1 divide-y divide-default">
                         <li
                             v-for="item in card.items"
                             :key="item.id"
-                            class="flex items-start gap-3 px-4 py-3"
+                            class="flex items-start gap-3 px-4 py-3.5"
                             :class="item.status === 'ready' ? 'opacity-60' : ''"
                         >
-                            <span class="w-9 shrink-0 pt-0.5 text-right text-lg font-semibold tabular-nums">{{ item.qty }}×</span>
+                            <KdsItemImage :src="item.image_url" :alt="item.name" />
 
                             <div class="min-w-0 flex-1">
-                                <p class="text-lg font-semibold leading-snug" :class="item.status === 'ready' ? 'line-through' : ''">
+                                <p class="text-lg font-semibold leading-snug text-balance" :class="item.status === 'ready' ? 'line-through' : ''">
+                                    <span class="tabular-nums">{{ item.qty }}×</span>
                                     {{ item.name }}<span v-if="item.variant_name" class="font-normal text-muted"> — {{ item.variant_name }}</span>
                                 </p>
                                 <p v-if="item.options.length" class="mt-0.5 text-sm text-muted">{{ item.options.join(' · ') }}</p>
                                 <p v-if="item.note" class="mt-0.5 text-sm font-medium text-info">Not: {{ item.note }}</p>
 
-                                <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <!-- Renk YALNIZ alerjende güçlü; diyet etiketi sessiz düz metin -->
+                                <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                                     <BaseBadge v-for="a in item.allergens" :key="a.name" variant="danger" no-icon>
                                         <AppIcon name="alert-triangle" :size="12" />
                                         {{ a.name }}
                                     </BaseBadge>
-                                    <BaseBadge v-for="d in item.diets" :key="d" variant="neutral">{{ d }}</BaseBadge>
+                                    <span v-if="item.diets.length" class="text-xs text-subtle">{{ item.diets.join(' · ') }}</span>
                                 </p>
 
                                 <p v-if="!station" class="mt-1 text-xs font-medium uppercase tracking-wide text-subtle">
@@ -498,45 +511,18 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                                 </BaseButton>
                             </div>
 
-                            <!-- Sağ sütun: kalemin TEK sıradaki adımı -->
+                            <!-- Sağ sütun: kalemin TEK sıradaki adımı (primary) ya da durum rozeti -->
                             <div class="flex shrink-0 flex-col items-end gap-1.5">
                                 <BaseButton
-                                    v-if="['placed', 'sent_to_station'].includes(item.status)"
-                                    variant="secondary"
+                                    v-if="nextStep(item)"
                                     size="lg"
                                     class="min-w-24"
                                     :disabled="busy"
-                                    @click="advance(card, item, 'accepted')"
+                                    @click="advance(card, item, nextStep(item)!.to)"
                                 >
-                                    Kabul
+                                    {{ nextStep(item)!.label }}
                                 </BaseButton>
-                                <BaseButton
-                                    v-else-if="item.status === 'accepted'"
-                                    variant="secondary"
-                                    size="lg"
-                                    class="min-w-24"
-                                    :disabled="busy"
-                                    @click="advance(card, item, 'preparing')"
-                                >
-                                    Başlat
-                                </BaseButton>
-                                <BaseButton
-                                    v-else-if="item.status === 'preparing'"
-                                    variant="secondary"
-                                    size="lg"
-                                    class="min-w-24"
-                                    :disabled="busy"
-                                    @click="advance(card, item, 'ready')"
-                                >
-                                    Hazır
-                                </BaseButton>
-                                <span
-                                    v-else-if="item.status === 'ready'"
-                                    class="inline-flex h-11 items-center gap-1.5 text-base font-semibold text-success"
-                                >
-                                    <AppIcon name="check-circle" :size="18" />
-                                    Hazır
-                                </span>
+                                <BaseBadge v-else-if="item.status === 'ready'" variant="success">Hazır</BaseBadge>
 
                                 <BaseButton
                                     v-if="item.status !== 'ready'"
@@ -553,10 +539,11 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                         </li>
                     </ul>
 
-                    <!-- Kartın TEK birincil eylemi -->
+                    <!-- Toplu kısayol: ikincil — kalemlerin kendi adımları asıl akıştır -->
                     <div class="border-t border-default p-3">
                         <BaseButton
                             v-if="pendingItems(card).length > 0"
+                            variant="secondary"
                             size="lg"
                             block
                             :disabled="busy"

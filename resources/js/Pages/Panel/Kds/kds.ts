@@ -47,6 +47,8 @@ export interface KdsItem {
     qty: number;
     name: string;
     variant_name: string | null;
+    /** Ürün kartı görseli (WebP, tenant-izolasyonlu); yoksa null → zarif yer tutucu gösterilir. */
+    image_url: string | null;
     note: string | null;
     status: string;
     status_label: string;

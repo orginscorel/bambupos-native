@@ -10,6 +10,7 @@ import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
+import KdsItemImage from './KdsItemImage.vue';
 import {
     createKdsSound,
     createPollingFeed,
@@ -26,11 +27,13 @@ import {
 } from './kds';
 
 /**
- * KOMİ EKRANI — mutfağın "hazır" verdiği ürünler; en uzun bekleyen üstte.
- * Satır üç soruya bakışta cevap verir: nereye (büyük başlık) · ne (ürün) ·
- * ne kadar acil (yalnız bekleme çipi renklenir). Akış iki adımdır:
- * "Teslim aldım" → "Masaya götürdüm"; yanlış işaret için geri alma vardır.
- * Görsel dil mutfak ekranıyla ve panelin geri kalanıyla birebir aynıdır.
+ * KOMİ EKRANI — BAĞIMSIZ tam ekran (panel kabuğuna gömülü değil, kasıtlı);
+ * mutfağın "hazır" verdiği ürünler, en uzun bekleyen üstte. Satır üç soruya
+ * bakışta cevap verir: nereye (büyük başlık) · ne (görsel + ürün, hiç
+ * kırpılmaz) · ne kadar acil (yalnız bekleme çipi renklenir). Akış iki
+ * adımdır: "Teslim aldım" → "Masaya götürdüm"; yanlış işaret için geri alma
+ * vardır. Görsel dil mutfak ekranıyla ve panelin geri kalanıyla birebir
+ * aynıdır (--ui-* token'ları); yerleşim bu dosyaya özgüdür.
  */
 const page = usePage();
 const meta = metaFromKdsProps(page.props as Record<string, unknown>);
@@ -278,13 +281,15 @@ function selectBranch(id: string): void {
                 <li
                     v-for="item in sorted"
                     :key="item.id"
-                    class="rounded-lg border bg-raised shadow-card"
+                    class="rounded-xl border bg-raised shadow-card"
                     :class="newItemIds.has(item.id) ? 'border-primary-soft-border' : 'border-default'"
                 >
-                    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+                    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3.5">
+                        <KdsItemImage :src="item.image_url" :alt="item.name" size="lg" />
+
                         <!-- NEREYE: en baskın öğe -->
                         <div class="min-w-40">
-                            <p class="text-2xl font-semibold leading-tight">
+                            <p class="text-2xl font-semibold leading-tight text-balance">
                                 {{ item.table_name ?? item.channel_label }}
                             </p>
                             <p class="mt-0.5 text-sm text-muted">
@@ -294,19 +299,20 @@ function selectBranch(id: string): void {
 
                         <!-- NE: ürün -->
                         <div class="min-w-0 flex-1 basis-64">
-                            <p class="text-lg font-semibold leading-snug">
+                            <p class="text-lg font-semibold leading-snug text-balance">
                                 <span class="tabular-nums">{{ item.qty }}×</span>
                                 {{ item.name }}<span v-if="item.variant_name" class="font-normal text-muted"> — {{ item.variant_name }}</span>
                             </p>
                             <p class="mt-0.5 text-sm text-muted">
                                 {{ item.station_label }}<span v-if="item.note" class="font-medium text-info"> · Not: {{ item.note }}</span>
                             </p>
-                            <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <!-- Renk YALNIZ alerjende güçlü; diyet etiketi sessiz düz metin -->
+                            <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                                 <BaseBadge v-for="a in item.allergens" :key="a.name" variant="danger" no-icon>
                                     <AppIcon name="alert-triangle" :size="12" />
                                     {{ a.name }}
                                 </BaseBadge>
-                                <BaseBadge v-for="d in item.diets" :key="d" variant="neutral">{{ d }}</BaseBadge>
+                                <span v-if="item.diets.length" class="text-xs text-subtle">{{ item.diets.join(' · ') }}</span>
                             </p>
                         </div>
 
