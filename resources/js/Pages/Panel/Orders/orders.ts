@@ -196,6 +196,8 @@ export interface CatalogProduct {
     package_price_minor: number | null;
     qr_price_minor: number | null;
     is_available: boolean;
+    /** Hızlı ekleme ızgarası thumbnail'ı (birincil ürün görseli); yoksa null. */
+    image_url: string | null;
     channels: string[] | null;
     min_order_qty: number;
     max_order_qty: number | null;
@@ -309,4 +311,15 @@ export function elapsed(iso: string | null): string {
     const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
     if (mins < 60) return `${mins} dk`;
     return `${Math.floor(mins / 60)} sa ${String(mins % 60).padStart(2, '0')} dk`;
+}
+
+/**
+ * Siparişin "verildi" anından geçen süre — KDS ile AYNI kaynak (placed_at,
+ * onay bekliyorsa created_at'e düşer; sunucu OrderPresenter/KdsPresenter
+ * ile birebir aynı kural). Siparişler panosu bunun yerine yalnız
+ * created_at (adisyonun AÇILDIĞI an) kullanırsa mutfakla tutarsız süre
+ * gösterir — bug buydu.
+ */
+export function orderElapsed(o: Pick<OrderSummary, 'placed_at' | 'created_at'>): string {
+    return elapsed(o.placed_at ?? o.created_at);
 }

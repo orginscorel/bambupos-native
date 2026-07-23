@@ -31,6 +31,9 @@ class OrderCatalogController extends Controller
             ->with([
                 'variants' => fn ($q) => $q->where('is_active', true),
                 'optionGroups.options' => fn ($q) => $q->where('is_active', true),
+                // Hızlı ekleme ızgarasında küçük görsel: KdsPresenter ile AYNI kaynak/kural
+                // (relation zaten birincil→sort_order sıralı; ilk kayıt = birincil görsel).
+                'images',
             ])
             ->where('is_active', true)
             ->when($branchId > 0, fn ($q) => $q->where(function ($sub) use ($branchId): void {
@@ -56,6 +59,7 @@ class OrderCatalogController extends Controller
                 'package_price_minor' => $p->package_price_minor !== null ? (int) $p->package_price_minor : null,
                 'qr_price_minor' => $p->qr_price_minor !== null ? (int) $p->qr_price_minor : null,
                 'is_available' => (bool) $p->is_available,
+                'image_url' => $p->images->first()?->url,
                 'channels' => $p->channels,
                 'min_order_qty' => (int) $p->min_order_qty,
                 'max_order_qty' => $p->max_order_qty !== null ? (int) $p->max_order_qty : null,

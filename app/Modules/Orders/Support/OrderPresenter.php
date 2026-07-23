@@ -55,7 +55,11 @@ final class OrderPresenter
             'total_display' => Money::toDecimalString((int) $order->total_minor),
             'remaining_display' => Money::toDecimalString(max(0, (int) $order->total_minor - (int) $order->paid_minor)),
             'opened_by' => $order->openedBy?->name,
-            'placed_at' => $order->placed_at?->toIso8601String(),
+            // KDS ile aynı kural (KdsPresenter): onaya düşene kadar placed_at
+            // yok — bu aralıkta created_at'e düş, ekranlar arasında süre
+            // hesabı TUTARLI kalsın (aksi halde Siparişler eski açılış anını
+            // gösterirken mutfak gerçek "sipariş verildi" anını gösterirdi).
+            'placed_at' => ($order->placed_at ?? $order->created_at)?->toIso8601String(),
             'created_at' => $order->created_at?->toIso8601String(),
             'closed_at' => $order->closed_at?->toIso8601String(),
         ];

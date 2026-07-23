@@ -22,13 +22,13 @@ import {
     apiIdempotent,
     channelPrice,
     groupOptionsPrice,
-    elapsed,
     fetchBoard,
     fetchOrder,
     fetchOrderCatalog,
     metaFromProps,
     money,
     newIdempotencyKey,
+    orderElapsed,
     type BoardTable,
     type CatalogProduct,
     type OrderDetail,
@@ -72,6 +72,12 @@ const visibleProducts = computed(() => {
     }
     return list;
 });
+
+/** Kırık/yüklenemeyen ürün görseli → zarif ikon yer tutucuya düş (kırık görsel simgesi yok). */
+const brokenImages = ref<Set<number>>(new Set());
+function onProductImageError(productId: number): void {
+    brokenImages.value = new Set(brokenImages.value).add(productId);
+}
 
 onMounted(async () => {
     await load();
@@ -547,7 +553,7 @@ const eventTypeLabels: Record<string, string> = {
                             <AppIcon :name="order.status_icon" :size="12" />
                             {{ order.status_label }}
                         </BaseBadge>
-                        <span class="text-xs text-muted">{{ elapsed(order.created_at) }} önce · {{ order.opened_by ?? '—' }}</span>
+                        <span class="text-xs text-muted">{{ orderElapsed(order) }} önce · {{ order.opened_by ?? '—' }}</span>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <BaseButton v-if="order.status === 'pending_approval'" size="sm" :loading="opBusy" @click="approveOrder">
@@ -619,18 +625,33 @@ const eventTypeLabels: Record<string, string> = {
                                 v-for="p in visibleProducts"
                                 :key="p.id"
                                 type="button"
-                                class="flex min-h-20 flex-col justify-between rounded-lg border border-default p-2.5 text-left transition-colors hover:bg-inset disabled:opacity-45"
+                                class="flex min-h-24 items-start gap-2.5 rounded-lg border border-default p-2.5 text-left transition-colors hover:bg-inset disabled:opacity-45"
                                 :disabled="!p.is_available || addBusy"
                                 :aria-label="p.is_available ? `${p.name} ekle` : `${p.name} tükendi`"
                                 @click="onProductClick(p)"
                             >
-                                <span class="text-sm font-medium leading-tight text-body">{{ p.name }}</span>
-                                <span class="flex items-center justify-between pt-1">
-                                    <span class="text-sm font-semibold text-body">{{ money(productPrice(p)) }} ₺</span>
-                                    <BaseBadge v-if="!p.is_available" variant="danger" no-icon>Tükendi</BaseBadge>
-                                    <AppIcon v-else-if="p.variants.length > 0 || p.option_groups.length > 0" name="chevron-right" :size="14" class="text-muted" />
-                                    <AppIcon v-else name="plus" :size="14" class="text-muted" />
-                                </span>
+                                <!-- Garson "ne eklediğini" görsün: küçük thumbnail, destekleyici — isim/fiyatı gölgede bırakmaz.
+                                     Görsel yoksa/kırıksa zarif nötr ikon yer tutucu (kırık-görsel simgesi yok). -->
+                                <div class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-inset">
+                                    <img
+                                        v-if="p.image_url && !brokenImages.has(p.id)"
+                                        :src="p.image_url"
+                                        :alt="p.name"
+                                        loading="lazy"
+                                        class="size-full object-cover"
+                                        @error="onProductImageError(p.id)"
+                                    />
+                                    <AppIcon v-else name="utensils" :size="16" class="text-subtle" />
+                                </div>
+                                <div class="flex min-w-0 flex-1 flex-col justify-between gap-1 self-stretch">
+                                    <span class="line-clamp-2 text-sm font-medium leading-tight text-body">{{ p.name }}</span>
+                                    <span class="flex items-center justify-between gap-1">
+                                        <span class="text-sm font-semibold text-body">{{ money(productPrice(p)) }} ₺</span>
+                                        <BaseBadge v-if="!p.is_available" variant="danger" no-icon>Tükendi</BaseBadge>
+                                        <AppIcon v-else-if="p.variants.length > 0 || p.option_groups.length > 0" name="chevron-right" :size="14" class="shrink-0 text-muted" />
+                                        <AppIcon v-else name="plus" :size="14" class="shrink-0 text-muted" />
+                                    </span>
+                                </div>
                             </button>
                         </div>
                         <EmptyState v-else title="Ürün bulunamadı" description="Arama ya da kategori filtresini değiştirin." icon="search" />

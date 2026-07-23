@@ -20,6 +20,7 @@ import {
     fetchBranches,
     metaFromProps,
     money,
+    orderElapsed,
     type BoardData,
     type BoardTable,
     type BranchRow,
@@ -269,7 +270,9 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                                 {{ o.status_label }}
                             </BaseBadge>
                             <span class="font-medium">{{ o.table_name ?? o.channel_label }}</span>
-                            <span class="text-sm text-muted">{{ o.items_count }} kalem · {{ o.total_display }} ₺ · {{ elapsed(o.created_at) }}</span>
+                            <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
+                            <span class="text-sm font-semibold text-body">{{ o.total_display }} ₺</span>
+                            <span class="text-xs text-subtle">{{ orderElapsed(o) }} önce</span>
                         </div>
                         <div class="flex gap-2">
                             <BaseButton size="sm" variant="secondary" @click="router.visit(`/panel/siparisler/${o.id}`)">İncele</BaseButton>
@@ -312,13 +315,15 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                 </div>
             </BaseCard>
 
-            <!-- Masa ızgarası: büyük dokunma hedefleri, durum = renk + ikon + metin -->
-            <div v-if="filteredTables.length > 0" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <!-- Masa ızgarası: büyük dokunma hedefleri, durum = renk + ikon + metin.
+                 Sütun sayısı sabit değil — auto-fill/minmax genişliğe göre dengelenir,
+                 geniş ekranda kartlar sıkışmaz (min 15rem), dar ekranda tek sütuna düşer. -->
+            <div v-if="filteredTables.length > 0" class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
                 <button
                     v-for="t in filteredTables"
                     :key="t.id"
                     type="button"
-                    class="flex min-h-32 flex-col justify-between rounded-xl border border-default bg-surface p-3 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-2"
+                    class="flex min-h-40 flex-col justify-between gap-3 rounded-xl border border-default bg-surface p-4 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-2"
                     :aria-label="`${t.name} — ${t.status_label}`"
                     @click="onTableClick(t)"
                 >
@@ -332,11 +337,17 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                         </div>
                         <span class="font-mono text-sm text-subtle">{{ t.number ?? '' }}</span>
                     </div>
-                    <div class="flex flex-col gap-1.5">
-                        <div v-if="t.orders.length > 0" class="text-sm font-medium text-body">
-                            {{ t.orders.reduce((n, o) => n + o.items_count, 0) }} kalem ·
-                            {{ money(t.orders.reduce((n, o) => n + o.remaining_minor, 0)) }} ₺
-                            <span class="text-xs text-muted">· {{ elapsed(t.orders[0].created_at) }}</span>
+                    <div class="flex flex-col gap-2">
+                        <!-- Fiyat = para figürü olarak öne çıkar (büyük/kalın/gövde rengi);
+                             kalem sayısı ve süre ikincil ve AYRI (soluk, küçük, kendi satırında). -->
+                        <div v-if="t.orders.length > 0" class="flex flex-col gap-0.5">
+                            <div class="flex items-baseline justify-between gap-2">
+                                <span class="text-lg font-bold tabular-nums text-body">
+                                    {{ money(t.orders.reduce((n, o) => n + o.remaining_minor, 0)) }} ₺
+                                </span>
+                                <span class="text-xs font-medium text-muted">{{ t.orders.reduce((n, o) => n + o.items_count, 0) }} kalem</span>
+                            </div>
+                            <span class="text-xs text-subtle">{{ orderElapsed(t.orders[0]) }} önce</span>
                         </div>
                         <BaseBadge :variant="t.status_variant" no-icon>
                             <AppIcon :name="t.status_icon" :size="12" />
@@ -369,7 +380,9 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                             <span v-if="o.customer_name" class="text-sm text-muted">{{ o.customer_name }}</span>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="text-sm text-muted">{{ o.items_count }} kalem · {{ o.total_display }} ₺ · {{ elapsed(o.created_at) }}</span>
+                            <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
+                            <span class="text-sm font-semibold text-body">{{ o.total_display }} ₺</span>
+                            <span class="text-xs text-subtle">{{ orderElapsed(o) }} önce</span>
                             <BaseBadge :variant="o.status_variant" no-icon>
                                 <AppIcon :name="o.status_icon" :size="12" />
                                 {{ o.status_label }}
