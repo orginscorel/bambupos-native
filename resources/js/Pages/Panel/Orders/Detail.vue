@@ -200,22 +200,11 @@ function submitProductModal(): void {
     void addItem(p, pmVariant.value ? Number(pmVariant.value) : null, [...pmOptions.value], pmQty.value, pmNote.value || null);
 }
 
-/* ================= Kalem işlemleri ================= */
-function nextItemStatus(item: OrderItemRow): { value: string; label: string } | null {
-    const chain = ['placed', 'sent_to_station', 'accepted', 'preparing', 'ready', 'served'];
-    const idx = chain.indexOf(item.status);
-    if (idx < 0 || idx >= chain.length - 1) return null;
-    const next = chain[idx + 1];
-    const label = meta.itemStatuses.find((s) => s.value === next)?.label ?? next;
-    return { value: next, label };
-}
-
-async function advanceItem(item: OrderItemRow): Promise<void> {
-    const next = nextItemStatus(item);
-    if (!next) return;
-    await runOp(`/api/v1/orders/${orderId}/items/${item.id}/status`, { status: next.value }, '', 'PUT');
-}
-
+/* ================= Kalem işlemleri =================
+   NOT: Durum İLERLETME burada YOK — sipariş yaşam döngüsü (Hazırlanıyor →
+   Garson & Komi bekliyor → Servis edildi) yalnız İSTASYONDA ilerler: Mutfak/
+   Barista (KDS) "bitir", Komi "teslim et". Siparişler panosu görüntüler; adet/
+   not/taşı/ikram/iptal (kasa/yetki işleri) kalır, durum adımı kalmaz. */
 async function changeQty(item: OrderItemRow, delta: number): Promise<void> {
     const qty = item.qty + delta;
     if (qty < 1) return;
@@ -784,9 +773,6 @@ const eventTypeLabels: Record<string, string> = {
                                             <AppIcon name="chevron-up" :size="14" />
                                         </BaseButton>
                                     </template>
-                                    <BaseButton v-if="nextItemStatus(item)" size="sm" variant="secondary" @click="advanceItem(item)">
-                                        → {{ nextItemStatus(item)!.label }}
-                                    </BaseButton>
                                     <BaseDropdown menu-label="Kalem işlemleri">
                                         <template #trigger="{ toggle, ariaAttrs }">
                                             <button

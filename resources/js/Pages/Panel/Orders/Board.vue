@@ -96,9 +96,12 @@ const filteredTables = computed(() =>
     }),
 );
 
-/* ================= Masa aç / adisyona git ================= */
+/* ================= Masa aç / adisyona git =================
+   Kişi sayısı AÇILIŞTA SORULMAZ (kullanıcı talebi): masaya tıklayınca boşsa
+   direkt adisyon açılır ve içine girilir; tek adisyon varsa ona girilir; birden
+   çok adisyon varsa seçtirilir. Misafir adedi opsiyonel — adisyon detayından
+   sonradan eklenebilir (backend guest_count nullable). */
 const openTable = ref<BoardTable | null>(null);
-const guestCount = ref('2');
 const openBusy = ref(false);
 
 function onTableClick(table: BoardTable): void {
@@ -106,9 +109,12 @@ function onTableClick(table: BoardTable): void {
         router.visit(`/panel/siparisler/${table.orders[0].id}`);
         return;
     }
-    // Birden çok adisyon → seçtir; hiç yoksa masa aç.
+    if (table.orders.length === 0) {
+        void createOrder(table); // boş masa → doğrudan adisyon aç + içine gir
+        return;
+    }
+    // Birden çok açık adisyon → hangisine gireceğini seçtir.
     openTable.value = table;
-    guestCount.value = String(Math.min(table.capacity, 2));
     busyModal = true;
 }
 
@@ -117,9 +123,8 @@ function closeTableModal(): void {
     busyModal = false;
 }
 
-async function createOrder(): Promise<void> {
-    const table = openTable.value;
-    if (!table || openBusy.value) return;
+async function createOrder(table: BoardTable): Promise<void> {
+    if (openBusy.value) return;
     openBusy.value = true;
     try {
         const res = await api<{ order: OrderSummary }>('/api/v1/orders', {
@@ -128,7 +133,7 @@ async function createOrder(): Promise<void> {
                 branch_id: branchId.value ? Number(branchId.value) : branches.value[0]?.id,
                 channel: 'table',
                 table_id: table.id,
-                guest_count: Number(guestCount.value) || null,
+                guest_count: null,
             },
         });
         success('Adisyon açıldı', `${table.name} için yeni adisyon oluşturuldu.`);
@@ -401,9 +406,10 @@ async function approveOrder(order: OrderSummary): Promise<void> {
             </BaseCard>
         </div>
 
-        <!-- Masa modalı: adisyon seç ya da yeni aç -->
+        <!-- Masa modalı: yalnız birden çok açık adisyon varsa çıkar — hangisine
+             gireceğini seçtirir ya da yeni adisyon açtırır. Kişi sayısı SORULMAZ. -->
         <BaseModal :open="openTable !== null" :title="openTable?.name ?? 'Masa'" size="sm" @close="closeTableModal">
-            <div v-if="openTable && openTable.orders.length > 0" class="flex flex-col gap-2 pb-3">
+            <div v-if="openTable && openTable.orders.length > 0" class="flex flex-col gap-2">
                 <p class="text-xs font-medium text-muted">Bu masadaki açık adisyonlar</p>
                 <button
                     v-for="o in openTable.orders"
@@ -416,12 +422,9 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                     <span class="text-sm text-muted">{{ o.items_count }} kalem · <span class="whitespace-nowrap tabular-nums">{{ o.total_display }} ₺</span></span>
                 </button>
             </div>
-            <FormField label="Kişi sayısı" hint="Yeni adisyon için">
-                <BaseInput v-model="guestCount" inputmode="numeric" />
-            </FormField>
             <template #footer>
                 <BaseButton variant="secondary" @click="closeTableModal">Vazgeç</BaseButton>
-                <BaseButton :loading="openBusy" @click="createOrder">
+                <BaseButton :loading="openBusy" @click="openTable && createOrder(openTable)">
                     <AppIcon name="plus" :size="14" />
                     Yeni adisyon aç
                 </BaseButton>

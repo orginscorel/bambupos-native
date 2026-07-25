@@ -15,10 +15,29 @@
  */
 return [
 
-    'current_version' => '0.11.0',
-    'released_at' => '2026-07-23',
+    'current_version' => '0.12.0',
+    'released_at' => '2026-07-25',
 
     'entries' => [
+        [
+            'version' => '0.12.0',
+            'date' => '2026-07-25',
+            'title' => 'Büyük özellik dalgası',
+            'changes' => [
+                ['type' => 'new', 'text' => 'Kiosk self-servis sipariş: müşteriler cihazdaki dokunmatik ekrandan, ürün görselleriyle kendileri sipariş verip ödeyebiliyor (şimdilik deneme/mock ödeme).'],
+                ['type' => 'new', 'text' => 'Rezervasyon sistemi tamamlandı: takvim üzerinden rezervasyon, dolu olduğunda bekleme listesi ve gelmeyen (no-show) takibi.'],
+                ['type' => 'new', 'text' => 'Depo / Stok: reçeteye göre otomatik stok düşümü, sebepli iade, gün/ay bazlı rapor ve sade bir "Genel Bakış" arayüzü.'],
+                ['type' => 'new', 'text' => 'Vardiya yönetimi: vardiya planı, PIN\'li cihaz üzerinden mesai başlat/bitir (clock-in) ve devam/mesai raporu.'],
+                ['type' => 'new', 'text' => 'Mutfak ve Barista istasyonları ayrıldı: kahve/içecekler Barista\'ya, yemekler Mutfak\'a düşer; komi tüm hazır kalemleri görür.'],
+                ['type' => 'improved', 'text' => 'Kiosk siparişleri artık Siparişler panosuna ve mutfağa da düşüyor; ödeme durumu (ödendi / kalan) kartın üzerinde görünür.'],
+                ['type' => 'improved', 'text' => 'Sipariş durum akışı sadeleşti: Hazırlanıyor → Garson & Komi bekliyor → Servis edildi. Durum yalnızca ilgili istasyonda ilerler.'],
+                ['type' => 'improved', 'text' => 'Kasa ekranı kapsamlı hale geldi: kalemleri gözden geçirme, düzeltme/ikram, hesabı bölme (split) ve para üstü.'],
+                ['type' => 'improved', 'text' => 'Masalar ekranı sadeleşti ve profesyonelleşti — dolu/boş masa artık ilk bakışta net.'],
+                ['type' => 'improved', 'text' => 'Müşteri menüsünde ürün ve alerjen tasarımı yenilendi.'],
+                ['type' => 'improved', 'text' => 'Personel için "Test için giriş yap" (kişinin yerine görüntüleme) eklendi; menü ve açılır liste düzeltmeleri yapıldı.'],
+                ['type' => 'improved', 'text' => 'Rezervasyon, Raporlar, Vardiya ve Depo ekranları "Genel Bakış" + gruplu sekmeler ve açıklamalarla yeniden düzenlendi.'],
+            ],
+        ],
         [
             'version' => '0.11.0',
             'date' => '2026-07-23',

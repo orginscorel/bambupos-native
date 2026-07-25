@@ -51,14 +51,20 @@ enum OrderItemStatus: string
         return $this !== self::Cancelled;
     }
 
+    /**
+     * SADELEŞTİRİLMİŞ ETİKET (kullanıcı talebi): kalem mutfaktayken
+     * "Hazırlanıyor", mutfak/barista bitirince "Garson & Komi bekliyor",
+     * komi/garson teslim edince "Servis edildi". "İstasyonda"/"Kabul edildi"/
+     * "Hazır" gibi ara etiketler bu üçlüde toplanır — sipariş bütünü
+     * (OrderStatus) ile TEK dil. Kalem-bazlı akış (§12) korunur; iç durum
+     * değeri (status) değişmez, yalnız GÖRÜNEN metin sadeleşir.
+     */
     public function label(): string
     {
         return match ($this) {
             self::Placed => 'Alındı',
-            self::SentToStation => 'İstasyonda',
-            self::Accepted => 'Kabul edildi',
-            self::Preparing => 'Hazırlanıyor',
-            self::Ready => 'Hazır',
+            self::SentToStation, self::Accepted, self::Preparing => 'Hazırlanıyor',
+            self::Ready => 'Garson & Komi bekliyor',
             self::Served => 'Servis edildi',
             self::Cancelled => 'İptal',
         };

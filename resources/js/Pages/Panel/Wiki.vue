@@ -30,6 +30,17 @@ const openStep: FlowStep = {
     detail: 'Masanın o anki TEK açık adisyonu. Aynı masada ikinci bir açık adisyon AÇILAMAZ.',
 };
 
+/**
+ * Sipariş yaşam döngüsü (2026-07-25): durum yalnız istasyonda ilerler.
+ * Hazırlanıyor → Garson & Komi bekliyor → Servis edildi.
+ */
+const lifecycle: FlowStep[] = [
+    { key: 'created', icon: 'orders', variant: 'primary', title: 'Sipariş açılır', detail: 'Masadan, kiosktan ya da QR menüden gelir. Aynı masaya gelen yeni sipariş, o masanın açık adisyonuna kalem olarak eklenir.' },
+    { key: 'preparing', icon: 'chef-hat', variant: 'warning', title: 'Hazırlanıyor', detail: 'Kalemler istasyonlara düşer: yemek → Mutfak, kahve/içecek → Barista. Her istasyon yalnız kendi kalemini görür.' },
+    { key: 'waiting', icon: 'bell', variant: 'info', title: 'Garson & Komi bekliyor', detail: 'İstasyon kalemi bitirince "hazır" olur; komi kalemi teslim almak için bekler.' },
+    { key: 'served', icon: 'check-circle', variant: 'success', title: 'Servis edildi', detail: 'Komi kalemi masaya teslim edince tamamlanır. Durum yalnızca ilgili istasyonda ilerler.' },
+];
+
 const payBranch: FlowStep[] = [
     { key: 'pay', icon: 'cart', variant: 'success', title: 'Ödeme alınır (Kasa)', detail: 'Nakit / kart / diğer yöntem — payments tablosuna işlenir.' },
     { key: 'paid', icon: 'check-circle', variant: 'success', title: 'Durum: ödendi', detail: 'Adisyon KAPANIR. Tutar Tahsilat + Ciro\'ya yazılır.' },
@@ -47,11 +58,11 @@ const debtBranch: FlowStep[] = [
     <PanelShell title="Nasıl Çalışır">
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-8">
             <div class="flex flex-col gap-2">
-                <h1 class="text-2xl font-semibold text-body">Kasa · Sipariş · Masa · Adisyon · Cari nasıl bağlanır?</h1>
+                <h1 class="text-2xl font-semibold text-body">Sipariş · Mutfak · Kasa · Masa · Cari nasıl bağlanır?</h1>
                 <p class="max-w-3xl text-[15px] leading-relaxed text-muted">
-                    Bu sayfa canlı veri taşımaz — yalnızca sistemin temel kurallarını ve para akışının nereden
-                    nereye gittiğini anlatır. Raporlardaki rakamların ne anlama geldiğini (Ciro, Tahsilat, Açık
-                    masa, Açık borç) burada netleştirebilirsiniz.
+                    Bu sayfa canlı veri taşımaz — yalnızca sistemin temel kurallarını, bir siparişin açılıştan
+                    servise yolculuğunu ve para akışının nereden nereye gittiğini anlatır. Raporlardaki rakamların
+                    ne anlama geldiğini (Ciro, Tahsilat, Açık masa, Açık borç) burada netleştirebilirsiniz.
                 </p>
             </div>
 
@@ -114,8 +125,168 @@ const debtBranch: FlowStep[] = [
                 </dl>
             </BaseCard>
 
+            <!-- ---- Sipariş yaşam döngüsü ---- -->
+            <BaseCard title="Sipariş yaşam döngüsü — açılıştan servise">
+                <p class="mb-5 max-w-3xl px-1 text-sm leading-relaxed text-muted">
+                    Bir sipariş nereden gelirse gelsin (masa, kiosk ya da QR) aynı akışa girer. <strong class="text-body">Durum
+                    yalnızca ilgili istasyonda ilerler</strong> — Siparişler ekranı bu durumu yalnızca <em>görüntüler</em>,
+                    kasa ise ödeme/iptal işler.
+                </p>
+                <div class="grid grid-cols-1 gap-3 p-1 sm:grid-cols-2 xl:grid-cols-4">
+                    <template v-for="(step, i) in lifecycle" :key="step.key">
+                        <div class="flex flex-col gap-2 rounded-lg border border-default bg-raised p-4">
+                            <span class="flex size-8 items-center justify-center rounded-full"
+                                :class="{
+                                    'bg-primary-soft text-primary': step.variant === 'primary',
+                                    'bg-warning-soft text-warning': step.variant === 'warning',
+                                    'bg-info-soft text-info': step.variant === 'info',
+                                    'bg-success-soft text-success': step.variant === 'success',
+                                }">
+                                <AppIcon :name="step.icon" :size="16" />
+                            </span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-mono text-subtle">{{ i + 1 }}</span>
+                                <span class="text-sm font-semibold text-body">{{ step.title }}</span>
+                            </div>
+                            <span class="text-xs leading-relaxed text-muted">{{ step.detail }}</span>
+                        </div>
+                    </template>
+                </div>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-info-border bg-info-soft px-3 py-2.5 text-sm text-info">
+                    <AppIcon name="info" :size="16" class="mt-0.5 shrink-0" />
+                    <p class="leading-relaxed">
+                        "Garson &amp; Komi bekliyor" adımı, kalemin hazır olduğu ama henüz masaya gitmediği andır.
+                        Komi teslim edene kadar sipariş bu durumda bekler — böylece hiçbir hazır tabak/bardak
+                        istasyonda unutulmaz.
+                    </p>
+                </div>
+            </BaseCard>
+
+            <!-- ---- İstasyonlar: Mutfak vs Barista ---- -->
+            <BaseCard title="İstasyonlar — Mutfak, Barista ve Komi">
+                <div class="grid grid-cols-1 gap-3 p-1 sm:grid-cols-3">
+                    <div class="flex flex-col gap-2 rounded-lg border border-default bg-raised p-4">
+                        <span class="flex items-center gap-2 text-sm font-semibold text-body">
+                            <span class="flex size-8 items-center justify-center rounded-full bg-warning-soft text-warning">
+                                <AppIcon name="chef-hat" :size="16" />
+                            </span>
+                            Mutfak
+                        </span>
+                        <p class="text-sm leading-relaxed text-muted">
+                            Yemek kalemleri buraya düşer. Mutfak ekranı yalnızca <strong class="text-body">kendi</strong>
+                            kalemlerini gösterir — kahve/içecek görünmez.
+                        </p>
+                    </div>
+                    <div class="flex flex-col gap-2 rounded-lg border border-default bg-raised p-4">
+                        <span class="flex items-center gap-2 text-sm font-semibold text-body">
+                            <span class="flex size-8 items-center justify-center rounded-full bg-primary-soft text-primary">
+                                <AppIcon name="coffee" :size="16" />
+                            </span>
+                            Barista
+                        </span>
+                        <p class="text-sm leading-relaxed text-muted">
+                            Kahve, içecek ve bar ürünleri buraya düşer. Her ürün, kataloğunda seçilen istasyona göre
+                            otomatik yönlenir. Mutfakta kimse içecek hazırlamaz.
+                        </p>
+                    </div>
+                    <div class="flex flex-col gap-2 rounded-lg border border-default bg-raised p-4">
+                        <span class="flex items-center gap-2 text-sm font-semibold text-body">
+                            <span class="flex size-8 items-center justify-center rounded-full bg-success-soft text-success">
+                                <AppIcon name="users" :size="16" />
+                            </span>
+                            Komi (servis)
+                        </span>
+                        <p class="text-sm leading-relaxed text-muted">
+                            Komi <strong class="text-body">tüm istasyonların</strong> hazır kalemlerini tek ekranda görür,
+                            toplar ve masaya götürür. İstasyon farkı komiyi bölmez.
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-default bg-inset px-3 py-2.5 text-sm text-muted">
+                    <AppIcon name="info" :size="16" class="mt-0.5 shrink-0 text-subtle" />
+                    <p class="leading-relaxed">
+                        Süzme <strong class="text-body">kalem düzeyindedir</strong>: bir masada hem yemek hem kahve
+                        varsa, yemek Mutfak'ta, kahve Barista'da görünür — aynı adisyon iki istasyona bölünür,
+                        müşteri tek hesap alır. Mutfak/Barista/Komi ekranları <strong class="text-body">para görmez</strong>.
+                    </p>
+                </div>
+            </BaseCard>
+
+            <!-- ---- Kiosk & QR: müşteri kanalları ---- -->
+            <BaseCard title="Kiosk & QR — müşteri kanalları">
+                <div class="grid grid-cols-1 gap-5 p-1 sm:grid-cols-2">
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                            <AppIcon name="store" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Kiosk (self-servis cihaz)</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Müşteri, cihazdaki dokunmatik ekrandan ürün görselleriyle kendi siparişini verir ve
+                                (şimdilik deneme/mock) ödemesini yapar. Sipariş <strong class="text-body">Siparişler
+                                panosuna ve mutfağa</strong> düşer; kartta ödeme durumu görünür.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                            <AppIcon name="qr-code" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">QR menü</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Müşteri masadaki QR'ı okutup sipariş gönderir; sipariş o masanın açık adisyonuna eklenir.
+                            </dd>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-info-border bg-info-soft px-3 py-2.5 text-sm text-info">
+                    <AppIcon name="info" :size="16" class="mt-0.5 shrink-0" />
+                    <p class="leading-relaxed">
+                        Hangi kanaldan gelirse gelsin sipariş <strong>aynı yaşam döngüsüne</strong> girer: Hazırlanıyor →
+                        Garson &amp; Komi bekliyor → Servis edildi. Kanal farkı yalnızca siparişin nasıl başladığını değiştirir.
+                    </p>
+                </div>
+            </BaseCard>
+
+            <!-- ---- Depo / Stok ---- -->
+            <BaseCard title="Depo — reçeteyle otomatik stok">
+                <div class="grid grid-cols-1 gap-5 p-1 sm:grid-cols-2">
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                            <AppIcon name="package" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Otomatik düşüm</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Bir kalem servis edilince, ürünün reçetesindeki hammaddeler tanımlı gramaj kadar
+                                depodan <strong class="text-body">otomatik düşer</strong> — "kola verildi" → kola stoğu 1 azalır.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+                            <AppIcon name="inbox" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">İptal → iade</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Bir kalem iptal/iade edilince stok geri eklenir ve <strong class="text-body">sebep
+                                zorunlu</strong> olarak kaydedilir. Her hareket değişmez bir defterde (kim, ne kadar,
+                                neden, ne zaman) izlenir; gün/ay raporuyla giriş–çıkış–kalan mutabakatı yapılır.
+                            </dd>
+                        </div>
+                    </div>
+                </div>
+            </BaseCard>
+
             <!-- ---- Kroki: bir adisyonun yolculuğu ---- -->
-            <BaseCard title="Kroki: bir adisyonun açılıştan kapanışa yolculuğu">
+            <BaseCard title="Kasada kapanış: bir adisyonun ödeme/borç yolculuğu">
+                <p class="mb-4 max-w-3xl px-1 text-sm leading-relaxed text-muted">
+                    Kasa, masanın açık adisyonunu görür; kalemleri <strong class="text-body">doğrular, düzeltir ya da
+                    ikram</strong> edebilir. Ödemeyi nakit, kart ya da <strong class="text-body">bölerek (split)</strong>
+                    alır, para üstünü hesaplar — ödeme tamamlanınca adisyon kapanır ve tutar Tahsilat'a yazılır.
+                </p>
                 <div class="flex flex-col items-center gap-1 p-2">
                     <!-- Masa boş -->
                     <div class="flex w-full max-w-xs items-center justify-center gap-2 rounded-lg border border-default bg-inset px-4 py-2.5 text-sm font-medium text-muted">

@@ -231,7 +231,7 @@ async function runAction(fn: () => Promise<unknown>, okMsg: string): Promise<voi
 function nextStep(item: KdsItem): { to: string; label: string } | null {
     if (item.status === 'placed' || item.status === 'sent_to_station') return { to: 'accepted', label: 'Kabul' };
     if (item.status === 'accepted') return { to: 'preparing', label: 'Başlat' };
-    if (item.status === 'preparing') return { to: 'ready', label: 'Hazır' };
+    if (item.status === 'preparing') return { to: 'ready', label: 'Bitir' };
     return null;
 }
 
@@ -556,7 +556,7 @@ const pageTitle = computed(() => {
                                 >
                                     {{ nextStep(item)!.label }}
                                 </BaseButton>
-                                <BaseBadge v-else-if="item.status === 'ready'" variant="success">Hazır</BaseBadge>
+                                <BaseBadge v-else-if="item.status === 'ready'" variant="success">{{ item.status_label }}</BaseBadge>
 
                                 <BaseButton
                                     v-if="item.status !== 'ready'"
@@ -584,11 +584,11 @@ const pageTitle = computed(() => {
                             @click="allReady(card)"
                         >
                             <AppIcon name="check-circle" :size="18" />
-                            Tümü hazır ({{ pendingItems(card).length }})
+                            Tümünü bitir ({{ pendingItems(card).length }})
                         </BaseButton>
                         <p v-else class="flex h-11 items-center justify-center gap-2 text-base font-medium text-success">
                             <KdsIcon name="tray" :size="18" />
-                            Servis bekliyor
+                            Garson & Komi bekliyor
                         </p>
                     </div>
                 </article>

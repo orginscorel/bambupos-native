@@ -69,6 +69,48 @@ export interface PayableOrder {
     created_at: string | null;
 }
 
+/**
+ * Adisyon kalemi (OrderPresenter::item). Kasa ekranı ödeme öncesi
+ * gözden geçirme/düzeltme için OKUR; hazırlık durumu GÖSTERİLMEZ
+ * (tutar odaklı): yalnız ad + adet + birim + satır toplamı.
+ */
+export interface OrderItemRow {
+    id: number;
+    qty: number;
+    name: string;
+    variant_name: string | null;
+    unit_price_minor: number;
+    options_price_minor: number;
+    line_total_minor: number;
+    is_comp: boolean;
+    comp_reason: string | null;
+    is_active: boolean;
+    note: string | null;
+    options: Array<{ id: number; group_name: string; option_name: string; price_minor: number }>;
+}
+
+/** OrderPresenter::detail — kalemli tam adisyon (mevcut Orders ucu). */
+export interface OrderDetail {
+    id: number;
+    version: number;
+    table_name: string | null;
+    customer_name: string | null;
+    channel_label: string;
+    guest_count: number | null;
+    is_open: boolean;
+    status: string;
+    payment_state: string;
+    items_total_minor: number;
+    discount_minor: number;
+    comp_total_minor: number;
+    service_charge_minor: number;
+    rounding_minor: number;
+    total_minor: number;
+    paid_minor: number;
+    remaining_minor: number;
+    items: OrderItemRow[];
+}
+
 export interface PaymentRow {
     id: number;
     order_id: number;
@@ -170,6 +212,10 @@ export const fetchPendingOrders = (branchId: number | null, q: string) =>
 
 export const fetchOrderPayments = (orderId: number) =>
     api<{ order: PayableOrder; payments: PaymentRow[] }>(`/api/v1/orders/${orderId}/payments`);
+
+/** Kalem dökümü (ödeme öncesi gözden geçirme/düzeltme). orders.view gerektirir. */
+export const fetchOrderDetail = (orderId: number) =>
+    api<{ order: OrderDetail }>(`/api/v1/orders/${orderId}`).then((r) => r.order);
 
 export const fetchRegisters = () => api<{ registers: RegisterRow[] }>('/api/v1/cash/registers').then((r) => r.registers);
 

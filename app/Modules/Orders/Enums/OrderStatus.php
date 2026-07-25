@@ -109,18 +109,25 @@ enum OrderStatus: string
         ], true);
     }
 
+    /**
+     * SADELEŞTİRİLMİŞ MÜŞTERİ/PERSONEL GÖRÜNÜMÜ — mutfak-aşaması TEK üç
+     * etikete iner (kullanıcı talebi): sipariş mutfağa düşünce "Hazırlanıyor",
+     * tüm hazırlık istasyonları bitirince "Garson & Komi bekliyor", komi/garson
+     * masaya bırakınca "Servis edildi". "Kabul edildi", "İstasyona gönderildi",
+     * "Kısmen hazır" gibi ara mekanizma durumları görünürde bu üçlüde toplanır
+     * (iç makine/türetme ayrıntısı korunur; yalnız görünen etiket tek kaynaktan
+     * sadeleşir — OrderPresenter + KdsPresenter + Vue hepsi buna dayanır).
+     */
     public function label(): string
     {
         return match ($this) {
             self::Draft => 'Taslak',
             self::PendingApproval => 'Onay bekliyor',
-            self::Placed => 'Sipariş alındı',
-            self::SentToStation => 'İstasyona gönderildi',
-            self::Accepted => 'Kabul edildi',
-            self::Preparing => 'Hazırlanıyor',
-            self::PartiallyReady => 'Kısmen hazır',
-            self::Ready => 'Hazır',
-            self::AwaitingService => 'Servis bekliyor',
+            // Mutfağa düşen sipariş → tek etiket: Hazırlanıyor
+            self::Placed, self::SentToStation, self::Accepted,
+            self::Preparing, self::PartiallyReady => 'Hazırlanıyor',
+            // Tüm hazırlık istasyonları bitirdi → komi/garson teslim bekliyor
+            self::Ready, self::AwaitingService => 'Garson & Komi bekliyor',
             self::Served => 'Servis edildi',
             self::BillRequested => 'Hesap istendi',
             self::PartiallyPaid => 'Kısmi ödendi',

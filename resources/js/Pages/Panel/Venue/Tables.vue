@@ -5,7 +5,6 @@ import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
 import PanelShell from '@/Components/panel/PanelShell.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
-import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseCard from '@/Components/ui/BaseCard.vue';
 import BaseCheckbox from '@/Components/ui/BaseCheckbox.vue';
@@ -368,47 +367,19 @@ function downloadQr(row: TableRow, format: 'png' | 'svg'): void {
     window.location.href = `/api/v1/venue/tables/${row.id}/qr-image?format=${format}&download=1`;
 }
 
-/* ================= Görünüm: durum renkleri + kat/alan grupları ================= */
+/* ================= Görünüm: dolu/boş + kat/alan grupları ================= */
 type StatusVariant = TableRow['status_variant'];
 
-/** Kart üst şeridi: durumun dolu (solid) rengi — tek bakışta ayrım. */
-const accentBar: Record<StatusVariant, string> = {
-    neutral: 'bg-subtle',
-    primary: 'bg-primary',
-    success: 'bg-success',
-    warning: 'bg-warning',
-    danger: 'bg-danger',
-    info: 'bg-info',
-};
-
-/** Masa no rozeti: durumun yumuşak zemini + metni. */
-const chipSoft: Record<StatusVariant, string> = {
-    neutral: 'bg-inset text-muted',
-    primary: 'bg-primary-soft text-primary',
-    success: 'bg-success-soft text-success',
-    warning: 'bg-warning-soft text-warning',
-    danger: 'bg-danger-soft text-danger',
-    info: 'bg-info-soft text-info',
-};
-
-/** Kart kenarlığı: durum tonunu hafifçe yansıtır (premium his). */
-const cardBorder: Record<StatusVariant, string> = {
-    neutral: 'border-default',
-    primary: 'border-primary-soft-border',
-    success: 'border-success-border',
-    warning: 'border-warning-border',
-    danger: 'border-danger-border',
-    info: 'border-info-border',
-};
-
-/** Renk açıklaması (lejant) — durumları renkten bağımsız da anlatır. */
-const legend: { variant: StatusVariant; label: string }[] = [
-    { variant: 'success', label: 'Boş' },
-    { variant: 'info', label: 'Dolu' },
-    { variant: 'warning', label: 'İşlem bekliyor' },
-    { variant: 'primary', label: 'Rezerve' },
-    { variant: 'neutral', label: 'Kapanış / dışı' },
-];
+/**
+ * Sadeleştirilmiş doluluk sinyali. Ana soru: "masa dolu mu?" — masanın açık
+ * bir adisyonu (aktif sipariş akışı) varsa DOLU'dur. info = oturuluyor/servis,
+ * warning = sipariş/hesap aşaması; ikisi de açık adisyon demektir. Diğer her
+ * durum (boş/ödendi/rezerve/temizlik/kullanım dışı) baskın olarak "Boş" gösterilir;
+ * rezerve/temizlik gibi ikincil durumlar yalnız küçük bir ipucu rozetiyle belirtilir.
+ */
+function isBusy(v: StatusVariant): boolean {
+    return v === 'info' || v === 'warning';
+}
 
 interface TableGroup {
     key: string;
@@ -451,6 +422,11 @@ function toggleGroup(g: TableGroup, value: boolean): void {
     const next = new Set(selected.value);
     g.rows.forEach((r) => (value ? next.add(r.id) : next.delete(r.id)));
     selected.value = next;
+}
+
+/** Grup başlığında "kaç masa dolu" özeti için doluluk sayacı. */
+function groupBusyCount(g: TableGroup): number {
+    return g.rows.filter((r) => isBusy(r.status_variant)).length;
 }
 </script>
 
@@ -508,15 +484,6 @@ function toggleGroup(g: TableGroup, value: boolean): void {
                     </div>
                 </div>
             </BaseCard>
-
-            <!-- Durum renk açıklaması (lejant) -->
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-muted">
-                <span class="font-medium text-subtle">Durum renkleri:</span>
-                <span v-for="l in legend" :key="l.variant" class="inline-flex items-center gap-1.5">
-                    <span class="size-2.5 rounded-full" :class="accentBar[l.variant]" />
-                    {{ l.label }}
-                </span>
-            </div>
 
             <!-- Toplu işlem çubuğu -->
             <BaseCard v-if="selected.size > 0">
@@ -579,7 +546,7 @@ function toggleGroup(g: TableGroup, value: boolean): void {
             <!-- Kat / alan bazlı gruplu masa kartları -->
             <template v-else>
                 <section v-for="g in groups" :key="g.key" class="flex flex-col gap-3">
-                    <!-- Grup başlığı: alan + kat/şube alt başlık + toplu seçim -->
+                    <!-- Grup başlığı: alan + kat/şube alt başlık + doluluk özeti -->
                     <div class="flex items-center gap-3">
                         <BaseCheckbox
                             :model-value="groupAllSelected(g)"
@@ -587,13 +554,12 @@ function toggleGroup(g: TableGroup, value: boolean): void {
                             :aria-label="`${g.area} alanındaki tüm masaları seç`"
                             @update:model-value="(v: boolean) => toggleGroup(g, v)"
                         />
-                        <AppIcon name="home" :size="16" class="text-subtle" />
                         <div class="min-w-0">
                             <h2 class="truncate text-sm font-semibold text-body">{{ g.area }}</h2>
                             <p v-if="g.subtitle" class="truncate text-xs text-subtle">{{ g.subtitle }}</p>
                         </div>
-                        <span class="ms-auto rounded-full bg-inset px-2 py-0.5 text-xs font-medium text-muted tabular-nums">
-                            {{ g.rows.length }} masa
+                        <span class="ms-auto text-xs text-muted tabular-nums">
+                            <span class="font-semibold text-body">{{ groupBusyCount(g) }}</span> / {{ g.rows.length }} dolu
                         </span>
                     </div>
 
@@ -601,86 +567,91 @@ function toggleGroup(g: TableGroup, value: boolean): void {
                         <article
                             v-for="t in g.rows"
                             :key="t.id"
-                            class="group relative flex flex-col overflow-hidden rounded-xl border bg-raised shadow-card transition-all duration-(--dur-fast)"
+                            class="group relative flex min-h-40 flex-col gap-3 rounded-xl border bg-raised p-4 shadow-card transition-colors duration-(--dur-fast)"
                             :class="[
-                                selected.has(t.id) ? 'border-primary ring-2 ring-primary/40' : cardBorder[t.status_variant],
-                                t.is_active ? '' : 'opacity-70',
+                                selected.has(t.id)
+                                    ? 'border-primary ring-2 ring-primary/30'
+                                    : isBusy(t.status_variant)
+                                        ? 'border-primary-soft-border'
+                                        : 'border-default',
+                                t.is_active ? '' : 'opacity-60',
                             ]"
                         >
-                            <!-- Durum şeridi -->
-                            <div class="h-1.5 w-full" :class="accentBar[t.status_variant]" />
+                            <!-- Seçim (köşe, sade) -->
+                            <BaseCheckbox
+                                class="absolute end-1.5 top-1.5 min-h-0 py-0"
+                                :model-value="selected.has(t.id)"
+                                label=""
+                                :aria-label="`${t.name} masasını seç`"
+                                @update:model-value="(v: boolean) => toggleOne(t.id, v)"
+                            />
 
-                            <div class="flex flex-1 flex-col gap-3 p-3">
-                                <!-- Üst: no rozeti + ad + seçim -->
-                                <div class="flex items-start gap-2.5">
+                            <!-- No + ad + kapasite -->
+                            <div class="flex items-center gap-3 pe-7">
+                                <span
+                                    class="flex size-11 shrink-0 items-center justify-center rounded-xl text-lg font-bold tabular-nums"
+                                    :class="isBusy(t.status_variant) ? 'bg-primary text-on-primary' : 'bg-inset text-body'"
+                                >
+                                    {{ t.number ?? '—' }}
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="truncate font-semibold text-body" :title="t.name">{{ t.name }}</p>
+                                    <p class="flex items-center gap-1 text-xs text-muted">
+                                        <AppIcon name="users" :size="13" />
+                                        <span class="tabular-nums">{{ t.capacity }} kişi</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Tek net durum + ikincil ipucu + aksiyon menüsü -->
+                            <div class="mt-auto flex items-center justify-between gap-2">
+                                <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                                     <span
-                                        class="flex size-11 shrink-0 items-center justify-center rounded-lg text-base font-bold tabular-nums"
-                                        :class="chipSoft[t.status_variant]"
+                                        v-if="isBusy(t.status_variant)"
+                                        class="inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary"
                                     >
-                                        {{ t.number ?? '—' }}
+                                        <span class="size-1.5 rounded-full bg-current" />
+                                        Dolu
                                     </span>
-                                    <div class="min-w-0 flex-1">
-                                        <p class="truncate font-semibold text-body" :title="t.name">{{ t.name }}</p>
-                                        <p class="flex items-center gap-1 text-xs text-muted">
-                                            <AppIcon name="users" :size="13" />
-                                            <span class="tabular-nums">{{ t.capacity }} kişi</span>
-                                            <span class="text-subtle">·</span>
-                                            <span class="truncate">{{ t.shape_label }}</span>
-                                        </p>
-                                    </div>
-                                    <BaseCheckbox
-                                        :model-value="selected.has(t.id)"
-                                        label=""
-                                        :aria-label="`${t.name} masasını seç`"
-                                        @update:model-value="(v: boolean) => toggleOne(t.id, v)"
-                                    />
-                                </div>
-
-                                <!-- Durum + pasif rozeti -->
-                                <div class="flex flex-wrap items-center gap-1.5">
-                                    <BaseBadge :variant="t.status_variant" no-icon>
-                                        <AppIcon :name="t.status_icon" :size="12" />
-                                        {{ t.status_label }}
-                                    </BaseBadge>
-                                    <BaseBadge v-if="!t.is_active" variant="neutral" no-icon>
-                                        <AppIcon name="x" :size="12" />
-                                        Pasif
-                                    </BaseBadge>
-                                </div>
-
-                                <!-- Aksiyonlar -->
-                                <div class="mt-auto flex items-center gap-1 border-t border-default pt-2">
-                                    <BaseButton size="sm" variant="ghost" class="flex-1 justify-center" @click="openEdit(t)">
-                                        <AppIcon name="pencil" :size="15" />
-                                        Düzenle
-                                    </BaseButton>
-                                    <BaseButton
-                                        size="sm"
-                                        variant="ghost"
-                                        icon-only
-                                        label="QR kodunu indir (PNG)"
-                                        @click="downloadQr(t, 'png')"
+                                    <span
+                                        v-else
+                                        class="inline-flex items-center gap-1.5 rounded-full bg-inset px-2.5 py-1 text-xs font-medium text-muted"
                                     >
-                                        <AppIcon name="qr-code" :size="16" />
-                                    </BaseButton>
-                                    <BaseDropdown menu-label="Masa işlemleri">
-                                        <template #trigger="{ toggle, ariaAttrs }">
-                                            <button
-                                                type="button"
-                                                v-bind="ariaAttrs"
-                                                class="flex size-8 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
-                                                aria-label="Diğer işlemler"
-                                                @click="toggle"
-                                            >
-                                                <AppIcon name="dots-vertical" :size="16" />
-                                            </button>
-                                        </template>
-                                        <DropdownItem icon="qr-code" @click="downloadQr(t, 'png')">QR indir (PNG)</DropdownItem>
-                                        <DropdownItem icon="qr-code" @click="downloadQr(t, 'svg')">QR indir (SVG)</DropdownItem>
-                                        <DropdownItem icon="alert-triangle" @click="rotatingRow = t">QR kodunu yenile</DropdownItem>
-                                        <DropdownItem icon="trash" danger @click="deletingRow = t">Masayı sil</DropdownItem>
-                                    </BaseDropdown>
+                                        <span class="size-1.5 rounded-full bg-current opacity-50" />
+                                        Boş
+                                    </span>
+                                    <span
+                                        v-if="!isBusy(t.status_variant) && t.status !== 'available'"
+                                        class="truncate rounded-full border border-default px-2 py-0.5 text-[11px] text-subtle"
+                                    >
+                                        {{ t.status_label }}
+                                    </span>
+                                    <span
+                                        v-if="!t.is_active"
+                                        class="rounded-full border border-default px-2 py-0.5 text-[11px] text-subtle"
+                                    >
+                                        Pasif
+                                    </span>
                                 </div>
+
+                                <BaseDropdown menu-label="Masa işlemleri">
+                                    <template #trigger="{ toggle, ariaAttrs }">
+                                        <button
+                                            type="button"
+                                            v-bind="ariaAttrs"
+                                            class="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
+                                            aria-label="Masa işlemleri"
+                                            @click="toggle"
+                                        >
+                                            <AppIcon name="dots-vertical" :size="18" />
+                                        </button>
+                                    </template>
+                                    <DropdownItem icon="pencil" @click="openEdit(t)">Düzenle</DropdownItem>
+                                    <DropdownItem icon="qr-code" @click="downloadQr(t, 'png')">QR indir (PNG)</DropdownItem>
+                                    <DropdownItem icon="qr-code" @click="downloadQr(t, 'svg')">QR indir (SVG)</DropdownItem>
+                                    <DropdownItem icon="alert-triangle" @click="rotatingRow = t">QR kodunu yenile</DropdownItem>
+                                    <DropdownItem icon="trash" danger @click="deletingRow = t">Masayı sil</DropdownItem>
+                                </BaseDropdown>
                             </div>
                         </article>
                     </div>
