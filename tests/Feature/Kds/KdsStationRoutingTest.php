@@ -108,6 +108,81 @@ class KdsStationRoutingTest extends KdsTestCase
         $this->get('/panel/barista')->assertOk();
     }
 
+    /** KULVAR: ekran lane + kulvar istasyon listesini prop olarak verir. */
+    public function test_ekran_kulvar_bilgisini_prop_olarak_verir(): void
+    {
+        $this->actingAs($this->makeUserInA(['kds.view']));
+
+        $this->get('/panel/mutfak')->assertOk()->assertInertia(fn ($page) => $page
+            ->component('Panel/Kds/Kitchen', false)
+            ->where('lane', 'kitchen')
+            ->where('laneStations', fn ($keys) => collect($keys)->contains('kitchen')
+                && ! collect($keys)->contains('barista')
+                && ! collect($keys)->contains('bar')));
+
+        $this->get('/panel/barista')->assertOk()->assertInertia(fn ($page) => $page
+            ->component('Panel/Kds/Kitchen', false)
+            ->where('lane', 'barista')
+            ->where('laneStations', fn ($keys) => collect($keys)->contains('barista')
+                && collect($keys)->contains('bar')
+                && ! collect($keys)->contains('kitchen')));
+    }
+
+    /**
+     * KULVAR "Tümü": mutfak ekranı (station YOK, lane=kitchen) yalnız mutfak
+     * kulvarını; barista ekranı yalnız barista kulvarını getirir. Mutfakta
+     * Barista/Bar kalemleri, baristada Mutfak/Izgara kalemleri GÖRÜNMEZ.
+     */
+    public function test_kulvar_tumu_yalniz_kendi_kulvarini_getirir(): void
+    {
+        $this->createOrderWithItems([
+            ['station' => 'kitchen', 'name' => 'Köfte'],
+            ['station' => 'grill', 'name' => 'Izgara Tavuk'],
+            ['station' => 'barista', 'name' => 'Latte'],
+            ['station' => 'bar', 'name' => 'Kokteyl'],
+        ]);
+
+        $this->actingAs($this->makeUserInA(['kds.view']));
+        $branchId = (int) $this->a['branch']->id;
+
+        $names = function (string $lane) use ($branchId): array {
+            $res = $this->getJson("/api/v1/kds/queue?mode=kitchen&branch_id={$branchId}&lane={$lane}")->assertOk();
+
+            return collect($res->json('orders'))
+                ->flatMap(fn (array $o) => collect($o['items'])->pluck('name'))
+                ->sort()->values()->all();
+        };
+
+        // Mutfak kulvarı "Tümü" → mutfak + ızgara; barista kulvarı GÖRÜNMEZ.
+        $this->assertSame(['Izgara Tavuk', 'Köfte'], $names('kitchen'));
+
+        // Barista kulvarı "Tümü" → latte + kokteyl; mutfak kulvarı GÖRÜNMEZ.
+        $this->assertSame(['Kokteyl', 'Latte'], $names('barista'));
+    }
+
+    /** KULVAR: mutfaktaki "Tümünü bitir" siparişin BARİSTA kalemini bitirmez. */
+    public function test_tumunu_bitir_kulvar_disi_kalemi_bitirmez(): void
+    {
+        $setup = $this->createOrderWithItems([
+            ['station' => 'kitchen', 'name' => 'Köfte'],
+            ['station' => 'barista', 'name' => 'Latte'],
+        ]);
+
+        $this->actingAs($this->makeUserInA(['kds.view']));
+
+        $this->postJson("/api/v1/kds/orders/{$setup['order_id']}/station-ready", [
+            'lane' => 'kitchen',
+            'expected_version' => $setup['version'],
+        ])->assertOk();
+
+        $statuses = \App\Modules\Orders\Models\OrderItem::withoutTenancy()
+            ->whereIn('id', $setup['item_ids'])
+            ->pluck('status', 'name');
+
+        $this->assertSame('ready', $statuses['Köfte']);         // mutfak kulvarı → hazır
+        $this->assertNotSame('ready', $statuses['Latte']);      // barista kulvarı → dokunulmadı
+    }
+
     private function assignStation(\App\Modules\Identity\Models\User $user, string $stationKey): void
     {
         $this->asTenant($this->a['tenant'], fn () => UserStation::query()->create([

@@ -28,10 +28,11 @@ class KdsQueueController extends Controller
         $this->authorizeMode($request, $mode);
 
         $branchId = (int) $request->query('branch_id', 0);
+        $lane = $this->laneOf($request);
 
         $payload = $mode === 'runner'
             ? $this->kds->runnerQueue($request->user(), $branchId)
-            : $this->kds->kitchenQueue($request->user(), $branchId, $request->query('station'));
+            : $this->kds->kitchenQueue($request->user(), $branchId, $request->query('station'), $lane);
 
         return response()->json($payload, 200, ['Cache-Control' => 'no-store, private']);
     }
@@ -58,6 +59,18 @@ class KdsQueueController extends Controller
         }
 
         return $this->queue($request);
+    }
+
+    /**
+     * Ekran KULVARI (Mutfak/Barista) — istemciden gelir ama YALNIZCA kısıtlar
+     * (kesişim; atanmış kapsamı asla genişletmez), bu yüzden güven sınırı
+     * değildir. Geçersiz değer → null (kulvar kısıtı yok).
+     */
+    private function laneOf(Request $request): ?string
+    {
+        $lane = $request->query('lane');
+
+        return in_array($lane, ['kitchen', 'barista'], true) ? $lane : null;
     }
 
     private function authorizeMode(Request $request, string $mode): void

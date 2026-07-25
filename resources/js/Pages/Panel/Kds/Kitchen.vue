@@ -63,14 +63,25 @@ const branchId = ref<number>(auth?.activeBranchId ?? branches[0]?.id ?? 0);
 const initialStation = (page.props.initialStation as string) || '';
 const station = ref<string>(initialStation);
 
+/* ---- Ekran KULVARI (Mutfak ↔ Barista AYRI) ----
+ * lane = 'kitchen' | 'barista' (controller'dan). laneStations = bu kulvarın
+ * istasyon anahtarları. Çipler yalnız kendi kulvarını gösterir; "Tümü" de
+ * yalnız bu kulvarı kapsar (mutfakta Barista/Kahve/Bar çipleri HİÇ görünmez). */
+const lane = (page.props.lane as string) || '';
+const laneStations = (page.props.laneStations as string[] | null) ?? null;
+
 const stationChips = computed(() => {
     let list = meta.stations.filter((s) => s.is_active);
+    if (laneStations) {
+        list = list.filter((s) => laneStations.includes(s.key));
+    }
     if (meta.allowedStations) {
         list = list.filter((s) => meta.allowedStations!.includes(s.key));
     }
     return list;
 });
-const showAllChip = computed(() => meta.allowedStations === null || meta.allowedStations.length > 1);
+// "Tümü" yalnız kulvar içinde birden çok çip varsa anlamlı (kulvar-kapsamlı).
+const showAllChip = computed(() => stationChips.value.length > 1);
 
 function stationPending(key: string): number {
     return summary.value.find((r) => r.station === key)?.pending ?? 0;
@@ -91,12 +102,14 @@ const soundOn = ref(sound.enabled());
 function queueUrl(): string {
     const p = new URLSearchParams({ mode: 'kitchen', branch_id: String(branchId.value) });
     if (station.value) p.set('station', station.value);
+    if (lane) p.set('lane', lane);
     return `/api/v1/kds/queue?${p}`;
 }
 
 function updatesUrl(cursor: number): string {
     const p = new URLSearchParams({ mode: 'kitchen', branch_id: String(branchId.value), cursor: String(cursor) });
     if (station.value) p.set('station', station.value);
+    if (lane) p.set('lane', lane);
     return `/api/v1/kds/updates?${p}`;
 }
 
@@ -255,7 +268,7 @@ function allReady(card: KdsOrderCard): void {
         () =>
             api(`/api/v1/kds/orders/${card.id}/station-ready`, {
                 method: 'POST',
-                body: { station: station.value || null, expected_version: card.version },
+                body: { station: station.value || null, lane: lane || null, expected_version: card.version },
             }),
         'Sipariş hazır olarak işaretlendi',
     );

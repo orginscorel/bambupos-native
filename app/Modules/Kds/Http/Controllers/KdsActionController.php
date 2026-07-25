@@ -57,6 +57,7 @@ class KdsActionController extends Controller
 
         $data = $request->validate([
             'station' => ['nullable', 'string', 'max:40'],
+            'lane' => ['nullable', Rule::in(['kitchen', 'barista'])],
             'expected_version' => ['nullable', 'integer'],
         ]);
 
@@ -65,6 +66,7 @@ class KdsActionController extends Controller
             $order,
             $data['station'] ?? null,
             $data['expected_version'] ?? null,
+            $data['lane'] ?? null,
         );
 
         return response()->json(['order_id' => $order->getKey(), 'version' => (int) $order->version]);

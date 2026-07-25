@@ -153,6 +153,44 @@ async function refreshDetail(silent = false): Promise<void> {
 const visibleItems = computed<OrderItemRow[]>(() => (detail.value?.items ?? []).filter((i) => i.is_active));
 const compTotalMinor = computed(() => detail.value?.comp_total_minor ?? 0);
 
+/**
+ * Toplam KDV (kuruş). KDV Türkiye'de fiyata DAHİLDİR (OrderService.computeLine
+ * → Money::vatPortionOfGross); yani `total_minor` içinde zaten yer alır. Bu
+ * yüzden ayrı EKLENMEZ — yalnız bilgi olarak "KDV (dahil)" gösterilir.
+ */
+const vatTotalMinor = computed(() => selected.value?.vat_total_minor ?? 0);
+
+/**
+ * Kalem-bazlı KDV oranı kırılımı (matrah + KDV). Backend ile birebir tutarlı:
+ * KDV DAHİL satır toplamından net = round(gross/(1+oran)), KDV = gross − net
+ * (aktif, ikramsız kalemler; oran 0 = KDV'siz hariç). Oranlar azalan sıralı.
+ */
+const vatByRate = computed<Array<{ rate: number; base_minor: number; vat_minor: number }>>(() => {
+    const groups = new Map<number, { base_minor: number; vat_minor: number }>();
+    for (const it of visibleItems.value) {
+        if (it.is_comp || !it.tax_rate || it.tax_rate <= 0) continue;
+        const gross = it.line_total_minor;
+        const net = Math.round(gross / (1 + it.tax_rate / 100));
+        const vat = gross - net;
+        const g = groups.get(it.tax_rate) ?? { base_minor: 0, vat_minor: 0 };
+        g.base_minor += net;
+        g.vat_minor += vat;
+        groups.set(it.tax_rate, g);
+    }
+    return [...groups.entries()]
+        .map(([rate, v]) => ({ rate, ...v }))
+        .sort((a, b) => b.rate - a.rate);
+});
+/** Kırılım güvenilir mi (döküm görülebiliyorsa ve toplamı KDV toplamına eşitse). */
+const vatBreakdownReliable = computed(
+    () => vatByRate.value.length > 0
+        && vatByRate.value.reduce((s, r) => s + r.vat_minor, 0) === vatTotalMinor.value,
+);
+/** Oran-tabanlı KDV formatı (ör. "%10"). */
+function ratePct(rate: number): string {
+    return `%${Number.isInteger(rate) ? rate : rate.toFixed(1)}`;
+}
+
 /* ---- Kalem düzenleme (ödeme öncesi hata düzeltme) ---- */
 const editMode = ref(false);
 const itemBusy = ref<number | null>(null);
@@ -672,7 +710,10 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                                     <BaseBadge v-if="it.is_comp" variant="info" no-icon>İkram</BaseBadge>
                                                 </p>
                                                 <p v-if="itemMeta(it)" class="truncate text-xs text-muted">{{ itemMeta(it) }}</p>
-                                                <p class="text-xs text-subtle">{{ money(it.unit_price_minor + it.options_price_minor) }} ₺ / adet</p>
+                                                <p class="text-xs text-subtle">
+                                                    {{ money(it.unit_price_minor + it.options_price_minor) }} ₺ / adet
+                                                    <span v-if="!it.is_comp && it.tax_rate > 0" class="text-muted">· KDV {{ ratePct(it.tax_rate) }} dahil</span>
+                                                </p>
 
                                                 <!-- Düzenleme kontrolleri -->
                                                 <div v-if="editMode && canEditNow" class="mt-2 flex flex-wrap items-center gap-2">
@@ -734,6 +775,21 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                         <div v-if="selected.service_charge_minor > 0" class="flex justify-between"><dt class="text-muted">Servis bedeli</dt><dd class="tabular-nums">{{ money(selected.service_charge_minor) }} ₺</dd></div>
                                         <div v-if="selected.rounding_minor !== 0" class="flex justify-between"><dt class="text-muted">Yuvarlama</dt><dd class="tabular-nums">{{ selected.rounding_minor > 0 ? '+' : '−' }}{{ money(Math.abs(selected.rounding_minor)) }} ₺</dd></div>
                                         <div class="mt-1 flex justify-between border-t border-default pt-2 text-base font-semibold"><dt>Toplam</dt><dd class="tabular-nums">{{ money(selected.total_minor) }} ₺</dd></div>
+                                        <!-- KDV fiyata DAHİL: toplama eklenmez, bilgi amaçlı gösterilir. -->
+                                        <div v-if="vatTotalMinor > 0" class="flex justify-between text-xs text-subtle">
+                                            <dt>KDV (dahil)</dt>
+                                            <dd class="tabular-nums">{{ money(vatTotalMinor) }} ₺</dd>
+                                        </div>
+                                        <template v-if="vatBreakdownReliable && (vatByRate.length > 1 || vatTotalMinor > 0)">
+                                            <div
+                                                v-for="r in vatByRate"
+                                                :key="r.rate"
+                                                class="flex justify-between text-xs text-subtle"
+                                            >
+                                                <dt class="ps-3">KDV {{ ratePct(r.rate) }} <span class="text-muted">(matrah {{ money(r.base_minor) }} ₺)</span></dt>
+                                                <dd class="tabular-nums">{{ money(r.vat_minor) }} ₺</dd>
+                                            </div>
+                                        </template>
                                         <div v-if="selected.paid_minor > 0" class="flex justify-between"><dt class="text-muted">Ödenen</dt><dd class="tabular-nums text-success">{{ money(selected.paid_minor) }} ₺</dd></div>
                                         <div v-if="selected.refunded_minor > 0" class="flex justify-between"><dt class="text-muted">İade edilen</dt><dd class="tabular-nums">{{ money(selected.refunded_minor) }} ₺</dd></div>
                                         <div class="flex justify-between text-lg font-bold"><dt>Kalan</dt><dd class="tabular-nums">{{ money(selected.remaining_minor) }} ₺</dd></div>

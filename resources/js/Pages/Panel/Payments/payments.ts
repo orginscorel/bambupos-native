@@ -60,6 +60,8 @@ export interface PayableOrder {
     items_count: number;
     items_total_minor: number;
     discount_minor: number;
+    /** KDV DAHİL toplam KDV payı (kuruş) — toplama zaten dahildir (bilgi satırı). */
+    vat_total_minor: number;
     service_charge_minor: number;
     rounding_minor: number;
     total_minor: number;
@@ -81,6 +83,8 @@ export interface OrderItemRow {
     variant_name: string | null;
     unit_price_minor: number;
     options_price_minor: number;
+    /** Ürünün KDV oranı (yüzde, ör. 10). Fiyata dahildir; 0 = KDV'siz. */
+    tax_rate: number;
     line_total_minor: number;
     is_comp: boolean;
     comp_reason: string | null;
@@ -103,6 +107,8 @@ export interface OrderDetail {
     items_total_minor: number;
     discount_minor: number;
     comp_total_minor: number;
+    /** KDV DAHİL toplam KDV payı (kuruş). */
+    vat_total_minor: number;
     service_charge_minor: number;
     rounding_minor: number;
     total_minor: number;

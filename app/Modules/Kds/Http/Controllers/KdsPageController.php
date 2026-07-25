@@ -69,8 +69,13 @@ class KdsPageController extends Controller
             $requested = ($allowed === null || in_array($default, $allowed, true)) ? $default : '';
         }
 
+        // $default = bu ekranın KULVARI ('kitchen'|'barista'). Kitchen.vue çipleri
+        // yalnız bu kulvarın istasyonlarıyla sınırlar; "Tümü" ve kuyruk lane ile
+        // daralır (Mutfak barista çiplerini/kalemlerini HİÇ göstermez, tersi de).
         return Inertia::render('Panel/Kds/Kitchen', $this->meta($request) + [
             'initialStation' => $requested,
+            'lane' => $default,
+            'laneStations' => $this->kds->laneStations($default),
         ]);
     }
 

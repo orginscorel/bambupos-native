@@ -119,6 +119,58 @@ class KdsService
     }
 
     /**
+     * Bir EKRAN KULVARININ istasyon anahtarları (Mutfak ↔ Barista AYRI
+     * kulvarlar). BARİSTA kulvarı = authz.barista_stations (barista/coffee/bar);
+     * MUTFAK kulvarı = geri kalan TÜM hazırlık istasyonları (mutfak/ızgara/
+     * tatlı/soğuk mutfak/fırın/nargile/paketleme + özel) + istasyonsuz kova
+     * (_none). Mutfak KDS'i barista kalemini, Barista KDS'i mutfak kalemini
+     * ASLA getirmez; "Tümü" çipi de yalnız o ekranın kendi kulvarını kapsar.
+     *
+     * @return array<int, string>
+     */
+    public function laneStations(string $lane): array
+    {
+        $barista = (array) config('authz.barista_stations', []);
+        $keys = $this->stations->all(activeOnly: false)->pluck('key')->all();
+
+        if ($lane === 'barista') {
+            return array_values(array_filter($keys, fn ($k): bool => in_array($k, $barista, true)));
+        }
+
+        // Mutfak kulvarı: barista-kulvarı DIŞI istasyonlar + istasyonsuz kova.
+        $kitchen = array_values(array_filter($keys, fn ($k): bool => ! in_array($k, $barista, true)));
+        $kitchen[] = (string) config('kds.unassigned_key', '_none');
+
+        return array_values(array_unique($kitchen));
+    }
+
+    /**
+     * Etkin istasyon listesini EKRAN KULVARIYLA daraltır — kulvar-dışı istasyon
+     * asla getirilmez. Bu daraltma yalnızca KISITLAR (asla genişletmez):
+     * kesişim atanmış istasyon kapsamının ÜSTÜNE eklenir → terminal kilidi ve
+     * §12 istasyon-kapsamı bozulmaz, yalnız yönetici/çok-istasyonlu için
+     * Mutfak↔Barista karışması engellenir.
+     *
+     * $lane null/'' → kulvar kısıtı yok (komi/eski davranış). $effective null
+     * (kısıtsız) → doğrudan kulvarın kendisi.
+     *
+     * @param  array<int, string>|null  $effective
+     * @return array<int, string>|null
+     */
+    private function narrowToLane(?array $effective, ?string $lane): ?array
+    {
+        if ($lane === null || $lane === '') {
+            return $effective;
+        }
+
+        $laneKeys = $this->laneStations($lane);
+
+        return $effective === null
+            ? $laneKeys
+            : array_values(array_intersect($effective, $laneKeys));
+    }
+
+    /**
      * İstenen süzgeç + kullanıcı ataması → etkin istasyon listesi.
      * null = tümü. Atama dışı istasyon istenirse 403.
      *
@@ -170,9 +222,16 @@ class KdsService
      *
      * @return array<string, mixed>
      */
-    public function kitchenQueue(User $user, int $branchId, ?string $station): array
+    public function kitchenQueue(User $user, int $branchId, ?string $station, ?string $lane = null): array
     {
-        $effective = $this->effectiveStations($user, $station);
+        // Kulvar (Mutfak/Barista) süzmesi atanmış-istasyon kapsamının ÜSTÜNE
+        // eklenir: "Tümü" (station boş) bile yalnız ekranın kendi kulvarını
+        // çeker; kulvar-dışı istasyon kuyruğa hiç girmez.
+        $effective = $this->narrowToLane($this->effectiveStations($user, $station), $lane);
+
+        // Çip rozetleri için yoğunluk özeti de kulvarla sınırlı (tek istasyon
+        // seçili olsa dahi kulvarın TÜM çipleri sayılır).
+        $summaryScope = $this->narrowToLane($this->allowedStations($user), $lane);
 
         $orders = Order::query()
             ->with([
@@ -224,7 +283,7 @@ class KdsService
 
         return [
             'orders' => $cards,
-            'summary' => $this->stationSummary($branchId, $this->allowedStations($user)),
+            'summary' => $this->stationSummary($branchId, $summaryScope),
             'cursor' => $this->cursor($branchId),
             'server_time' => now()->toIso8601String(),
         ];
@@ -335,9 +394,11 @@ class KdsService
      * Sürüm ilk adımda doğrulanır (409); kalemler OrderService üzerinden
      * tek tek ilerletilir (türetme her adımda tutarlı kalır).
      */
-    public function markStationReady(User $user, Order $order, ?string $station, ?int $expectedVersion): Order
+    public function markStationReady(User $user, Order $order, ?string $station, ?int $expectedVersion, ?string $lane = null): Order
     {
-        $effective = $this->effectiveStations($user, $station);
+        // "Tümü" görünümünde (station boş) kulvar daraltması ŞART: aksi hâlde
+        // mutfaktaki "Tümünü bitir" siparişin BARİSTA kalemlerini de bitirirdi.
+        $effective = $this->narrowToLane($this->effectiveStations($user, $station), $lane);
         $unassigned = (string) config('kds.unassigned_key', '_none');
 
         $order->refresh();
