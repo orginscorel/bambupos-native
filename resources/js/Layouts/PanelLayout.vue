@@ -126,12 +126,16 @@ const onClockVisibility = () => {
 };
 
 onMounted(() => {
-    // Kenar çubuğu tercihi (varsa) — yoksa immersive varsayılanı korunur.
-    try {
-        const storedCollapse = localStorage.getItem(collapsePrefKey.value);
-        if (storedCollapse !== null) collapsed.value = storedCollapse === '1';
-    } catch {
-        /* localStorage okunamıyorsa varsayılan geçerli */
+    // İmmersive sayfalar (Siparişler/Kasa) HER girişte KAPALI başlar (kullanıcı
+    // talebi): tercih HATIRLANMAZ → sayfaya tekrar girince sidebar oto-kapanır,
+    // açmak manueldir. Yalnız normal sayfalarda daraltma tercihi geri yüklenir.
+    if (!props.immersive) {
+        try {
+            const storedCollapse = localStorage.getItem(collapsePrefKey.value);
+            if (storedCollapse !== null) collapsed.value = storedCollapse === '1';
+        } catch {
+            /* localStorage okunamıyorsa varsayılan geçerli */
+        }
     }
 
     const epoch = Number(document.querySelector('meta[name="app-server-epoch"]')?.getAttribute('content'));

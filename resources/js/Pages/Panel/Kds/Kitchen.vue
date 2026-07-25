@@ -12,6 +12,7 @@ import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
 import KdsItemImage from './KdsItemImage.vue';
+import KdsNavDrawer from './KdsNavDrawer.vue';
 import StationManager from './StationManager.vue';
 import {
     createKdsSound,
@@ -308,6 +309,8 @@ function toggleSound(): void {
 }
 
 const showStations = ref(false);
+// Nav çekmecesi (soldan overlay) — diğer panel bölümlerine kaçış-kapısı.
+const showNav = ref(false);
 
 function pendingItems(card: KdsOrderCard): KdsItem[] {
     return card.items.filter((i) => i.status !== 'ready');
@@ -340,6 +343,10 @@ const pageTitle = computed(() => {
         <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2">
             <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
                 <AppIcon name="arrow-left" :size="20" />
+            </BaseButton>
+
+            <BaseButton variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
+                <AppIcon name="menu" :size="20" />
             </BaseButton>
 
             <h1 class="text-lg font-semibold">{{ pageTitle }}</h1>
@@ -613,6 +620,9 @@ const pageTitle = computed(() => {
 
     <!-- ================= İstasyon yönetimi ================= -->
     <StationManager v-if="meta.canManageStations" :open="showStations" @close="showStations = false" />
+
+    <!-- ================= Nav çekmecesi (soldan overlay) ================= -->
+    <KdsNavDrawer :open="showNav" @close="showNav = false" />
 
     <ToastHost />
 </template>

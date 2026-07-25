@@ -10,6 +10,7 @@ import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
 import KdsItemImage from './KdsItemImage.vue';
+import KdsNavDrawer from './KdsNavDrawer.vue';
 import {
     createKdsSound,
     createPollingFeed,
@@ -212,6 +213,9 @@ function toggleFullscreen(): void {
     }
 }
 
+// Nav çekmecesi (soldan overlay) — diğer panel bölümlerine kaçış-kapısı.
+const showNav = ref(false);
+
 const branchOptions = computed(() => branches.map((b) => ({ value: String(b.id), label: b.name })));
 function selectBranch(id: string): void {
     branchId.value = Number(id);
@@ -229,6 +233,10 @@ function selectBranch(id: string): void {
         >
             <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
                 <AppIcon name="arrow-left" :size="20" />
+            </BaseButton>
+
+            <BaseButton variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
+                <AppIcon name="menu" :size="20" />
             </BaseButton>
 
             <h1 class="text-lg font-semibold">Komi Ekranı</h1>
@@ -393,6 +401,9 @@ function selectBranch(id: string): void {
             </span>
         </footer>
     </div>
+
+    <!-- ================= Nav çekmecesi (soldan overlay) ================= -->
+    <KdsNavDrawer :open="showNav" @close="showNav = false" />
 
     <ToastHost />
 </template>
