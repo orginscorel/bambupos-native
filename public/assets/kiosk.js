@@ -214,12 +214,32 @@
         }
     }
 
+    // Masa kartı ikonu (yemek masası — SVG, inline, tema rengini miras alır).
+    var TABLE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M3 8h18"/><path d="M6 8v10"/><path d="M18 8v10"/><path d="M6 13h12"/></svg>';
+
     function renderTables() {
         var wrap = $('#k-tables');
         wrap.textContent = '';
         D.tables.forEach(function (tb) {
-            var b = el('button', '', tb.label);
+            var b = el('button', 'k-tablecard');
             b.type = 'button';
+
+            var ic = el('span', 'k-tablecard__icon');
+            ic.innerHTML = TABLE_ICON;
+            b.appendChild(ic);
+
+            // Sunucu etiketi "İsim · No" olabilir; sondaki "· No" ismi zaten
+            // içeriyorsa mükerrer görünmesin diye ismi temel al, sarkan ayraç
+            // bırakma. İsim yoksa numara büyük gösterilir.
+            var parts = String(tb.label).split(' · ');
+            var name = parts[0].trim();
+            var num = parts.length > 1 ? parts[parts.length - 1].trim() : '';
+            var primary = name || num || tb.label;
+
+            b.appendChild(el('span', 'k-tablecard__eyebrow', S.lang === 'tr' ? 'Masa' : 'Table'));
+            b.appendChild(el('span', 'k-tablecard__no', primary));
+
             b.addEventListener('click', function () {
                 S.tableId = tb.id; S.tableLabel = tb.label;
                 enterMenu();

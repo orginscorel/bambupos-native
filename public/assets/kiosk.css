@@ -141,13 +141,41 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- Masa seçimi ---------- */
 .k-tablegrid {
     flex: 1; overflow-y: auto; display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 1rem; padding: 1.4rem;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1.1rem; padding: 1.6rem; align-content: start;
 }
-.k-tablegrid button {
-    min-height: 90px; border-radius: var(--k-radius); border: 1px solid var(--k-line);
-    background: var(--k-surface); font-size: var(--k-fs-lg); font-weight: 700;
+.k-tablecard {
+    position: relative; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: .35rem; min-height: 148px;
+    border-radius: var(--k-radius); border: 1px solid var(--k-line);
+    background:
+        radial-gradient(120% 90% at 50% -20%, var(--k-brand-soft) 0%, transparent 60%),
+        var(--k-surface);
+    box-shadow: 0 1px 2px rgba(36, 26, 18, .04), 0 8px 20px -14px rgba(36, 26, 18, .25);
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    overflow: hidden;
 }
+.k-tablecard::before {
+    content: ''; position: absolute; inset: 0 0 auto 0; height: 4px;
+    background: linear-gradient(90deg, var(--k-brand), #ea7a3c);
+    opacity: .0; transition: opacity .12s ease;
+}
+.k-tablecard:active { transform: scale(.97); box-shadow: 0 1px 2px rgba(36, 26, 18, .06); }
+@media (hover: hover) {
+    .k-tablecard:hover { border-color: var(--k-brand); box-shadow: 0 10px 26px -14px rgba(194, 65, 12, .5); }
+    .k-tablecard:hover::before { opacity: 1; }
+}
+.k-tablecard__icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 14px;
+    background: var(--k-brand-soft); color: var(--k-brand); margin-bottom: .15rem;
+}
+.k-tablecard__icon svg { width: 30px; height: 30px; }
+.k-tablecard__eyebrow {
+    font-size: .82rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--k-muted);
+}
+.k-tablecard__no { font-size: 1.4rem; font-weight: 800; line-height: 1.1; color: var(--k-ink); text-align: center; padding: 0 .3rem; }
 
 /* ---------- Menü ---------- */
 .k-menuhead {

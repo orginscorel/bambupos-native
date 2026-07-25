@@ -18,7 +18,7 @@
     <link rel="preload" href="/fonts/poppins-400-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-700-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-700-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/assets/kiosk.css?v=20260725.2">
+    <link rel="stylesheet" href="/assets/kiosk.css?v=20260725.4">
 </head>
 <body class="k-body">
     @yield('content')

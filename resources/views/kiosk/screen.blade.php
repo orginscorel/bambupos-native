@@ -229,5 +229,5 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/kiosk.js?v=20260723.1" defer></script>
+    <script src="/assets/kiosk.js?v=20260725.3" defer></script>
 @endpush
