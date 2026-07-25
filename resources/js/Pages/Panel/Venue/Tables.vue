@@ -19,6 +19,7 @@ import DropdownItem from '@/Components/ui/DropdownItem.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
+import TablePreview3D from './TablePreview3D.vue';
 import VenueNav from './VenueNav.vue';
 import {
     fetchAreas,
@@ -585,6 +586,21 @@ function groupBusyCount(g: TableGroup): number {
                                 :aria-label="`${t.name} masasını seç`"
                                 @update:model-value="(v: boolean) => toggleOne(t.id, v)"
                             />
+
+                            <!-- 3D izometrik vektörel önizleme: dolu/boş görsel dili -->
+                            <div
+                                class="-mx-4 -mt-4 flex h-24 items-center justify-center overflow-hidden rounded-t-xl border-b transition-colors duration-(--dur-fast)"
+                                :class="isBusy(t.status_variant)
+                                    ? 'border-primary-soft-border bg-primary-soft text-primary'
+                                    : 'border-default bg-inset text-subtle'"
+                            >
+                                <TablePreview3D
+                                    :shape="t.shape"
+                                    :capacity="t.capacity"
+                                    :busy="isBusy(t.status_variant)"
+                                    class="h-full w-full"
+                                />
+                            </div>
 
                             <!-- No + ad + kapasite -->
                             <div class="flex items-center gap-3 pe-7">

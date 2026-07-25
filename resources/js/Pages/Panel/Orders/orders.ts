@@ -82,6 +82,9 @@ export interface OrderSummary {
     channel_label: string;
     channel_icon: string;
     channel_variant: StatusMeta['variant'];
+    source_label: string;
+    source_icon: string;
+    source_variant: StatusMeta['variant'];
     service_type: string;
     service_type_label: string;
     service_type_icon: string;
@@ -97,6 +100,7 @@ export interface OrderSummary {
     customer_name: string | null;
     customer_phone: string | null;
     items_count: number;
+    served_count: number;
     items_total_minor: number;
     discount_minor: number;
     discount_percent: number | null;

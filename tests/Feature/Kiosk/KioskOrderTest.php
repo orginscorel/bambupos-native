@@ -157,9 +157,75 @@ class KioskOrderTest extends TestCase
         $order = Order::withoutTenancy()->where('channel', 'kiosk')->first();
         $this->assertSame('placed', $order->status);
         $this->assertSame(0, (int) $order->paid_minor);
-        // Servis tipi + masa personel notunda taşınır (kiosk kanalı masasızdır)
-        $this->assertStringContainsString('Masada servis', (string) $order->note);
-        $this->assertStringContainsString('Bahçe', (string) $order->note);
+        // #1: "Masada" siparişi seçili masaya BAĞLANIR (masaya-bağla mekanizması) —
+        // servis tipi yapısal kolonda, masa artık nota GÖMÜLMEZ (#3).
+        $this->assertSame((int) $table->id, (int) $order->table_id);
+        $this->assertSame('dine_in', $order->service_type);
+        $this->assertNull($order->note);
+        $this->assertSame(0, Payment::withoutTenancy()->count());
+    }
+
+    public function test_masada_kiosk_siparisi_masanin_acik_adisyonuna_eklenir(): void
+    {
+        // #1: Masada TEK açık adisyon — masada zaten açık adisyon varsa
+        // kiosk "Masada" siparişi YENİ adisyon açmaz, ONA kalem ekler.
+        $device = $this->makeDevice($this->a, ['payment_mode' => KioskDevice::MODE_COUNTER]);
+        $table = $this->makeTable($this->a, ['name' => 'Salon 3', 'number' => 3]);
+        $product = $this->makeProduct($this->a, ['price_minor' => 8000]);
+
+        // Garson masada adisyon açar (masa siparişi).
+        $this->actingAs($this->a['user']);
+        $open = $this->postJson('/api/v1/orders', [
+            'branch_id' => $this->a['branch']->id,
+            'channel' => 'table',
+            'table_id' => $table->id,
+        ])->assertCreated();
+        $existingId = (int) $open->json('order.id');
+
+        // Kiosk "Masada" siparişi AYNI masaya gelir → var olan adisyona eklenir.
+        $res = $this->postJson('/kiosk/api/orders', [
+            'token' => $device->token,
+            'order_type' => 'dine_in',
+            'table_id' => $table->id,
+            'items' => [['product_id' => $product->id, 'qty' => 2]],
+        ])->assertCreated();
+
+        $this->assertSame($existingId, (int) $res->json('receipt.order_no'));
+
+        // Masada YALNIZ TEK açık adisyon var (yenisi açılmadı).
+        $openCount = Order::withoutTenancy()
+            ->where('table_id', $table->id)
+            ->whereNotIn('status', ['paid', 'cancelled', 'refunded', 'debt_transferred'])
+            ->count();
+        $this->assertSame(1, $openCount);
+
+        $order = Order::withoutTenancy()->find($existingId);
+        $this->assertSame(1, (int) $order->items()->count()); // tek kalem satırı (qty=2)
+        $this->assertSame(2, (int) $order->items()->first()->qty);
+    }
+
+    public function test_masada_kiosk_pos_modunda_bile_tahsil_etmez_kasada_oder(): void
+    {
+        // #2: Cihaz kiosk_pos olsa da "Masada" siparişi kioskta ÖDENMEZ —
+        // hesap masada/kasada tüm adisyon üzerinden kapanır (ciro şişmez).
+        $device = $this->makeDevice($this->a); // MODE_KIOSK_POS (varsayılan)
+        $table = $this->makeTable($this->a, ['name' => 'Teras', 'number' => 9]);
+        $product = $this->makeProduct($this->a, ['price_minor' => 12000]);
+
+        $res = $this->postJson('/kiosk/api/orders', [
+            'token' => $device->token,
+            'order_type' => 'dine_in',
+            'table_id' => $table->id,
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+        ])->assertCreated();
+
+        $this->assertSame('placed_pay_at_counter', $res->json('result'));
+        $this->assertTrue($res->json('receipt.pay_at_counter'));
+
+        $order = Order::withoutTenancy()->where('channel', 'kiosk')->first();
+        $this->assertSame('placed', $order->status);
+        $this->assertSame(0, (int) $order->paid_minor);
+        $this->assertSame((int) $table->id, (int) $order->table_id);
         $this->assertSame(0, Payment::withoutTenancy()->count());
     }
 

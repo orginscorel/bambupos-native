@@ -17,6 +17,9 @@ class ProductReportService
 {
     private const EXCLUDED = ['draft', 'pending_approval', 'cancelled'];
 
+    /** İkram özetinde KAPANAN adisyon tanımı (FinanceReportService ile aynı — tek tanım). */
+    private const REVENUE_STATUSES = ['paid', 'debt_transferred'];
+
     public function profitability(ReportFilters $f): array
     {
         $rows = $f->apply(DB::table('orders'), 'orders')
@@ -84,6 +87,54 @@ class ProductReportService
             'rows' => $out,
             'missing_cost_count' => $missingCost,
             'median_margin' => $medianMargin,
+            // İkram (comp): gelir GETİRMEZ ama stok/maliyet TÜKETİR — ayrı kart
+            // + kârdan düşülür (net kâr = brüt kâr − ikram maliyeti).
+            'comp' => $this->compSummary($f),
+        ];
+    }
+
+    /**
+     * İkram (comp) özeti — gelir getirmeyen ama maliyet tüketen kalemler.
+     *
+     * - "Tutar" = KAPANAN adisyonların `orders.comp_total_minor` toplamı
+     *   (FinanceReportService::summary→comp_minor ile AYNI tanım/kaynak).
+     * - "Adet" + "Maliyet" = ikram KALEMLERİ (order_items.is_comp=true,
+     *   iptal hariç); maliyet GÜNCEL `products.cost_minor × qty` (kâr
+     *   raporuyla aynı maliyet kaynağı). Maliyeti girilmemiş ürünün
+     *   ikramı maliyet toplamına KATILMAZ, `missing_cost_items` ile
+     *   dürüstçe işaretlenir (0 uydurulmaz).
+     */
+    public function compSummary(ReportFilters $f): array
+    {
+        // Tutar: adisyon düzeyi comp_total_minor (tek doğruluk kaynağı).
+        $value = (int) $f->apply(DB::table('orders'), 'orders')
+            ->whereIn('orders.status', self::REVENUE_STATUSES)
+            ->sum('orders.comp_total_minor');
+
+        // Adet + maliyet: ikram kalemleri × güncel ürün maliyeti.
+        $row = $f->apply(DB::table('orders'), 'orders')
+            ->whereIn('orders.status', self::REVENUE_STATUSES)
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->where('order_items.is_comp', true)
+            ->where('order_items.status', '!=', 'cancelled')
+            ->leftJoin('products', 'products.id', '=', 'order_items.product_id')
+            ->selectRaw(
+                'COALESCE(SUM(order_items.qty), 0) AS qty,
+                 COUNT(DISTINCT order_items.id) AS item_count,
+                 COALESCE(SUM(CASE WHEN products.cost_minor IS NOT NULL THEN order_items.qty * products.cost_minor END), 0) AS cost,
+                 COALESCE(SUM(CASE WHEN order_items.product_id IS NOT NULL AND products.cost_minor IS NOT NULL THEN 1 ELSE 0 END), 0) AS cost_known'
+            )->first();
+
+        $items = (int) $row->item_count;
+        $costKnown = (int) $row->cost_known;
+
+        return [
+            'qty' => (int) $row->qty,
+            'items' => $items,
+            'value_minor' => $value,
+            'cost_minor' => (int) $row->cost,
+            'cost_known_items' => $costKnown,
+            'missing_cost_items' => $items - $costKnown,
         ];
     }
 

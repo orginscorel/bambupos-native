@@ -608,10 +608,12 @@ const eventTypeLabels: Record<string, string> = {
                         <BaseButton size="sm" variant="ghost" icon-only label="Panoya dön" @click="router.visit('/panel/siparisler')">
                             <AppIcon name="arrow-left" :size="18" />
                         </BaseButton>
-                        <BaseBadge :variant="order.channel_variant" no-icon>
-                            <AppIcon :name="order.channel_icon" :size="12" />
-                            {{ order.channel_label }}
+                        <!-- Kaynak (nereden: Garson/Kiosk/QR) — ServiceType ile çakışmaz (#3) -->
+                        <BaseBadge :variant="order.source_variant" no-icon>
+                            <AppIcon :name="order.source_icon" :size="12" />
+                            {{ order.source_label }}
                         </BaseBadge>
+                        <!-- Servis tipi (nasıl: Masada/Gel-al/Paket) -->
                         <BaseBadge :variant="order.service_type_variant" no-icon>
                             <AppIcon :name="order.service_type_icon" :size="12" />
                             {{ order.service_type_label }}
@@ -620,6 +622,11 @@ const eventTypeLabels: Record<string, string> = {
                         <BaseBadge :variant="order.status_variant" no-icon>
                             <AppIcon :name="order.status_icon" :size="12" />
                             {{ order.status_label }}
+                        </BaseBadge>
+                        <!-- Kısmi teslim ilerlemesi (#4): komi kalemleri tek tek teslim eder -->
+                        <BaseBadge v-if="order.items_count > 0 && order.served_count < order.items_count" variant="neutral" no-icon>
+                            <AppIcon name="utensils" :size="12" />
+                            {{ order.served_count }}/{{ order.items_count }} servis edildi
                         </BaseBadge>
                         <BaseBadge :variant="order.payment_state === 'paid' ? 'success' : order.payment_state === 'partial' ? 'warning' : 'neutral'" no-icon>
                             <AppIcon :name="order.payment_state === 'paid' ? 'check-circle' : 'cart'" :size="12" />

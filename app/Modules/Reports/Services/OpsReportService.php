@@ -21,6 +21,7 @@ class OpsReportService
         private readonly SalesReportService $sales,
         private readonly FinanceReportService $finance,
         private readonly ReceivablesReportService $receivables,
+        private readonly ProductReportService $products,
     ) {
     }
 
@@ -65,6 +66,22 @@ class OpsReportService
         // 'available'=false — alanlar null kalır, uydurma sayı YOK.
         $open = $this->receivables->openAccounts($f);
 
+        // İkram (comp): gelir getirmeyen ama stok/maliyet tüketen kalemler
+        // (adet + tutar + GÜNCEL maliyet). Kârlılık ekranıyla aynı kaynak.
+        $comp = $this->products->compSummary($f);
+
+        // Ciro vs Tahsilat netliği (#9): "Ciro (borç dahil)" içine borca
+        // taşınan (debt_transferred) tutar da girer ama HENÜZ TAHSİL
+        // EDİLMEDİ — kalan bakiyesi ayrıca gösterilir ("borca taşınan X₺
+        // dahil, henüz tahsil edilmedi").
+        $debt = $f->apply(DB::table('orders'), 'orders')
+            ->where('orders.status', 'debt_transferred')
+            ->selectRaw(
+                'COUNT(*) AS c,
+                 COALESCE(SUM(orders.total_minor), 0) AS total,
+                 COALESCE(SUM(orders.total_minor - orders.paid_minor), 0) AS balance'
+            )->first();
+
         return [
             'from' => $f->from,
             'to' => $f->to,
@@ -79,6 +96,16 @@ class OpsReportService
             'item_discount_minor' => $finance['item_discount_minor'],
             'discount_total_minor' => $finance['order_discount_minor'] + $finance['item_discount_minor'],
             'comp_minor' => $finance['comp_minor'],
+            // İkram maliyeti (stok tüketimi) — gün sonu/kârlılık için.
+            'comp_count' => $comp['qty'],
+            'comp_items' => $comp['items'],
+            'comp_cost_minor' => $comp['cost_minor'],
+            'comp_cost_known_items' => $comp['cost_known_items'],
+            'comp_missing_cost_items' => $comp['missing_cost_items'],
+            // Ciro içindeki borca-taşınan pay (henüz tahsil edilmemiş kısım).
+            'debt_transferred_count' => (int) $debt->c,
+            'debt_transferred_minor' => (int) $debt->total,
+            'debt_transferred_balance_minor' => (int) $debt->balance,
             'cancelled_orders' => $finance['cancelled_orders'],
             'cancelled_minor' => $finance['cancelled_minor'],
             'refunded_minor' => $finance['refunded_minor'],

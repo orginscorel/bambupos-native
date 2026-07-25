@@ -62,6 +62,44 @@ enum OrderChannel: string
         };
     }
 
+    /*
+     * KAYNAK (nereden) — kanal iki farklı bilgiyi karıştırıyordu: siparişin
+     * NEREDEN geldiği (garson/kiosk/QR) ile NASIL servis edileceği
+     * (masada/gel-al/paket). "Nasıl" bilgisi artık yapısal ServiceType'tan
+     * gelir; kanalın Package/Pickup değerleri de aslında POS'ta personelin
+     * açtığı sipariştir (kaynak = Garson). Bu üçlü, Board/Detail'de
+     * ServiceType etiketiyle ÇAKIŞMAYAN tek "kaynak" rozetini besler
+     * (#3: "paket" çift görünmesin).
+     */
+
+    /** Siparişin KAYNAĞI (nereden): Garson (salon/POS) · Kiosk · QR. */
+    public function sourceLabel(): string
+    {
+        return match ($this) {
+            self::Table, self::Package, self::Pickup => 'Garson',
+            self::Kiosk => 'Kiosk',
+            self::Qr => 'QR',
+        };
+    }
+
+    public function sourceIcon(): string
+    {
+        return match ($this) {
+            self::Table, self::Package, self::Pickup => 'users',
+            self::Kiosk => 'dashboard',
+            self::Qr => 'qr-code',
+        };
+    }
+
+    public function sourceVariant(): string
+    {
+        return match ($this) {
+            self::Table, self::Package, self::Pickup => 'info',
+            self::Kiosk => 'neutral',
+            self::Qr => 'success',
+        };
+    }
+
     public function variant(): string
     {
         return match ($this) {

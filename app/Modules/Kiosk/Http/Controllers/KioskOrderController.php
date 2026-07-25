@@ -195,33 +195,28 @@ class KioskOrderController extends Controller
     private function placeAndPay(KioskDevice $device, array $data, ?string $tableLabel): array
     {
         $actor = $this->actor->forDevice($device);
+        $isDineIn = $data['order_type'] === 'dine_in';
 
-        $typeLabel = match ($data['order_type']) {
-            'dine_in' => 'Masada servis',
-            'takeaway' => 'Gel-al',
-            default => 'Paket',
-        };
-
-        // Servis tipi artık YAPISAL kolonda tutulur (orders.service_type) —
+        // Servis tipi YAPISAL kolonda tutulur (orders.service_type) —
         // Board/Detail/KDS tutarlı "Masada/Gel-al/Paket" etiketini oradan
-        // gösterir. Kiosk kanalı masaya bağlanmaz (OrderChannel::usesTable()
-        // = false), bu yüzden dine_in'in hedef masası personelin göreceği
-        // nota YANINDA taşınır (komi hangi masaya götüreceğini görsün).
-        $noteParts = array_filter([
-            $typeLabel.($tableLabel !== null ? ' · Masa: '.$tableLabel : ''),
-            isset($data['note']) && trim((string) $data['note']) !== '' ? trim((string) $data['note']) : null,
-        ]);
+        // gösterir; servis tipi/masa artık NOTA GÖMÜLMEZ (#3 tek-etiket).
+        // "Masada" siparişi seçili masanın TEK açık adisyonuna bağlanır
+        // (#1: OrderService::open masa mekanizmasını çalıştırır). Not artık
+        // YALNIZ müşterinin yazdığıdır.
+        $note = isset($data['note']) && trim((string) $data['note']) !== '' ? trim((string) $data['note']) : null;
 
         // Açılış + kalemler TEK transaction: herhangi bir kalem reddedilirse
         // (yabancı ürün, kanal kapalı, tükendi…) sipariş İZ BIRAKMADAN geri
         // alınır — panelde hayalet boş adisyon kalmaz. Sağlayıcı çağrısı
         // (ödeme) bilinçli olarak transaction DIŞINDADIR (ADR-010).
-        $order = DB::transaction(function () use ($device, $data, $actor, $noteParts): Order {
+        $order = DB::transaction(function () use ($device, $data, $actor, $note, $isDineIn): Order {
             $order = $this->orders->open([
                 'branch_id' => (int) $device->branch_id,
                 'channel' => 'kiosk',
                 'service_type' => $data['order_type'], // yapısal tip (dine_in/takeaway/package)
-                'note' => implode(' — ', $noteParts),
+                // "Masada" → masaya bağla (tek açık adisyon); gel-al/paket masasız.
+                'table_id' => $isDineIn ? (int) $data['table_id'] : null,
+                'note' => $note,
                 'customer_name' => $data['customer_name'] ?? null,
             ], $actor);
 
@@ -241,11 +236,22 @@ class KioskOrderController extends Controller
         $order = $order->fresh(['items.options']);
         $total = (int) $order->total_minor;
 
-        // Kasada ödeme modu veya sıfır tutar: tahsilat kioskta YAPILMAZ.
-        if ($device->payment_mode !== KioskDevice::MODE_KIOSK_POS || $total <= 0) {
+        // Tahsilatın kioskta yapılacağı TEK durum: masasız sipariş (gel-al/
+        // paket) + cihaz kiosk_pos modunda + tutar > 0 (#2). "Masada" siparişi
+        // masa adisyonuna eklendiğinden ASLA kioskta ödenmez (hesap masada/
+        // kasada, tüm adisyon üzerinden kapanır — aksi halde kiosk masanın
+        // TOPLAM adisyonunu tahsil edip ciroyu şişirir). Counter modu ve
+        // sıfır tutar da tahsilatsızdır → sipariş "Ödeme bekliyor" kalır.
+        $chargeAtKiosk = ! $isDineIn
+            && $device->payment_mode === KioskDevice::MODE_KIOSK_POS
+            && $total > 0;
+
+        if (! $chargeAtKiosk) {
             return [[
                 'result' => 'placed_pay_at_counter',
-                'message' => 'Siparişiniz alındı. Lütfen kasada ödeyiniz.',
+                'message' => $isDineIn
+                    ? 'Siparişiniz alındı ve masanıza iletildi.'
+                    : 'Siparişiniz alındı. Lütfen kasada ödeyiniz.',
                 'receipt' => $this->receipt($device, $order, null, $data['order_type'], $tableLabel),
             ], 201];
         }

@@ -101,7 +101,12 @@ class OrderService
 
         $table = null;
 
-        if ($channel->usesTable()) {
+        // Masaya BAĞLAMA kuralı: masayı kullanan kanal (masa/QR) VEYA yapısal
+        // servis tipi "masada" (dine_in) ise adisyon masaya bağlanır — böylece
+        // kiosk "Masada" siparişi de masa siparişiyle AYNI tek-açık-adisyon
+        // mekanizmasına girer (#1: table_open_slot UNIQUE + satır kilidi; açık
+        // adisyon varsa ONA eklenir, yoksa açılır). Gel-al/paket masasız kalır.
+        if ($channel->usesTable() || $serviceType->requiresTable()) {
             $table = Table::withoutTenancy()->find($data['table_id'] ?? 0);
 
             if ($table === null || (int) $table->branch_id !== (int) $data['branch_id']) {

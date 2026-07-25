@@ -101,6 +101,27 @@ export interface PaymentMethodRow {
     share: number;
 }
 
+/**
+ * İkram (comp) özeti: gelir getirmeyen ama stok/maliyet tüketen kalemler.
+ * `value_minor` = orders.comp_total_minor (bedelsiz değer),
+ * `cost_minor` = tüketilen maliyet (yalnız maliyeti bilinen ürünler).
+ */
+export interface CompSummary {
+    qty: number;
+    items: number;
+    value_minor: number;
+    cost_minor: number;
+    cost_known_items: number;
+    missing_cost_items: number;
+}
+
+export interface ProfitReport {
+    rows: ProfitRow[];
+    missing_cost_count: number;
+    median_margin: number | null;
+    comp: CompSummary;
+}
+
 export interface ProfitRow {
     name: string;
     qty: number;
@@ -128,6 +149,14 @@ export interface EodSummary {
     item_discount_minor: number;
     discount_total_minor: number;
     comp_minor: number;
+    comp_count: number;
+    comp_items: number;
+    comp_cost_minor: number;
+    comp_cost_known_items: number;
+    comp_missing_cost_items: number;
+    debt_transferred_count: number;
+    debt_transferred_minor: number;
+    debt_transferred_balance_minor: number;
     cancelled_orders: number;
     cancelled_minor: number;
     refunded_minor: number;

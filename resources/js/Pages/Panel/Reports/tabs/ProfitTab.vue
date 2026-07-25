@@ -7,18 +7,18 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import ReportTable from '../components/ReportTable.vue';
 import ExportButtons from '../components/ExportButtons.vue';
 import StatTile from '../components/StatTile.vue';
-import { useReport, type ProfitRow, type ReportFilterState } from '../reports';
+import { useReport, type ProfitReport, type ProfitRow, type ReportFilterState } from '../reports';
 
 const props = defineProps<{ filters: ReportFilterState }>();
 const filters = toRef(props, 'filters');
 
-const report = useReport<{ rows: ProfitRow[]; missing_cost_count: number; median_margin: number | null }>(
-    'product-profitability',
-    filters,
-);
+const report = useReport<ProfitReport>('product-profitability', filters);
 
 const rows = computed(() => report.data.value?.rows ?? []);
 const withCost = computed(() => rows.value.filter((r) => r.has_cost && r.margin !== null));
+
+/** İkram (comp): gelir getirmeyen ama maliyet tüketen kalemler. */
+const comp = computed(() => report.data.value?.comp ?? null);
 
 const best = computed(() =>
     withCost.value.length > 0 ? [...withCost.value].sort((a, b) => (b.margin ?? 0) - (a.margin ?? 0))[0] : null,
@@ -31,6 +31,9 @@ const flagged = computed(() => rows.value.filter((r) => r.high_volume_low_margin
 const totalProfit = computed(() =>
     withCost.value.reduce((sum, r) => sum + (r.profit_minor ?? 0), 0),
 );
+
+/** Net kâr = ürün brüt kârı − ikram maliyeti (ikram stok/maliyet tüketir, gelir getirmez). */
+const netProfitAfterComp = computed(() => totalProfit.value - (comp.value?.cost_minor ?? 0));
 
 const pct = (v: number | null) => (v === null ? '—' : `%${v.toFixed(1).replace('.', ',')}`);
 </script>
@@ -79,6 +82,43 @@ const pct = (v: number | null) => (v === null ? '—' : `%${v.toFixed(1).replace
                     :hint="worst ? `marj ${pct(worst.margin)}` : 'Maliyet verisi yok'"
                 />
             </div>
+
+            <!-- İkram (maliyet) (#7): gelir getirmez, stok/maliyet tüketir; net kârdan düşülür -->
+            <BaseCard
+                v-if="comp && (comp.qty > 0 || comp.value_minor > 0)"
+                title="İkram (maliyet)"
+            >
+                <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    <StatTile
+                        label="İkram adedi"
+                        :value="formatNumber(comp.qty)"
+                        :hint="`${formatNumber(comp.items)} kalem`"
+                        :up-is-good="false"
+                    />
+                    <StatTile
+                        label="İkram tutarı (bedelsiz)"
+                        :value="formatCurrencyMinor(comp.value_minor)"
+                        hint="gelir getirmez"
+                        :up-is-good="false"
+                    />
+                    <StatTile
+                        label="İkram maliyeti (stok)"
+                        :value="formatCurrencyMinor(comp.cost_minor)"
+                        :hint="comp.missing_cost_items > 0 ? `${formatNumber(comp.missing_cost_items)} kalemin maliyeti girilmemiş` : 'tüketilen stok maliyeti'"
+                        :up-is-good="false"
+                    />
+                    <StatTile
+                        label="Net kâr (ikram sonrası)"
+                        :value="withCost.length > 0 ? formatCurrencyMinor(netProfitAfterComp) : '—'"
+                        :hint="withCost.length > 0 ? 'brüt kâr − ikram maliyeti' : 'Maliyet verisi yok'"
+                    />
+                </div>
+                <p class="mt-3 border-t border-default pt-3 text-xs text-subtle">
+                    İkram edilen kalemler ciroya/gelire GİRMEZ ama tüketilen stok maliyeti kârı düşürür.
+                    Net kâr = maliyeti bilinen ürünlerin brüt kârı − ikram maliyeti. Maliyeti girilmemiş
+                    ikram kalemleri maliyet toplamına katılmaz (uydurma 0 yok).
+                </p>
+            </BaseCard>
 
             <BaseCard v-if="flagged.length > 0" title="Çok satan ama düşük kârlı" flush>
                 <ReportTable

@@ -73,6 +73,14 @@ onBeforeUnmount(() => {
 
 const branchOptions = computed(() => branches.value.map((b) => ({ value: String(b.id), label: b.name })));
 
+/* Masadaki tüm açık adisyonların aktif kalem + servis edilen toplamı (#4). */
+function tableItems(t: BoardTable): number {
+    return t.orders.reduce((n, o) => n + o.items_count, 0);
+}
+function tableServed(t: BoardTable): number {
+    return t.orders.reduce((n, o) => n + o.served_count, 0);
+}
+
 const areaOptions = computed(() => {
     const names = new Set<string>();
     board.value.tables.forEach((t) => {
@@ -352,7 +360,14 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                                 </span>
                                 <span class="text-xs font-medium text-muted">{{ t.orders.reduce((n, o) => n + o.items_count, 0) }} kalem</span>
                             </div>
-                            <span class="text-xs text-subtle">{{ orderElapsed(t.orders[0]) }} önce</span>
+                            <div class="flex items-baseline justify-between gap-2">
+                                <span class="text-xs text-subtle">{{ orderElapsed(t.orders[0]) }} önce</span>
+                                <!-- Kısmi teslim ilerlemesi (#4) -->
+                                <span
+                                    v-if="tableItems(t) > 0 && tableServed(t) < tableItems(t)"
+                                    class="text-xs text-subtle"
+                                >{{ tableServed(t) }}/{{ tableItems(t) }} servis edildi</span>
+                            </div>
                         </div>
                         <BaseBadge :variant="t.status_variant" no-icon>
                             <AppIcon :name="t.status_icon" :size="12" />
@@ -377,10 +392,12 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                         @click="router.visit(`/panel/siparisler/${o.id}`)"
                     >
                         <div class="flex flex-wrap items-center gap-2">
-                            <BaseBadge :variant="o.channel_variant" no-icon>
-                                <AppIcon :name="o.channel_icon" :size="12" />
-                                {{ o.channel_label }}
+                            <!-- Kaynak (nereden: Garson/Kiosk/QR) — tek etiket, ServiceType ile çakışmaz (#3) -->
+                            <BaseBadge :variant="o.source_variant" no-icon>
+                                <AppIcon :name="o.source_icon" :size="12" />
+                                {{ o.source_label }}
                             </BaseBadge>
+                            <!-- Servis tipi (nasıl: Masada/Gel-al/Paket) -->
                             <BaseBadge :variant="o.service_type_variant" no-icon>
                                 <AppIcon :name="o.service_type_icon" :size="12" />
                                 {{ o.service_type_label }}
@@ -390,6 +407,8 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
+                            <!-- Kısmi teslim ilerlemesi (#4): komi kalemleri tek tek teslim eder -->
+                            <span v-if="o.items_count > 0 && o.served_count < o.items_count" class="text-xs text-subtle">{{ o.served_count }}/{{ o.items_count }} servis edildi</span>
                             <span class="whitespace-nowrap text-sm font-semibold tabular-nums text-body">{{ o.total_display }} ₺</span>
                             <BaseBadge :variant="o.payment_state === 'paid' ? 'success' : o.payment_state === 'partial' ? 'warning' : 'neutral'" no-icon>
                                 <AppIcon :name="o.payment_state === 'paid' ? 'check-circle' : 'cart'" :size="12" />

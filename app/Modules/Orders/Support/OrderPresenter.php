@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Support;
 
 use App\Modules\Catalog\Support\Money;
+use App\Modules\Orders\Enums\OrderItemStatus;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\OrderEvent;
 use App\Modules\Orders\Models\OrderItem;
@@ -29,6 +30,17 @@ final class OrderPresenter
             default => 'unpaid',
         };
 
+        // KISMİ TESLİM görünürlüğü (#4): aktif kalemlerin kaçı servis edildi.
+        // Komi kalemleri tek tek teslim eder (KDS item-level); order kartı
+        // "X/Y servis edildi" ilerlemesini bu iki sayıdan gösterir. Tüm aktif
+        // kalemler served olunca order bütünü "Servis edildi" olur (mevcut
+        // türetme — model yeniden kurulmaz, yalnız gösterim).
+        $activeItems = $order->items->filter(fn (OrderItem $i): bool => $i->isActive());
+        $itemsCount = $activeItems->count();
+        $servedCount = $activeItems->filter(
+            fn (OrderItem $i): bool => $i->statusEnum() === OrderItemStatus::Served
+        )->count();
+
         return [
             'id' => $order->id,
             'branch_id' => $order->branch_id,
@@ -38,6 +50,11 @@ final class OrderPresenter
             'channel_label' => $channel->label(),
             'channel_icon' => $channel->icon(),
             'channel_variant' => $channel->variant(),
+            // KAYNAK (nereden) — ServiceType (nasıl) ile çakışmayan tek etiket
+            // (#3): Board/Detail bu rozeti gösterir, "paket" çift görünmez.
+            'source_label' => $channel->sourceLabel(),
+            'source_icon' => $channel->sourceIcon(),
+            'source_variant' => $channel->sourceVariant(),
             'service_type' => $serviceType->value,
             'service_type_label' => $serviceType->label(),
             'service_type_icon' => $serviceType->icon(),
@@ -55,7 +72,8 @@ final class OrderPresenter
             'note' => $order->note,
             'customer_name' => $order->customer_name,
             'customer_phone' => $order->customer_phone,
-            'items_count' => $order->items->filter(fn (OrderItem $i) => $i->isActive())->count(),
+            'items_count' => $itemsCount,
+            'served_count' => $servedCount,
             'items_total_minor' => (int) $order->items_total_minor,
             'discount_minor' => (int) $order->discount_minor,
             'discount_percent' => $order->discount_percent !== null ? (float) $order->discount_percent : null,

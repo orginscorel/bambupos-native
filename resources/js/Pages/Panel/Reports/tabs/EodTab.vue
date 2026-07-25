@@ -85,21 +85,36 @@ const busiestHours = computed(() =>
 
         <template v-else-if="s">
             <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                <StatTile label="Ciro (kapanan)" :value="formatCurrencyMinor(s.revenue_minor)" :hint="`${formatNumber(s.orders)} ödendi/borca taşındı`" />
+                <StatTile label="Ciro (borç dahil)" :value="formatCurrencyMinor(s.revenue_minor)" :hint="`${formatNumber(s.orders)} kapandı — ödendi + borca taşındı`" />
                 <StatTile label="Ortalama sepet" :value="s.orders > 0 ? formatCurrencyMinor(s.avg_basket_minor) : '—'" />
                 <StatTile
                     label="Kişi başı harcama"
                     :value="s.per_guest_minor !== null ? formatCurrencyMinor(s.per_guest_minor) : '—'"
                     :hint="s.per_guest_minor !== null ? `${formatNumber(s.guests)} misafir girildi` : 'Misafir sayısı girilmemiş'"
                 />
-                <StatTile label="Tahsilat" :value="formatCurrencyMinor(s.collected_minor)" :hint="`${formatNumber(s.collected_count)} işlem · bahşiş ${formatCurrencyMinor(s.tips_minor)}`" />
+                <StatTile label="Tahsil edilen" :value="formatCurrencyMinor(s.collected_minor)" :hint="`${formatNumber(s.collected_count)} işlem · yalnız kasaya giren · bahşiş ${formatCurrencyMinor(s.tips_minor)}`" />
             </div>
+
+            <!-- Ciro vs Tahsilat netliği (#9): borca taşınan tutar ciroya dahil ama henüz tahsil edilmedi -->
+            <p v-if="s.debt_transferred_balance_minor > 0" class="-mt-1 text-xs text-subtle">
+                "Ciro (borç dahil)" içine borca taşınan
+                <span class="font-medium text-muted">{{ formatCurrencyMinor(s.debt_transferred_balance_minor) }}</span>
+                dahildir — {{ formatNumber(s.debt_transferred_count) }} adisyon cariye yazıldı, henüz tahsil edilmedi.
+                "Tahsil edilen" yalnız kasaya fiilen giren tutardır.
+            </p>
 
             <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <StatTile label="Açılan adisyon" :value="formatNumber(s.orders_opened)" hint="bu aralıkta sipariş verildi" />
                 <StatTile label="Kapanan adisyon" :value="formatNumber(s.orders_closed)" hint="tam ödenip kapandı" />
                 <StatTile label="İndirim" :value="formatCurrencyMinor(s.discount_total_minor)" hint="adisyon + satır indirimi" />
-                <StatTile label="İkram" :value="formatCurrencyMinor(s.comp_minor)" hint="bedelsiz değer" />
+                <StatTile
+                    label="İkram (maliyet)"
+                    :value="formatCurrencyMinor(s.comp_minor)"
+                    :hint="s.comp_count > 0
+                        ? `${formatNumber(s.comp_count)} adet · stok maliyeti ${formatCurrencyMinor(s.comp_cost_minor)}`
+                        : 'bedelsiz değer'"
+                    :up-is-good="false"
+                />
             </div>
 
             <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">

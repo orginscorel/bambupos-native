@@ -272,6 +272,55 @@ class ReportsModuleTest extends TestCase
         $this->assertSame(1, $data['missing_cost_count']);
     }
 
+    /**
+     * İkram (#7): ikram edilen kalemler gelir GETİRMEZ ama stok/maliyet
+     * TÜKETİR. Kârlılık ve gün sonu raporunda adet/tutar/maliyet AYRI
+     * görünmeli; net kâr = brüt kâr − ikram maliyeti (maliyeti kârdan düşer).
+     */
+    public function test_ikram_maliyeti_karlilik_ve_gun_sonu_raporunda_ayrilir(): void
+    {
+        $a = $this->makeTenantWithUser();
+        $this->actingAs($a['user']);
+
+        $table = $this->makeTable($a);
+        $sold = $this->makeProduct($a, ['price_minor' => 10000, 'cost_minor' => 4000, 'tax_rate' => 10.00]);
+        $comped = $this->makeProduct($a, ['price_minor' => 5000, 'cost_minor' => 2000, 'tax_rate' => 10.00]);
+
+        $orderId = $this->postJson('/api/v1/orders', [
+            'branch_id' => $a['branch']->id, 'channel' => 'table', 'table_id' => $table->id,
+        ])->assertCreated()->json('order.id');
+
+        $this->postJson("/api/v1/orders/{$orderId}/items", ['product_id' => $sold->id, 'qty' => 1])->assertCreated();
+        $compItemId = $this->postJson("/api/v1/orders/{$orderId}/items", ['product_id' => $comped->id, 'qty' => 2])
+            ->assertCreated()->json('order.items.1.id');
+        // 2 × 5000 = 10000 bedelsiz ikram (neden zorunlu)
+        $this->postJson("/api/v1/orders/{$orderId}/items/{$compItemId}/comp", ['reason' => 'müşteri memnuniyeti'])->assertOk();
+
+        // Kalan ödenecek = 10000 (yalnız satılan kalem); öde → adisyon kapanır.
+        $this->postJson("/api/v1/orders/{$orderId}/payments", [
+            'method' => 'cash', 'amount_minor' => 10000, 'tendered_minor' => 10000,
+        ])->assertCreated();
+
+        // Kârlılık: ikram özeti ayrı (adet/tutar/maliyet); ürün satırlarında ikram YOK.
+        $profit = $this->getJson('/api/v1/reports/product-profitability')->assertOk()->json('data');
+        $this->assertSame(2, $profit['comp']['qty']);            // 2 adet ikram
+        $this->assertSame(1, $profit['comp']['items']);          // tek kalem satırı (qty=2)
+        $this->assertSame(10000, $profit['comp']['value_minor']); // 2 × 5000 bedelsiz değer
+        $this->assertSame(4000, $profit['comp']['cost_minor']);   // 2 × 2000 tüketilen maliyet
+        $this->assertSame(0, $profit['comp']['missing_cost_items']);
+        // İkram edilen ürün, kârlılık (gelir) satırlarında GÖRÜNMEZ.
+        $this->assertNotContains($comped->name, array_column($profit['rows'], 'name'));
+
+        // Gün sonu: aynı ikram maliyeti + adet burada da ayrı.
+        $eod = $this->getJson('/api/v1/reports/ops-eod')->assertOk()->json('data');
+        $this->assertSame(2, $eod['comp_count']);
+        $this->assertSame(10000, $eod['comp_minor']);
+        $this->assertSame(4000, $eod['comp_cost_minor']);
+        $this->assertSame(0, $eod['comp_missing_cost_items']);
+        // Borca taşınan yok → ciro=tahsilat farkı yok.
+        $this->assertSame(0, $eod['debt_transferred_balance_minor']);
+    }
+
     public function test_pano_bolumleri_izinlere_gore_suzulur(): void
     {
         // Sahip: tüm bölümler
