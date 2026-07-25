@@ -623,10 +623,18 @@ const eventTypeLabels: Record<string, string> = {
                             <AppIcon :name="order.channel_icon" :size="12" />
                             {{ order.channel_label }}
                         </BaseBadge>
+                        <BaseBadge :variant="order.service_type_variant" no-icon>
+                            <AppIcon :name="order.service_type_icon" :size="12" />
+                            {{ order.service_type_label }}
+                        </BaseBadge>
                         <span class="text-base font-semibold text-body">{{ order.table_name ?? order.customer_name ?? `#${order.id}` }}</span>
                         <BaseBadge :variant="order.status_variant" no-icon>
                             <AppIcon :name="order.status_icon" :size="12" />
                             {{ order.status_label }}
+                        </BaseBadge>
+                        <BaseBadge :variant="order.payment_state === 'paid' ? 'success' : order.payment_state === 'partial' ? 'warning' : 'neutral'" no-icon>
+                            <AppIcon :name="order.payment_state === 'paid' ? 'check-circle' : 'cart'" :size="12" />
+                            {{ order.payment_label }}<template v-if="order.payment_state !== 'unpaid' && order.remaining_minor > 0"> · Kalan {{ order.remaining_display }} ₺</template>
                         </BaseBadge>
                         <span class="text-xs text-muted">{{ orderElapsed(order) }} önce · {{ order.opened_by ?? '—' }}</span>
                     </div>

@@ -29,6 +29,7 @@ final class KdsPresenter
     {
         $status = $order->statusEnum();
         $channel = $order->channelEnum();
+        $serviceType = $order->serviceTypeEnum();
 
         return [
             'id' => $order->id,
@@ -40,6 +41,11 @@ final class KdsPresenter
             'channel_label' => $channel->label(),
             'channel_icon' => $channel->icon(),
             'channel_variant' => $channel->variant(),
+            // Servis tipi (masada/gel-al/paket) — komi hangi teslimatı
+            // yapacağını görsün. PARA alanı DEĞİL (KdsFinancialLeakTest korur).
+            'service_type' => $serviceType->value,
+            'service_type_label' => $serviceType->label(),
+            'service_type_icon' => $serviceType->icon(),
             'status' => $status->value,
             'status_label' => $status->label(),
             'status_icon' => $status->icon(),

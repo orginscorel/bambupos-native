@@ -365,31 +365,99 @@ body {
     background: var(--m-surface); color: var(--m-text); font: inherit; font-size: 14px;
 }
 
-/* ---------- ürün detayı ---------- */
-.m-detail__img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }
-.m-detail__desc { font-size: 14px; color: var(--m-text-muted); margin-bottom: 8px; }
-.m-detail__meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--m-text-muted); margin-bottom: 10px; }
-.m-detail__price { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+/* ---------- ürün detayı (yeniden tasarım) ---------- */
+.m-detail { display: flex; flex-direction: column; gap: 16px; }
+.m-ic { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+/* Kahraman görsel: sheet gövde iç boşluğunu (12/16) taşan tam-genişlik */
+.m-detail__hero { position: relative; margin: -12px -16px 0; overflow: hidden; }
+.m-detail__img { display: block; width: 100%; aspect-ratio: 16 / 10; max-height: 260px; object-fit: cover; background: var(--m-surface-alt); }
+.m-detail__hbadges { position: absolute; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.m-detail__hbadges--flow { position: static; margin: 0 0 -4px; }
+.m-hbadge {
+    display: inline-flex; align-items: center; height: 26px; padding: 0 11px;
+    border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.28);
+}
+.m-hbadge--chef { background: var(--m-primary); }
+.m-hbadge--best { background: var(--brand-600); }
+.m-hbadge--new { background: #16a34a; }
+.m-detail__price { font-size: 24px; font-weight: 700; color: var(--m-text); line-height: 1.05; }
+.m-detail__desc { font-size: 14.5px; line-height: 1.5; color: var(--m-text-muted); }
+
+/* Meta + besin çipleri */
+.m-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.m-meta__pill {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+    border-radius: 999px; background: var(--m-surface-alt); border: 1px solid var(--m-border);
+    font-size: 12.5px; font-weight: 700; color: var(--m-text); white-space: nowrap;
+}
+.m-meta__pill .m-ic { color: var(--m-text-muted); }
+.m-meta__pill--spicy { color: var(--m-danger); border-color: color-mix(in srgb, var(--m-danger) 45%, var(--m-border)); }
+.m-meta__pill--spicy .m-ic { color: var(--m-danger); }
+
+/* Diyet + besin başlıkları */
+.m-diet, .m-nutri { display: flex; flex-direction: column; gap: 8px; }
+.m-diet__label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--m-text-muted); }
+.m-diet__list { display: flex; flex-wrap: wrap; gap: 8px; }
+.m-diet__badge {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+    border-radius: 999px; font-size: 13px; font-weight: 700;
+    background: rgb(22 163 74 / 0.12); color: #15803d; border: 1px solid rgb(22 163 74 / 0.32);
+}
+.m-diet__badge .m-ic { color: #16a34a; }
+
+/* Alerjen bölümü */
 .m-allergens {
-    border: 1px solid var(--m-border); border-left: 3px solid var(--m-danger);
-    border-radius: 10px; padding: 10px 12px; margin: 10px 0;
+    border-radius: 14px; padding: 14px;
+    background: rgb(220 38 38 / 0.06); border: 1px solid rgb(220 38 38 / 0.22);
 }
-.m-allergens__title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--m-danger); }
-.m-allergens li { margin: 4px 0 0 0; list-style: none; font-size: 13px; }
-.m-allergens li b { font-weight: 700; }
-.m-allergens li span { color: var(--m-text-muted); }
-.m-group { margin: 14px 0; }
-.m-group__title { font-size: 14px; font-weight: 700; }
-.m-group__hint { font-size: 12px; color: var(--m-text-muted); margin: 2px 0 8px; }
-.m-group__hint.is-error { color: var(--m-danger); }
+.m-allergens__head { display: flex; align-items: center; gap: 10px; }
+.m-allergens__icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 9px; background: var(--m-danger); color: #fff; flex-shrink: 0;
+}
+.m-allergens__icon--ok { background: #16a34a; }
+.m-allergens__title { font-size: 14.5px; font-weight: 700; color: var(--m-danger); }
+.m-allergens__none { font-size: 13px; line-height: 1.45; color: var(--m-text); }
+.m-allergens__list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.m-alg {
+    display: inline-flex; align-items: flex-start; gap: 8px; max-width: 100%;
+    padding: 8px 12px; border-radius: 11px;
+    background: var(--m-surface); border: 1px solid rgb(220 38 38 / 0.28);
+}
+.m-alg__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--m-danger); margin-top: 5px; flex-shrink: 0; }
+.m-alg__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.m-alg__name { font-size: 13.5px; font-weight: 700; color: var(--m-text); }
+.m-alg__desc { font-size: 12px; line-height: 1.4; color: var(--m-text-muted); }
+.m-allergens--ok { background: rgb(22 163 74 / 0.08); border-color: rgb(22 163 74 / 0.28); }
+
+/* Seçenek / eklenti grupları — kart görünümü, dokunmatik-dostu */
+.m-group {
+    display: flex; flex-direction: column; gap: 8px; margin: 0;
+    padding: 14px; border: 1px solid var(--m-border); border-radius: 14px; background: var(--m-surface);
+}
+.m-group__title { font-size: 15px; font-weight: 700; color: var(--m-text); }
+.m-group__hint { font-size: 12px; color: var(--m-text-muted); margin: -4px 0 2px; }
+.m-group__hint.is-error { color: var(--m-danger); font-weight: 700; }
 .m-opt {
-    display: flex; align-items: center; gap: 10px; min-height: 48px;
-    padding: 4px 2px; border-bottom: 1px solid var(--m-border); cursor: pointer;
+    display: flex; align-items: center; gap: 12px; min-height: 52px;
+    padding: 6px 12px; margin: 0 -4px; border-radius: 12px;
+    border: 1px solid transparent; cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
 }
-.m-opt:last-child { border-bottom: none; }
-.m-opt input { width: 20px; height: 20px; accent-color: var(--m-primary); flex-shrink: 0; }
-.m-opt__name { flex: 1; font-size: 14px; }
-.m-opt__price { font-size: 13px; color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
+.m-opt:has(input:checked) { background: color-mix(in srgb, var(--m-primary) 8%, var(--m-surface)); border-color: color-mix(in srgb, var(--m-primary) 45%, var(--m-border)); }
+.m-opt input { width: 22px; height: 22px; accent-color: var(--m-primary); flex-shrink: 0; }
+.m-opt__name { flex: 1; font-size: 14.5px; }
+.m-opt__price { font-size: 13px; font-weight: 700; color: var(--m-primary); font-variant-numeric: tabular-nums; }
+/* Koyu tema: yeşil diyet/besin kontrastını yükselt, alerjen zeminini yumuşat */
+@media (prefers-color-scheme: dark) {
+    .m-diet__badge { background: rgb(34 197 94 / 0.15); color: #4ade80; border-color: rgb(34 197 94 / 0.35); }
+    .m-diet__badge .m-ic { color: #4ade80; }
+    .m-hbadge--new { background: #15803d; }
+    .m-allergens { background: rgb(248 113 113 / 0.10); border-color: rgb(248 113 113 / 0.28); }
+    .m-alg { border-color: rgb(248 113 113 / 0.32); }
+    .m-allergens--ok { background: rgb(34 197 94 / 0.10); border-color: rgb(34 197 94 / 0.30); }
+}
 .m-note { width: 100%; margin-top: 4px; }
 .m-note textarea {
     width: 100%; min-height: 64px; padding: 10px 12px; resize: vertical;

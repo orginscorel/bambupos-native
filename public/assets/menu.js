@@ -26,6 +26,17 @@
         return '₺ ' + (minor / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     function norm(s) { return String(s || '').toLocaleLowerCase('tr'); }
+    // Küçük satır-içi ikon seti (detay modalı). Tek renk currentColor → tema uyar.
+    function svg(body, w) { return '<svg class="m-ic" width="' + (w || 14) + '" height="' + (w || 14) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>'; }
+    var ICN = {
+        clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+        flame: svg('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'),
+        chili: svg('<path d="M6 20c8 0 13-5 13-12 0-1 0-2 1-3-2 0-3 1-4 2"/><path d="M16 7c0-2 1-3 3-3"/>'),
+        portion: svg('<path d="M3 11h18"/><path d="M12 11a8 8 0 0 1 8 8H4a8 8 0 0 1 8-8z"/><path d="M12 3v3"/>'),
+        leaf: svg('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/>'),
+        alert: svg('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>', 16),
+        check: svg('<path d="M20 6 9 17l-5-5"/>', 16)
+    };
     function $(sel, root) { return (root || document).querySelector(sel); }
     function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
 
@@ -304,42 +315,65 @@
         return parts.join(', ');
     }
     function detailHtml(p) {
-        var h = '';
-        if (p.img) h += '<img class="m-detail__img" src="' + esc(p.img) + '" alt="" loading="lazy">';
+        var h = '<div class="m-detail">';
+        // Kahraman görsel (rozetler görsel üstünde)
+        var badges = '';
+        if (p.chef) badges += '<span class="m-hbadge m-hbadge--chef">' + t('tag_chef') + '</span>';
+        if (p.best) badges += '<span class="m-hbadge m-hbadge--best">' + t('tag_best') + '</span>';
+        if (p.new) badges += '<span class="m-hbadge m-hbadge--new">' + t('tag_new') + '</span>';
+        if (p.img) {
+            h += '<figure class="m-detail__hero">'
+               + '<img class="m-detail__img" src="' + esc(p.img) + '" alt="" loading="lazy">'
+               + (badges ? '<div class="m-detail__hbadges">' + badges + '</div>' : '')
+               + '</figure>';
+        } else if (badges) {
+            h += '<div class="m-detail__hbadges m-detail__hbadges--flow">' + badges + '</div>';
+        }
+        // Fiyat (belirgin)
+        h += '<div class="m-detail__price">' + fmt(p.p) + (p.op ? ' <s class="m-product__oldprice">' + fmt(p.op) + '</s>' : '') + '</div>';
+        // Açıklama
         if (p.d) h += '<p class="m-detail__desc">' + esc(p.d) + '</p>';
-        var meta = [];
-        if (p.portion) meta.push(esc(p.portion));
-        if (p.prep != null) meta.push(p.prep + ' ' + t('prep'));
-        if (p.cal != null) meta.push(p.cal + ' ' + t('kcal'));
-        if (p.spicy > 0) meta.push(t('spicy') + ' ' + Math.min(3, p.spicy) + '/3');
-        if (meta.length) h += '<p class="m-detail__meta"><span>' + meta.join('</span><span>') + '</span></p>';
-        h += '<p class="m-detail__price">' + fmt(p.p) + (p.op ? ' <s class="m-product__oldprice">' + fmt(p.op) + '</s>' : '') + '</p>';
+        // Meta rozetleri (porsiyon / hazırlık / kalori / acı) — ikonlu çip
+        var meta = '';
+        if (p.portion) meta += '<span class="m-meta__pill">' + ICN.portion + esc(p.portion) + '</span>';
+        if (p.prep != null) meta += '<span class="m-meta__pill">' + ICN.clock + p.prep + ' ' + t('prep') + '</span>';
+        if (p.cal != null) meta += '<span class="m-meta__pill">' + ICN.flame + p.cal + ' ' + t('kcal') + '</span>';
+        if (p.spicy > 0) meta += '<span class="m-meta__pill m-meta__pill--spicy">' + ICN.chili + t('spicy') + ' ' + Math.min(3, p.spicy) + '/3</span>';
+        if (meta) h += '<div class="m-meta">' + meta + '</div>';
+        // Diyet rozetleri (ayrı, yeşil, yaprak ikonlu)
         if (p.diet.length) {
-            h += '<p class="m-product__tags">' + p.diet.map(function (id) {
-                var a = DATA.allergens[id];
-                return a ? '<span class="m-tag m-tag--diet">' + esc(a.n) + '</span>' : '';
-            }).join('') + '</p>';
+            h += '<div class="m-diet"><p class="m-diet__label">' + t('diet_title') + '</p><div class="m-diet__list">'
+               + p.diet.map(function (id) {
+                   var a = DATA.allergens[id];
+                   return a ? '<span class="m-diet__badge">' + ICN.leaf + esc(a.n) + '</span>' : '';
+               }).join('') + '</div></div>';
         }
-        // Alerjenler: ikon tek başına yeterli değil — ad + açıklama birlikte (prompt §10.3)
-        h += '<div class="m-allergens"><p class="m-allergens__title">'
-            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>'
-            + t('allergens_title') + '</p>';
+        // Alerjen bölümü: "İçerir" net başlık + rozet/çip (ad + açıklama), erişilebilir kontrast
         if (p.al.length) {
-            h += '<ul>' + p.al.map(function (id) {
-                var a = DATA.allergens[id];
-                return a ? '<li><b>' + esc(a.n) + '</b>' + (a.d ? ' — <span>' + esc(a.d) + '</span>' : '') + '</li>' : '';
-            }).join('') + '</ul>';
+            h += '<section class="m-allergens" aria-label="' + esc(t('allergens_title')) + '">'
+               + '<div class="m-allergens__head"><span class="m-allergens__icon">' + ICN.alert + '</span>'
+               + '<h3 class="m-allergens__title">' + t('allergens_title') + '</h3></div>'
+               + '<ul class="m-allergens__list">'
+               + p.al.map(function (id) {
+                   var a = DATA.allergens[id];
+                   if (!a) return '';
+                   return '<li class="m-alg"><span class="m-alg__dot" aria-hidden="true"></span>'
+                        + '<span class="m-alg__text"><b class="m-alg__name">' + esc(a.n) + '</b>'
+                        + (a.d ? '<span class="m-alg__desc">' + esc(a.d) + '</span>' : '') + '</span></li>';
+               }).join('')
+               + '</ul></section>';
         } else {
-            h += '<p class="m-allergens li"><span>' + t('allergens_none') + '</span></p>';
+            h += '<section class="m-allergens m-allergens--ok" aria-label="' + esc(t('allergens_title')) + '">'
+               + '<div class="m-allergens__head"><span class="m-allergens__icon m-allergens__icon--ok">' + ICN.check + '</span>'
+               + '<p class="m-allergens__none">' + t('allergens_none') + '</p></div></section>';
         }
-        h += '</div>';
-        if (p.cal != null || p.prot != null || p.carb != null || p.fat != null) {
-            var rows = [];
-            if (p.cal != null) rows.push(t('kcal') + ': ' + p.cal);
-            if (p.prot != null) rows.push(t('protein') + ': ' + p.prot + ' g');
-            if (p.carb != null) rows.push(t('carbs') + ': ' + p.carb + ' g');
-            if (p.fat != null) rows.push(t('fat') + ': ' + p.fat + ' g');
-            h += '<div class="m-group"><p class="m-group__title">' + t('nutrition') + '</p><p class="m-detail__meta"><span>' + rows.join('</span><span>') + '</span></p></div>';
+        if (p.prot != null || p.carb != null || p.fat != null) {
+            var rows = '';
+            if (p.cal != null) rows += '<span class="m-meta__pill">' + t('kcal') + ' ' + p.cal + '</span>';
+            if (p.prot != null) rows += '<span class="m-meta__pill">' + t('protein') + ' ' + p.prot + ' g</span>';
+            if (p.carb != null) rows += '<span class="m-meta__pill">' + t('carbs') + ' ' + p.carb + ' g</span>';
+            if (p.fat != null) rows += '<span class="m-meta__pill">' + t('fat') + ' ' + p.fat + ' g</span>';
+            h += '<div class="m-nutri"><p class="m-diet__label">' + t('nutrition') + '</p><div class="m-meta">' + rows + '</div></div>';
         }
         if (p.v.length) {
             h += '<fieldset class="m-group"><legend class="m-group__title">' + t('variant_title') + '</legend>';
@@ -375,6 +409,7 @@
         });
         h += '<div class="m-group m-note"><label class="m-group__title" for="qrm-note">' + t('cart_note') + '</label>'
             + '<textarea id="qrm-note" maxlength="300" placeholder="' + esc(t('cart_note_ph')) + '"></textarea></div>';
+        h += '</div>';
         return h;
     }
     function readSelection(body, p) {

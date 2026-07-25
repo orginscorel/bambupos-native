@@ -17,6 +17,7 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
 import ReservationDrawer from './ReservationDrawer.vue';
 import ReservationsNav from './ReservationsNav.vue';
+import ReservationsOverview from './ReservationsOverview.vue';
 import {
     addDays,
     fetchReservations,
@@ -50,7 +51,17 @@ const canManage = computed(() => permissions.value.includes('reservations.manage
 const canSeeSensitive = computed(() => permissions.value.includes('reservations.view_sensitive'));
 const canDelete = computed(() => permissions.value.includes('reservations.delete'));
 
-/* ---- Görünüm durumu ---- */
+/**
+ * Aynı rota (/panel/rezervasyonlar) iki ekranı barındırır: varsayılan GENEL BAKIŞ,
+ * `?gorunum=takvim` ise TAKVİM VE LİSTE. Böylece yeni backend rotası açmadan
+ * ayrı sekme gibi davranır (ReservationsNav bu parametreyi kullanır).
+ */
+const screen = computed<'overview' | 'calendar'>(() => {
+    const query = page.url.split('?')[1] ?? '';
+    return new URLSearchParams(query).get('gorunum') === 'takvim' ? 'calendar' : 'overview';
+});
+
+/* ---- Görünüm durumu (gün/hafta) ---- */
 const view = ref<'day' | 'week'>('day');
 const anchor = ref(new Date());
 const statusFilter = ref('');
@@ -93,7 +104,7 @@ async function load(): Promise<void> {
     }
 }
 
-onMounted(load);
+onMounted(() => { if (screen.value === 'calendar') void load(); });
 watch([view, anchor, statusFilter], load);
 watch(q, load);
 
@@ -212,9 +223,12 @@ function onSaved(row: ReservationRow): void {
 <template>
     <Head title="Rezervasyonlar" />
     <PanelShell title="Rezervasyonlar">
-        <ReservationsNav />
+        <ReservationsNav :active="screen" />
 
-        <div class="flex flex-col gap-4">
+        <!-- Genel Bakış landing -->
+        <ReservationsOverview v-if="screen === 'overview'" :can-create="canCreate" @create="openCreate" />
+
+        <div v-else class="flex flex-col gap-4">
             <!-- Araç çubuğu -->
             <BaseCard>
                 <div class="flex flex-wrap items-center gap-3">

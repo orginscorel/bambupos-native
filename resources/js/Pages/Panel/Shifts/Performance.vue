@@ -67,7 +67,7 @@ function leaveSummary(row: AttendanceRow): string {
 
 <template>
     <Head title="Performans" />
-    <ShiftsShell title="Devam & Performans">
+    <ShiftsShell title="Devam & Performans" active="performance">
         <div class="flex flex-col gap-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <BaseTabs v-model="tab" :tabs="tabs" />

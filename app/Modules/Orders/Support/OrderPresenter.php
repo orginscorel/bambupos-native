@@ -18,6 +18,16 @@ final class OrderPresenter
     {
         $status = $order->statusEnum();
         $channel = $order->channelEnum();
+        $serviceType = $order->serviceTypeEnum();
+
+        $total = (int) $order->total_minor;
+        $paid = (int) $order->paid_minor;
+        // Ödeme durumu (Board/Detail net göstersin): ödendi / kısmi / bekliyor.
+        $paymentState = match (true) {
+            $total > 0 && $paid >= $total => 'paid',
+            $paid > 0 => 'partial',
+            default => 'unpaid',
+        };
 
         return [
             'id' => $order->id,
@@ -28,6 +38,10 @@ final class OrderPresenter
             'channel_label' => $channel->label(),
             'channel_icon' => $channel->icon(),
             'channel_variant' => $channel->variant(),
+            'service_type' => $serviceType->value,
+            'service_type_label' => $serviceType->label(),
+            'service_type_icon' => $serviceType->icon(),
+            'service_type_variant' => $serviceType->variant(),
             'status' => $status->value,
             'status_label' => $status->label(),
             'status_icon' => $status->icon(),
@@ -52,11 +66,18 @@ final class OrderPresenter
             'service_charge_percent' => $order->service_charge_percent !== null ? (float) $order->service_charge_percent : null,
             'rounding_minor' => (int) $order->rounding_minor,
             'total_minor' => (int) $order->total_minor,
-            'paid_minor' => (int) $order->paid_minor,
+            'paid_minor' => $paid,
+            'paid_display' => Money::toDecimalString($paid),
+            'payment_state' => $paymentState,
+            'payment_label' => match ($paymentState) {
+                'paid' => 'Ödendi',
+                'partial' => 'Kısmi ödendi',
+                default => 'Ödeme bekliyor',
+            },
             'refunded_minor' => (int) $order->refunded_minor,
-            'remaining_minor' => max(0, (int) $order->total_minor - (int) $order->paid_minor),
-            'total_display' => Money::toDecimalString((int) $order->total_minor),
-            'remaining_display' => Money::toDecimalString(max(0, (int) $order->total_minor - (int) $order->paid_minor)),
+            'remaining_minor' => max(0, $total - $paid),
+            'total_display' => Money::toDecimalString($total),
+            'remaining_display' => Money::toDecimalString(max(0, $total - $paid)),
             'opened_by' => $order->openedBy?->name,
             // KDS ile aynı kural (KdsPresenter): onaya düşene kadar placed_at
             // yok — bu aralıkta created_at'e düş, ekranlar arasında süre

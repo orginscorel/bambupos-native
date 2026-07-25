@@ -90,7 +90,7 @@ async function decideLeave(row: LeaveRow, action: 'approve' | 'reject'): Promise
 
 <template>
     <Head title="Onay Bekleyenler" />
-    <ShiftsShell title="Onay Bekleyen Talepler">
+    <ShiftsShell title="Onay Bekleyen Talepler" active="approvals">
         <BaseSkeleton v-if="loading" class="h-64 w-full" />
 
         <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">

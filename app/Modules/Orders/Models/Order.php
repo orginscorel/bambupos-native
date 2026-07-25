@@ -7,6 +7,7 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Support\Totp;
 use App\Modules\Orders\Enums\OrderChannel;
 use App\Modules\Orders\Enums\OrderStatus;
+use App\Modules\Orders\Enums\ServiceType;
 use App\Modules\Tables\Models\Table;
 use App\Modules\Tenancy\Concerns\BelongsToTenant;
 use App\Modules\Tenancy\Models\Branch;
@@ -37,6 +38,7 @@ class Order extends Model
         'total_minor',
         'currency',
         'channel',
+        'service_type',
         'guest_count',
         'note',
         'customer_name',
@@ -80,9 +82,44 @@ class Order extends Model
         return OrderChannel::tryFrom((string) $this->channel) ?? OrderChannel::Table;
     }
 
+    /**
+     * Yapısal servis tipi (masada/gel-al/paket). Eski/boş kayıtlar kanaldan
+     * makul biçimde türetilir (dine_in varsayılan) — tek kaynak burasıdır.
+     */
+    public function serviceTypeEnum(): ServiceType
+    {
+        return ServiceType::tryFrom((string) $this->service_type)
+            ?? ServiceType::fromChannel($this->channelEnum());
+    }
+
     public function isOpen(): bool
     {
         return $this->statusEnum()->isOpen();
+    }
+
+    /**
+     * Operasyonel olarak henüz ekranda kalması gereken siparişler:
+     *   - açık adisyonlar (bugüne kadarki davranış), VEYA
+     *   - ÖN-ÖDEMELİ (paid) ama kalemleri henüz TESLİM EDİLMEMİŞ siparişler
+     *     (kiosk POS akışı: ödeme başta alınır, sipariş 'paid' olur ama
+     *     mutfak/komi'de teslim edilene kadar Board+KDS'te görünmeli).
+     *
+     * 'paid' dalı `whereHas` ile SINIRLIDIR (yalnız mutfak-hattında kalemi
+     * olan paid siparişler) → geçmiş tüm paid siparişleri taramaz.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Order>  $query
+     */
+    public function scopeOperationallyVisible($query)
+    {
+        return $query->where(function ($q): void {
+            $q->whereNotIn('status', OrderStatus::closedValues())
+                ->orWhere(function ($paid): void {
+                    $paid->where('status', OrderStatus::Paid->value)
+                        ->whereHas('items', fn ($iq) => $iq->whereIn('status', [
+                            'placed', 'sent_to_station', 'accepted', 'preparing', 'ready',
+                        ]));
+                });
+        });
     }
 
     /** QR müşterisinin durum takibi için opak referans (ADR-008 deseni). */

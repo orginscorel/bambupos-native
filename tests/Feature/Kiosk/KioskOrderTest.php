@@ -163,6 +163,46 @@ class KioskOrderTest extends TestCase
         $this->assertSame(0, Payment::withoutTenancy()->count());
     }
 
+    public function test_odenmis_kiosk_siparisi_panoda_ve_mutfakta_gorunur_ve_servis_tipi_yapisal(): void
+    {
+        $device = $this->makeDevice($this->a);
+        $product = $this->makeProduct($this->a, ['price_minor' => 12500, 'kiosk_price_minor' => 12500]);
+
+        $res = $this->postJson('/kiosk/api/orders', [
+            'token' => $device->token,
+            'order_type' => 'takeaway',
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+        ])->assertCreated();
+
+        $this->assertSame('paid', $res->json('result'));
+        $orderId = (int) $res->json('receipt.order_no');
+
+        // Servis tipi YAPISAL kolonda (nota gömülü değil sadece).
+        $order = Order::withoutTenancy()->find($orderId);
+        $this->assertSame('takeaway', $order->service_type);
+        $this->assertSame('paid', $order->status);
+
+        // Ön-ödemeli ama teslim edilmemiş → Siparişler panosunda görünür.
+        $this->actingAs($this->a['user']);
+        $board = $this->getJson('/api/v1/orders/board?branch_id='.$this->a['branch']->id)->assertOk();
+        $channel = collect($board->json('channel_orders'))->firstWhere('id', $orderId);
+        $this->assertNotNull($channel, 'Ödenmiş kiosk siparişi panoda görünmüyor');
+        $this->assertSame('paid', $channel['payment_state']);
+        $this->assertSame('takeaway', $channel['service_type']);
+
+        // Mutfağa da düşer (kalem hâlâ hazırlanacak).
+        $queue = $this->getJson('/api/v1/kds/queue?branch_id='.$this->a['branch']->id)->assertOk();
+        $ids = collect($queue->json('orders'))->pluck('id');
+        $this->assertTrue($ids->contains($orderId), 'Ödenmiş kiosk siparişi mutfak kuyruğunda yok');
+
+        // Tüm kalemler servis edilince panodan/mutfaktan düşer (teslim edildi).
+        $itemId = (int) $order->items()->first()->id;
+        $this->postJson("/api/v1/kds/items/{$itemId}/status", ['to' => 'served'])->assertOk();
+
+        $board2 = $this->getJson('/api/v1/orders/board?branch_id='.$this->a['branch']->id)->assertOk();
+        $this->assertNull(collect($board2->json('channel_orders'))->firstWhere('id', $orderId));
+    }
+
     public function test_yabanci_masa_ve_yabanci_urun_reddedilir(): void
     {
         $device = $this->makeDevice($this->a);

@@ -11,6 +11,7 @@ use App\Modules\Identity\Services\AuditLogger;
 use App\Modules\Orders\Enums\OrderChannel;
 use App\Modules\Orders\Enums\OrderItemStatus;
 use App\Modules\Orders\Enums\OrderStatus;
+use App\Modules\Orders\Enums\ServiceType;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\OrderEvent;
 use App\Modules\Orders\Models\OrderItem;
@@ -82,6 +83,7 @@ class OrderService
     /**
      * @param array{
      *   branch_id: int, channel: string, table_id?: int|null,
+     *   service_type?: string|null,
      *   guest_count?: int|null, note?: string|null,
      *   customer_name?: string|null, customer_phone?: string|null,
      *   status?: OrderStatus
@@ -91,6 +93,11 @@ class OrderService
     {
         $channel = OrderChannel::tryFrom($data['channel']) ?? OrderChannel::Table;
         $status = $data['status'] ?? OrderStatus::Placed;
+
+        // Yapısal servis tipi: açıkça verildiyse onu, yoksa kanaldan türet.
+        $serviceType = isset($data['service_type'])
+            ? (ServiceType::tryFrom((string) $data['service_type']) ?? ServiceType::fromChannel($channel))
+            : ServiceType::fromChannel($channel);
 
         $table = null;
 
@@ -106,7 +113,7 @@ class OrderService
             }
         }
 
-        return DB::transaction(function () use ($data, $channel, $status, $table, $actor): Order {
+        return DB::transaction(function () use ($data, $channel, $serviceType, $status, $table, $actor): Order {
             // TEK AÇIK ADİSYON KURALI (Adisyon-Cari): masaya bağlı kanalda
             // (table/qr) masa satırı KİLİTLENİR — aynı masaya eşzamanlı iki
             // "aç" isteği bu noktada sıraya girer (ikinci istek birincinin
@@ -131,6 +138,7 @@ class OrderService
             $order = new Order([
                 'status' => $status->value,
                 'channel' => $channel->value,
+                'service_type' => $serviceType->value,
                 'guest_count' => $data['guest_count'] ?? null,
                 'note' => $data['note'] ?? null,
                 'customer_name' => $data['customer_name'] ?? null,

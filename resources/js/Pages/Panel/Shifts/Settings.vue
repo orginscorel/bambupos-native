@@ -201,7 +201,7 @@ async function removeRule(row: StaffingRuleRow): Promise<void> {
 
 <template>
     <Head title="Mesai Ayarları" />
-    <ShiftsShell title="Mesai Ayarları">
+    <ShiftsShell title="Mesai Ayarları" active="settings">
         <BaseSkeleton v-if="loading" class="h-64 w-full" />
 
         <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">

@@ -126,7 +126,7 @@ const stateLabel = computed(() => {
 
 <template>
     <Head title="Giriş / Çıkış" />
-    <ShiftsShell title="İşe Giriş / Çıkış">
+    <ShiftsShell title="İşe Giriş / Çıkış" active="clock">
         <div class="mx-auto grid w-full max-w-3xl grid-cols-1 gap-4 md:grid-cols-2">
             <!-- PIN pedi -->
             <BaseCard title="PIN ile işlem">

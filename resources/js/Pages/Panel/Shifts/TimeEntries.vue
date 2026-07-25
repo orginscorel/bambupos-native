@@ -155,7 +155,7 @@ function methodLabel(m: string | null): string {
 
 <template>
     <Head title="Mesai Kayıtları" />
-    <ShiftsShell title="Mesai Kayıtları">
+    <ShiftsShell title="Mesai Kayıtları" active="entries">
         <div class="flex flex-col gap-4">
             <div class="flex flex-wrap items-end gap-2">
                 <BaseSelect v-if="canViewAll" v-model="userId" :options="staffOptions" size="sm" class="w-44" />

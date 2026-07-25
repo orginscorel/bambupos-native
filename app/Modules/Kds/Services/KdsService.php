@@ -41,6 +41,24 @@ class KdsService
         'placed', 'sent_to_station', 'accepted', 'preparing', 'ready',
     ];
 
+    /**
+     * Mutfak/komi ekranının göreceği sipariş kümesi: mutfak-aşaması
+     * siparişler + ÖN-ÖDEMELİ (kiosk POS) 'paid' ama kalemi henüz teslim
+     * edilmemiş siparişler. 'paid' dalı `whereHas` ile sınırlıdır (yalnız
+     * mutfak-hattında kalemi olan paid siparişler) → geçmiş paid siparişleri
+     * taramaz. Kalem düzeyi süzme (KITCHEN_ITEM_STATUSES) kartı yine bilenir.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Order>  $query
+     */
+    private function scopeKitchenOrders($query)
+    {
+        return $query->where(function ($q): void {
+            $q->whereIn('status', self::KITCHEN_ORDER_STATUSES)
+                ->orWhere(fn ($paid) => $paid->where('status', OrderStatus::Paid->value)
+                    ->whereHas('items', fn ($iq) => $iq->whereIn('status', self::KITCHEN_ITEM_STATUSES)));
+        });
+    }
+
     public function __construct(
         private readonly OrderService $orders,
         private readonly TableStatusSynchronizer $tables,
@@ -138,7 +156,7 @@ class KdsService
                 'items.product.images:id,product_id,path,is_primary,sort_order',
             ])
             ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
-            ->whereIn('status', self::KITCHEN_ORDER_STATUSES)
+            ->tap(fn ($q) => $this->scopeKitchenOrders($q))
             ->orderBy('id')
             ->get();
 
@@ -200,7 +218,7 @@ class KdsService
                 'items.product.images:id,product_id,path,is_primary,sort_order',
             ])
             ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
-            ->whereIn('status', self::KITCHEN_ORDER_STATUSES)
+            ->tap(fn ($q) => $this->scopeKitchenOrders($q))
             ->orderBy('id')
             ->get();
 
@@ -233,9 +251,8 @@ class KdsService
     {
         $rows = OrderItem::query()
             ->whereIn('order_items.status', self::KITCHEN_ITEM_STATUSES)
-            ->whereHas('order', fn ($q) => $q
-                ->when($branchId > 0, fn ($qq) => $qq->where('branch_id', $branchId))
-                ->whereIn('status', self::KITCHEN_ORDER_STATUSES))
+            ->whereHas('order', fn ($q) => $this->scopeKitchenOrders($q)
+                ->when($branchId > 0, fn ($qq) => $qq->where('branch_id', $branchId)))
             ->when($allowed !== null, fn ($q) => $q->whereIn('station', $allowed))
             ->selectRaw('station, COUNT(*) as pending')
             ->groupBy('station')

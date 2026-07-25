@@ -376,12 +376,20 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                                 <AppIcon :name="o.channel_icon" :size="12" />
                                 {{ o.channel_label }}
                             </BaseBadge>
+                            <BaseBadge :variant="o.service_type_variant" no-icon>
+                                <AppIcon :name="o.service_type_icon" :size="12" />
+                                {{ o.service_type_label }}
+                            </BaseBadge>
                             <span class="font-medium">#{{ o.id }}</span>
                             <span v-if="o.customer_name" class="text-sm text-muted">{{ o.customer_name }}</span>
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
                             <span class="whitespace-nowrap text-sm font-semibold tabular-nums text-body">{{ o.total_display }} ₺</span>
+                            <BaseBadge :variant="o.payment_state === 'paid' ? 'success' : o.payment_state === 'partial' ? 'warning' : 'neutral'" no-icon>
+                                <AppIcon :name="o.payment_state === 'paid' ? 'check-circle' : 'cart'" :size="12" />
+                                {{ o.payment_label }}
+                            </BaseBadge>
                             <span class="text-xs text-subtle">{{ orderElapsed(o) }} önce</span>
                             <BaseBadge :variant="o.status_variant" no-icon>
                                 <AppIcon :name="o.status_icon" :size="12" />

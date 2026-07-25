@@ -143,7 +143,7 @@ const statusVariant = (s: string): BadgeVariant =>
 
 <template>
     <Head title="İzinler" />
-    <ShiftsShell title="İzin & Devamsızlık">
+    <ShiftsShell title="İzin & Devamsızlık" active="leaves">
         <div class="flex flex-col gap-4">
             <div class="flex flex-wrap items-center gap-2">
                 <BaseSelect v-model="type" :options="typeOptions" size="sm" class="w-40" />

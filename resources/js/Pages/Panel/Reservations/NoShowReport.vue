@@ -55,7 +55,7 @@ const rowColumns: TableColumn[] = [
 <template>
     <Head title="No-Show Raporu" />
     <PanelShell title="No-Show Raporu">
-        <ReservationsNav />
+        <ReservationsNav active="noshow" />
 
         <div class="flex flex-col gap-4">
             <BaseCard>

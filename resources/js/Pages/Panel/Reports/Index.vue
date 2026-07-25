@@ -3,9 +3,10 @@ import { computed, reactive, ref } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { authFromPage } from '@/types/auth';
 import PanelShell from '@/Components/panel/PanelShell.vue';
-import BaseTabs from '@/Components/ui/BaseTabs.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
+import ReportsNav from './components/ReportsNav.vue';
+import OverviewTab from './tabs/OverviewTab.vue';
 import SalesTab from './tabs/SalesTab.vue';
 import FinanceTab from './tabs/FinanceTab.vue';
 import ProfitTab from './tabs/ProfitTab.vue';
@@ -81,17 +82,11 @@ const branchValue = computed({
 });
 
 /* ---- Sekmeler ---- */
-const tab = ref('sales');
-const tabs = [
-    { key: 'sales', label: 'Satış' },
-    { key: 'finance', label: 'Finans' },
-    { key: 'profit', label: 'Kârlılık' },
-    { key: 'ops', label: 'Operasyon' },
-    { key: 'eod', label: 'Gün Sonu' },
-    { key: 'reconciliation', label: 'Mutabakat' },
-    { key: 'staff', label: 'Personel' },
-    { key: 'exports', label: 'Dışa Aktarımlar' },
-];
+/**
+ * Gruplu 2 kademeli gezinme ReportsNav'da; burada yalnız aktif sekme tutulur.
+ * Açılış "overview" (Genel Bakış landing) — bugüne bakar, filtre satırını gizler.
+ */
+const tab = ref('overview');
 </script>
 
 <template>
@@ -99,8 +94,12 @@ const tabs = [
 
     <PanelShell title="Raporlar">
         <div class="flex flex-col gap-4">
-            <!-- Filtre satırı: içeriğin ÜSTÜNDE tek satır; her şeyi kapsar -->
-            <div class="flex flex-wrap items-center gap-2">
+            <!-- Gruplu 2 kademeli gezinme + açıklama -->
+            <ReportsNav :active="tab" @select="tab = $event" />
+
+            <!-- Filtre satırı: içeriğin ÜSTÜNDE tek satır; her şeyi kapsar.
+                 Genel Bakış daima bugüne baktığı için orada gizlenir. -->
+            <div v-if="tab !== 'overview'" class="flex flex-wrap items-center gap-2">
                 <div class="flex flex-wrap gap-1 rounded-md border border-default bg-raised p-1" role="group" aria-label="Tarih aralığı">
                     <button
                         v-for="p in presets"
@@ -128,9 +127,8 @@ const tabs = [
                 </div>
             </div>
 
-            <BaseTabs v-model="tab" :tabs="tabs" />
-
-            <SalesTab v-if="tab === 'sales'" :filters="filters" />
+            <OverviewTab v-if="tab === 'overview'" :branch-id="filters.branchId" @navigate="tab = $event" />
+            <SalesTab v-else-if="tab === 'sales'" :filters="filters" />
             <FinanceTab v-else-if="tab === 'finance'" :filters="filters" />
             <ProfitTab v-else-if="tab === 'profit'" :filters="filters" />
             <OpsTab v-else-if="tab === 'ops'" :filters="filters" />

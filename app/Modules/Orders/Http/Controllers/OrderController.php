@@ -8,6 +8,7 @@ use App\Modules\Identity\Services\PinService;
 use App\Modules\Orders\Enums\OrderChannel;
 use App\Modules\Orders\Enums\OrderItemStatus;
 use App\Modules\Orders\Enums\OrderStatus;
+use App\Modules\Orders\Enums\ServiceType;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\OrderItem;
 use App\Modules\Orders\Services\IdempotencyStore;
@@ -78,10 +79,13 @@ class OrderController extends Controller
             ->orderBy('number')->orderBy('name')
             ->get();
 
+        // Açık adisyonlar + ön-ödemeli (kiosk POS) ama henüz teslim edilmemiş
+        // siparişler. Kiosk siparişi başta 'paid' olur; teslim edilene kadar
+        // panoda görünmeli (aksi halde kasadan/panodan "kayboluyordu").
         $openOrders = Order::query()
             ->with(['table:id,name,number', 'items'])
             ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
-            ->whereNotIn('status', OrderStatus::closedValues())
+            ->operationallyVisible()
             ->orderBy('id')
             ->get();
 
@@ -153,6 +157,7 @@ class OrderController extends Controller
         $data = $request->validate([
             'branch_id' => ['required', 'integer'],
             'channel' => ['sometimes', Rule::enum(OrderChannel::class)],
+            'service_type' => ['sometimes', Rule::enum(ServiceType::class)],
             'table_id' => ['nullable', 'integer'],
             'guest_count' => ['nullable', 'integer', 'min:1', 'max:200'],
             'note' => ['nullable', 'string', 'max:500'],

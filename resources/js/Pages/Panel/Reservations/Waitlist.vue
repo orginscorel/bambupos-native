@@ -116,7 +116,7 @@ function waitingFor(row: WaitlistRow): string {
 <template>
     <Head title="Bekleme Listesi" />
     <PanelShell title="Bekleme Listesi">
-        <ReservationsNav />
+        <ReservationsNav active="waitlist" />
 
         <div class="flex flex-col gap-4">
             <!-- Yeni girdi -->

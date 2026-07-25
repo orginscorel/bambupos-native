@@ -82,6 +82,10 @@ export interface OrderSummary {
     channel_label: string;
     channel_icon: string;
     channel_variant: StatusMeta['variant'];
+    service_type: string;
+    service_type_label: string;
+    service_type_icon: string;
+    service_type_variant: StatusMeta['variant'];
     status: string;
     status_label: string;
     status_icon: string;
@@ -101,6 +105,10 @@ export interface OrderSummary {
     vat_total_minor: number;
     total_minor: number;
     paid_minor: number;
+    paid_display: string;
+    payment_state: 'paid' | 'partial' | 'unpaid';
+    payment_label: string;
+    refunded_minor: number;
     remaining_minor: number;
     total_display: string;
     remaining_display: string;

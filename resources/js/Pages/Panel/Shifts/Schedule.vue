@@ -11,6 +11,7 @@ import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import ShiftsShell from './components/ShiftsShell.vue';
+import ShiftsOverview from './components/ShiftsOverview.vue';
 import ShiftFormModal from './components/ShiftFormModal.vue';
 import type { ScheduleData, ShiftRow, ShiftsMeta, StaffingWarning, StaffLite } from './types';
 import { addDays, dayKey, fmtTime, startOfWeek, ymd, WEEKDAY_LABELS as WD } from './lib';
@@ -27,6 +28,16 @@ const page = usePage();
 const myUserId = computed<number>(() => {
     const auth = (page.props as Record<string, unknown>).auth as { user?: { id: number } } | undefined;
     return auth?.user?.id ?? 0;
+});
+
+/**
+ * Aynı rota (/panel/vardiya) iki ekranı barındırır: varsayılan GENEL BAKIŞ,
+ * `?gorunum=takvim` ise VARDİYA TAKVİMİ. Böylece yeni backend rotası açmadan
+ * ayrı sekme gibi davranır (Stok deseni; ShiftsNav bu parametreyi kullanır).
+ */
+const screen = computed<'overview' | 'schedule'>(() => {
+    const query = page.url.split('?')[1] ?? '';
+    return new URLSearchParams(query).get('gorunum') === 'takvim' ? 'schedule' : 'overview';
 });
 
 const meta = ref<ShiftsMeta | null>(null);
@@ -97,16 +108,28 @@ async function loadSchedule(): Promise<void> {
     }
 }
 
-onMounted(async () => {
+/** Takvim ekranını (meta + veri) yükler; Genel Bakış'ta gereksiz istek atmayız. */
+async function initSchedule(): Promise<void> {
     try {
         await loadMeta();
     } catch {
         /* meta hatası takvimi engellemesin */
     }
     await loadSchedule();
+}
+
+onMounted(() => {
+    if (screen.value === 'schedule') void initSchedule();
 });
 
-watch([view, branchId], () => void loadSchedule());
+// Genel Bakış → Takvim geçişinde (Inertia sayfa bileşenini yeniden kullanır) ilk yükleme.
+watch(screen, (v) => {
+    if (v === 'schedule' && meta.value === null) void initSchedule();
+});
+
+watch([view, branchId], () => {
+    if (screen.value === 'schedule') void loadSchedule();
+});
 
 function go(dir: -1 | 0 | 1): void {
     if (dir === 0) {
@@ -246,8 +269,11 @@ const positionOf = (s: ShiftRow): string => s.position || s.user?.position || ''
 </script>
 
 <template>
-    <Head title="Vardiya Takvimi" />
-    <ShiftsShell title="Vardiya Takvimi">
+    <Head :title="screen === 'schedule' ? 'Vardiya Takvimi' : 'Vardiya · Genel Bakış'" />
+    <ShiftsShell :title="screen === 'schedule' ? 'Vardiya Takvimi' : 'Genel Bakış'" :active="screen">
+        <ShiftsOverview v-if="screen === 'overview'" />
+
+        <template v-else>
         <div class="flex flex-col gap-4">
             <!-- Araç çubuğu -->
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -473,5 +499,6 @@ const positionOf = (s: ShiftRow): string => s.position || s.user?.position || ''
             @close="modalOpen = false"
             @saved="loadSchedule"
         />
+        </template>
     </ShiftsShell>
 </template>

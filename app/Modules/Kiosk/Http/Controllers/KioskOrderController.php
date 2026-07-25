@@ -202,9 +202,11 @@ class KioskOrderController extends Controller
             default => 'Paket',
         };
 
-        // Kiosk kanalı masaya bağlanmaz (OrderChannel::usesTable() = false);
-        // servis tipi + masa, personelin göreceği nota yazılır (bilinen sınır —
-        // rapor: Orders modülü kiosk+masa ilişkisini ileride taşıyabilir).
+        // Servis tipi artık YAPISAL kolonda tutulur (orders.service_type) —
+        // Board/Detail/KDS tutarlı "Masada/Gel-al/Paket" etiketini oradan
+        // gösterir. Kiosk kanalı masaya bağlanmaz (OrderChannel::usesTable()
+        // = false), bu yüzden dine_in'in hedef masası personelin göreceği
+        // nota YANINDA taşınır (komi hangi masaya götüreceğini görsün).
         $noteParts = array_filter([
             $typeLabel.($tableLabel !== null ? ' · Masa: '.$tableLabel : ''),
             isset($data['note']) && trim((string) $data['note']) !== '' ? trim((string) $data['note']) : null,
@@ -218,6 +220,7 @@ class KioskOrderController extends Controller
             $order = $this->orders->open([
                 'branch_id' => (int) $device->branch_id,
                 'channel' => 'kiosk',
+                'service_type' => $data['order_type'], // yapısal tip (dine_in/takeaway/package)
                 'note' => implode(' — ', $noteParts),
                 'customer_name' => $data['customer_name'] ?? null,
             ], $actor);
