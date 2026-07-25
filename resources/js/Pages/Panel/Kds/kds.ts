@@ -6,6 +6,7 @@
  * WebSocket gelirse yalnız `createPollingFeed` yerine yeni bir fabrika
  * yazılır — ekran kodu DEĞİŞMEZ.
  */
+import { ref, type Ref } from 'vue';
 import { api } from '@/lib/http';
 
 /* =========================================================
@@ -211,36 +212,66 @@ export async function getOrNull<T>(path: string): Promise<T | null> {
 }
 
 /* =========================================================
- |  Tema: KDS her zaman koyu — panelin KENDİ koyu teması zorlanır
- |  (ayrı --kds-* paleti YOK; --ui-* token'ları aynen kullanılır).
+ |  Tema: KDS ekranının KENDİ açık/koyu tercihi — panelin genel tema
+ |  ayarından BAĞIMSIZ. Varsayılan AÇIK; ekran/cihaz kendi seçimini
+ |  localStorage'da ('kds_theme') tutar (duvar ekranı sabit kalır).
+ |  Panelin 'theme' anahtarına DOKUNULMAZ — --ui-* token'ları aynen
+ |  kullanılır, yalnız bu ekranda hangi kademenin (light/dark) aktif
+ |  olduğu bağımsız seçilir.
  * ========================================================= */
 
-let kdsDarkCount = 0;
+export type KdsTheme = 'light' | 'dark';
+
+const KDS_THEME_STORAGE_KEY = 'kds_theme';
+
+function readStoredKdsTheme(): KdsTheme {
+    try {
+        return localStorage.getItem(KDS_THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    } catch {
+        return 'light';
+    }
+}
+
+let kdsActiveCount = 0;
 let savedTheme: string | undefined;
 
 /**
- * KDS ekranı süresince <html data-theme="dark"> sabitlenir; böylece tüm
- * --ui-* token'ları ve Components/ui bileşenleri panelin koyu temasıyla
- * birebir aynı görünür. localStorage'a DOKUNULMAZ — kullanıcının panel
- * tema tercihi değişmez; dönüş fonksiyonu eski temayı geri yükler.
- * Sayaç, Inertia sayfa geçişinde mount/unmount sırası ne olursa olsun
- * (Mutfak → Komi) temanın yanlışlıkla geri dönmesini engeller.
+ * KDS ekranı süresince <html data-theme> bu ekranın kendi tercihine göre
+ * ayarlanır (varsayılan: light). Dönen `release()` panelin önceki temasını
+ * geri yükler; sayaç, Inertia sayfa geçişinde mount/unmount sırası ne
+ * olursa olsun (Mutfak → Komi) temanın yanlışlıkla geri dönmesini engeller.
  */
-export function forceDarkTheme(): () => void {
-    if (typeof document === 'undefined') return () => {};
-    const el = document.documentElement;
-    if (kdsDarkCount === 0) {
-        savedTheme = el.dataset.theme;
-        el.dataset.theme = 'dark';
+export function useKdsTheme(): { theme: Ref<KdsTheme>; toggle: () => void; release: () => void } {
+    const theme = ref<KdsTheme>(readStoredKdsTheme());
+
+    if (typeof document === 'undefined') {
+        return { theme, toggle: () => {}, release: () => {} };
     }
-    kdsDarkCount++;
+
+    const el = document.documentElement;
+    if (kdsActiveCount === 0) savedTheme = el.dataset.theme;
+    kdsActiveCount++;
+    el.dataset.theme = theme.value;
+
+    function toggle(): void {
+        theme.value = theme.value === 'dark' ? 'light' : 'dark';
+        el.dataset.theme = theme.value;
+        try {
+            localStorage.setItem(KDS_THEME_STORAGE_KEY, theme.value);
+        } catch {
+            /* gizli mod vb. — bu oturumda hatırlanmaz, işlevi bozmaz */
+        }
+    }
+
     let released = false;
-    return () => {
+    function release(): void {
         if (released) return;
         released = true;
-        kdsDarkCount--;
-        if (kdsDarkCount === 0) el.dataset.theme = savedTheme ?? 'light';
-    };
+        kdsActiveCount--;
+        if (kdsActiveCount === 0) el.dataset.theme = savedTheme ?? 'light';
+    }
+
+    return { theme, toggle, release };
 }
 
 /* =========================================================
@@ -266,12 +297,18 @@ export function slaText(mins: number): string {
 }
 
 /**
- * Bekleme çipi sınıfları — panel rozet dilinin (BaseBadge) büyütülmüş hali.
- * Tek sinyal ilkesi: aciliyet YALNIZ bu çipte renklenir; "late" durumunda
- * metne "gecikti" sözcüğü eklenir (renk körlüğü desteği ekranda).
+ * Bekleme çipi sınıfları — panel rozet dilinin büyütülmüş hali. Tek sinyal
+ * ilkesi: aciliyet YALNIZ bu çipte renklenir; "late" durumunda metne
+ * "gecikti" sözcüğü eklenir (renk körlüğü desteği ekranda).
+ *
+ * "late" DOLU (solid) kırmızı kullanır: soft-danger ikilisi (bg-danger-soft
+ * + text-danger) açık temada ölçülen 4.41:1 ile AA metin eşiğinin (4.5:1)
+ * az altında kalıyor. Dolu bg-danger + text-on-status açık temada 4.83:1,
+ * koyu temada 6.32:1 — her iki temada da AA geçer; en acil durumu ayrıca
+ * daha da güçlü vurgular.
  */
 export function waitChipClass(level: SlaLevel): string {
-    if (level === 'late') return 'border-danger-border bg-danger-soft text-danger';
+    if (level === 'late') return 'border-danger bg-danger text-on-status';
     if (level === 'warn') return 'border-warning-border bg-warning-soft text-warning';
     return 'border-default bg-inset text-muted';
 }

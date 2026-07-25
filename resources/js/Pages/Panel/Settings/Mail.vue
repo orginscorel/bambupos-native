@@ -292,7 +292,14 @@ const passwordPlaceholder = computed(() =>
     <Head title="E-posta Ayarları" />
 
     <PanelShell title="E-posta Ayarları">
-        <div class="mx-auto flex w-full max-w-3xl flex-col gap-5">
+        <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
+            <div class="flex flex-col gap-1.5">
+                <h1 class="text-2xl font-semibold text-body">Ayarlar</h1>
+                <p class="max-w-2xl text-[15px] leading-relaxed text-muted">
+                    İşletmenizin e-posta gönderim yapılandırması ve bağlantı testi.
+                </p>
+            </div>
+
             <div class="flex gap-1 overflow-x-auto border-b border-default">
                 <Link
                     v-for="tab in settingsTabs"
@@ -312,177 +319,204 @@ const passwordPlaceholder = computed(() =>
             </template>
 
             <template v-else-if="!loadFailed">
+                <div class="flex flex-col divide-y divide-(--ui-border)">
 
-                <!-- ================= Geçerli ayar ================= -->
-                <BaseCard title="Şu an geçerli ayar">
-                    <template #actions>
-                        <BaseBadge :variant="sourceBadge.variant">{{ sourceBadge.text }}</BaseBadge>
-                    </template>
-                    <p class="text-sm text-muted">
-                        Bu işletmeden çıkan e-postalar (parola sıfırlama vb.) şu sırayla belirlenir:
-                        önce <strong class="text-body">işletme override’ı</strong>, yoksa
-                        <strong class="text-body">platform varsayılanı</strong>, o da yoksa
-                        <strong class="text-body">sunucu (.env) yapılandırması</strong>.
-                    </p>
-                    <ul class="mt-3 flex flex-col gap-1.5 text-sm">
-                        <li class="flex items-center gap-2">
-                            <AppIcon name="check-circle" :size="15"
-                                :class="effectiveSource === 'tenant' ? 'text-success' : 'text-subtle opacity-40'" />
-                            <span :class="effectiveSource === 'tenant' ? 'font-medium text-body' : 'text-muted'">
-                                İşletme override’ı — {{ hasOverride ? 'tanımlı' : 'tanımlı değil' }}
-                            </span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <AppIcon name="check-circle" :size="15"
-                                :class="effectiveSource === 'platform' ? 'text-success' : 'text-subtle opacity-40'" />
-                            <span :class="effectiveSource === 'platform' ? 'font-medium text-body' : 'text-muted'">
-                                Platform varsayılanı —
-                                {{ platformSummary.exists ? `tanımlı (${platformSummary.mailer}${platformSummary.from_address ? ', ' + platformSummary.from_address : ''})` : 'tanımlı değil' }}
-                            </span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <AppIcon name="check-circle" :size="15"
-                                :class="effectiveSource === 'env' ? 'text-success' : 'text-subtle opacity-40'" />
-                            <span :class="effectiveSource === 'env' ? 'font-medium text-body' : 'text-muted'">
-                                Sunucu (.env) — sürücü: {{ envSummary.mailer }}<template v-if="envSummary.mailer === 'log'"> (e-postalar gerçekte gönderilmez)</template>
-                            </span>
-                        </li>
-                    </ul>
-                </BaseCard>
+                    <!-- ================= Geçerli ayar ================= -->
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 first:pt-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Etkin ayar</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Bu işletmeden çıkan e-postalar (parola sıfırlama vb.) şu sırayla belirlenir:
+                                önce <strong class="text-body">işletme override’ı</strong>, yoksa
+                                <strong class="text-body">platform varsayılanı</strong>, o da yoksa
+                                <strong class="text-body">sunucu (.env) yapılandırması</strong>.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <template #actions>
+                                    <BaseBadge :variant="sourceBadge.variant">{{ sourceBadge.text }}</BaseBadge>
+                                </template>
+                                <ul class="flex flex-col gap-3 text-sm">
+                                    <li class="flex items-center gap-2.5">
+                                        <AppIcon name="check-circle" :size="16"
+                                            :class="effectiveSource === 'tenant' ? 'text-success' : 'text-subtle opacity-40'" />
+                                        <span :class="effectiveSource === 'tenant' ? 'font-medium text-body' : 'text-muted'">
+                                            İşletme override’ı — {{ hasOverride ? 'tanımlı' : 'tanımlı değil' }}
+                                        </span>
+                                    </li>
+                                    <li class="flex items-center gap-2.5">
+                                        <AppIcon name="check-circle" :size="16"
+                                            :class="effectiveSource === 'platform' ? 'text-success' : 'text-subtle opacity-40'" />
+                                        <span :class="effectiveSource === 'platform' ? 'font-medium text-body' : 'text-muted'">
+                                            Platform varsayılanı —
+                                            {{ platformSummary.exists ? `tanımlı (${platformSummary.mailer}${platformSummary.from_address ? ', ' + platformSummary.from_address : ''})` : 'tanımlı değil' }}
+                                        </span>
+                                    </li>
+                                    <li class="flex items-center gap-2.5">
+                                        <AppIcon name="check-circle" :size="16"
+                                            :class="effectiveSource === 'env' ? 'text-success' : 'text-subtle opacity-40'" />
+                                        <span :class="effectiveSource === 'env' ? 'font-medium text-body' : 'text-muted'">
+                                            Sunucu (.env) — sürücü: {{ envSummary.mailer }}<template v-if="envSummary.mailer === 'log'"> (e-postalar gerçekte gönderilmez)</template>
+                                        </span>
+                                    </li>
+                                </ul>
+                            </BaseCard>
+                        </div>
+                    </section>
 
-                <!-- ================= Ayar formu ================= -->
-                <BaseTabs v-if="canManagePlatform" v-model="activeScope" :tabs="tabs" class="-mb-3" />
+                    <!-- ================= Ayar formu ================= -->
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 md:grid-cols-[260px_1fr]">
+                        <BaseTabs v-if="canManagePlatform" v-model="activeScope" :tabs="tabs" class="md:col-span-2" />
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">
+                                {{ activeScope === 'platform' ? 'Platform varsayılanı' : 'İşletme e-posta ayarı' }}
+                            </h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                <template v-if="activeScope === 'platform'">
+                                    Kendi ayarı olmayan tüm işletmelerin e-postaları buradan gönderilir.
+                                </template>
+                                <template v-else>
+                                    İşletmenizin e-postalarını kendi adresinizden göndermek için doldurun.
+                                    Boş bırakırsanız platform/sunucu varsayılanı kullanılır.
+                                </template>
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <template v-if="activeScope === 'tenant'" #actions>
+                                    <BaseBadge :variant="hasOverride ? 'success' : 'neutral'" :no-icon="!hasOverride">
+                                        {{ hasOverride ? 'Override tanımlı' : 'Override yok' }}
+                                    </BaseBadge>
+                                </template>
 
-                <BaseCard :title="activeScope === 'platform' ? 'Platform varsayılan e-posta ayarı' : 'İşletme e-posta ayarı'">
-                    <template v-if="activeScope === 'tenant'" #actions>
-                        <BaseBadge :variant="hasOverride ? 'success' : 'neutral'" :no-icon="!hasOverride">
-                            {{ hasOverride ? 'Override tanımlı' : 'Override yok' }}
-                        </BaseBadge>
-                    </template>
+                                <form class="flex flex-col gap-5" novalidate @submit.prevent="save(activeScope)">
+                                    <div class="max-w-sm">
+                                        <FormField label="Sürücü" :error="err.mailer" required>
+                                            <BaseSelect v-model="form.mailer" :options="mailerOptions" />
+                                        </FormField>
+                                    </div>
 
-                    <p class="mb-4 text-sm text-muted">
-                        <template v-if="activeScope === 'platform'">
-                            Kendi ayarı olmayan tüm işletmelerin e-postaları buradan gönderilir.
-                        </template>
-                        <template v-else>
-                            İşletmenizin e-postalarını kendi adresinizden göndermek için doldurun.
-                            Boş bırakırsanız platform/sunucu varsayılanı kullanılır.
-                        </template>
-                    </p>
+                                    <template v-if="form.mailer === 'smtp'">
+                                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                            <div class="sm:col-span-2">
+                                                <FormField label="Sunucu adresi" :error="err.host" required>
+                                                    <BaseInput v-model="form.host" placeholder="ör. smtp.example.com" autocomplete="off" />
+                                                </FormField>
+                                            </div>
+                                            <FormField
+                                                label="Port"
+                                                :error="err.port"
+                                                :hint="!canManagePlatform ? `İzin verilen portlar: ${tenantPorts.join(', ')}` : ''"
+                                                required
+                                            >
+                                                <BaseInput v-model="form.port" inputmode="numeric" placeholder="587" autocomplete="off" />
+                                            </FormField>
+                                        </div>
 
-                    <form class="flex flex-col gap-4" novalidate @submit.prevent="save(activeScope)">
-                        <FormField label="Sürücü" :error="err.mailer" required>
-                            <BaseSelect v-model="form.mailer" :options="mailerOptions" />
-                        </FormField>
+                                        <div class="max-w-sm">
+                                            <FormField label="Şifreleme" :error="err.encryption" required>
+                                                <BaseSelect v-model="form.encryption" :options="encryptionOptions" />
+                                            </FormField>
+                                        </div>
 
-                        <template v-if="form.mailer === 'smtp'">
-                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                <div class="sm:col-span-2">
-                                    <FormField label="Sunucu adresi" :error="err.host" required>
-                                        <BaseInput v-model="form.host" placeholder="ör. smtp.example.com" autocomplete="off" />
+                                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <FormField label="Kullanıcı adı" :error="err.username">
+                                                <BaseInput v-model="form.username" placeholder="genelde e-posta adresi" autocomplete="off" />
+                                            </FormField>
+                                            <FormField
+                                                label="Parola"
+                                                :error="err.password"
+                                                :hint="hasPassword[activeScope] ? 'Kayıtlı bir parola var; boş bırakırsanız korunur.' : ''"
+                                            >
+                                                <BaseInput
+                                                    v-model="form.password"
+                                                    type="password"
+                                                    :placeholder="passwordPlaceholder"
+                                                    autocomplete="new-password"
+                                                />
+                                            </FormField>
+                                        </div>
+                                    </template>
+
+                                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <FormField label="Gönderen adı" :error="err.from_name">
+                                            <BaseInput v-model="form.from_name" placeholder="ör. işletme adınız" autocomplete="off" />
+                                        </FormField>
+                                        <FormField label="Gönderen adresi" :error="err.from_address" required>
+                                            <BaseInput v-model="form.from_address" type="email" placeholder="ör. bilgi@isletme.com" autocomplete="off" />
+                                        </FormField>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <FormField label="Yanıt adresi (reply-to)" :error="err.reply_to" hint="Boşsa gönderen adresi kullanılır.">
+                                            <BaseInput v-model="form.reply_to" type="email" autocomplete="off" />
+                                        </FormField>
+                                        <FormField v-if="form.mailer === 'smtp'" label="Zaman aşımı (saniye)" :error="err.timeout" hint="5–120 arası">
+                                            <BaseInput v-model="form.timeout" inputmode="numeric" autocomplete="off" />
+                                        </FormField>
+                                    </div>
+
+                                    <div class="flex flex-wrap items-center gap-3 pt-1">
+                                        <BaseButton type="submit" :loading="saving[activeScope]">Kaydet</BaseButton>
+                                        <BaseButton
+                                            v-if="activeScope === 'tenant' && hasOverride"
+                                            variant="danger"
+                                            type="button"
+                                            @click="removeModalOpen = true"
+                                        >
+                                            Override’ı kaldır
+                                        </BaseButton>
+                                    </div>
+                                </form>
+                            </BaseCard>
+                        </div>
+                    </section>
+
+                    <!-- ================= Bağlantı testi ================= -->
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 last:pb-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Bağlantı testi</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Şu an <strong class="text-body">geçerli</strong> ayarla ({{ sourceLabel(effectiveSource) }})
+                                girilen adrese gerçek bir deneme e-postası gönderilir. Kaydedilmemiş form
+                                değişiklikleri teste dahil değildir — önce kaydedin.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <form class="flex flex-col gap-4 sm:max-w-md" novalidate @submit.prevent="sendTest">
+                                    <FormField label="Alıcı adresi" required>
+                                        <BaseInput v-model="testAddress" type="email" autocomplete="off" />
                                     </FormField>
-                                </div>
-                                <FormField
-                                    label="Port"
-                                    :error="err.port"
-                                    :hint="!canManagePlatform ? `İzin verilen portlar: ${tenantPorts.join(', ')}` : ''"
-                                    required
-                                >
-                                    <BaseInput v-model="form.port" inputmode="numeric" placeholder="587" autocomplete="off" />
-                                </FormField>
-                            </div>
+                                    <div>
+                                        <BaseButton type="submit" variant="secondary" :loading="testing">
+                                            Test e-postası gönder
+                                        </BaseButton>
+                                    </div>
+                                </form>
 
-                            <FormField label="Şifreleme" :error="err.encryption" required>
-                                <BaseSelect v-model="form.encryption" :options="encryptionOptions" />
-                            </FormField>
-
-                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <FormField label="Kullanıcı adı" :error="err.username">
-                                    <BaseInput v-model="form.username" placeholder="genelde e-posta adresi" autocomplete="off" />
-                                </FormField>
-                                <FormField
-                                    label="Parola"
-                                    :error="err.password"
-                                    :hint="hasPassword[activeScope] ? 'Kayıtlı bir parola var; boş bırakırsanız korunur.' : ''"
+                                <div
+                                    v-if="testResult"
+                                    class="mt-4 flex items-start gap-2.5 rounded-md border p-3 text-sm sm:max-w-md"
+                                    :class="testResult.ok ? 'border-success/40 text-body' : 'border-danger/50 text-body'"
+                                    role="status"
                                 >
-                                    <BaseInput
-                                        v-model="form.password"
-                                        type="password"
-                                        :placeholder="passwordPlaceholder"
-                                        autocomplete="new-password"
+                                    <AppIcon
+                                        :name="testResult.ok ? 'check-circle' : 'alert-circle'"
+                                        :size="18"
+                                        :class="testResult.ok ? 'mt-0.5 shrink-0 text-success' : 'mt-0.5 shrink-0 text-danger'"
                                     />
-                                </FormField>
-                            </div>
-                        </template>
-
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <FormField label="Gönderen adı" :error="err.from_name">
-                                <BaseInput v-model="form.from_name" placeholder="ör. işletme adınız" autocomplete="off" />
-                            </FormField>
-                            <FormField label="Gönderen adresi" :error="err.from_address" required>
-                                <BaseInput v-model="form.from_address" type="email" placeholder="ör. bilgi@isletme.com" autocomplete="off" />
-                            </FormField>
+                                    <div class="flex flex-col gap-1">
+                                        <span class="font-medium">{{ testResult.ok ? 'Gönderim başarılı' : 'Gönderim başarısız' }}</span>
+                                        <span class="text-muted">{{ testResult.message }}</span>
+                                        <span v-if="testResult.note" class="font-medium text-warning">{{ testResult.note }}</span>
+                                    </div>
+                                </div>
+                            </BaseCard>
                         </div>
-
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <FormField label="Yanıt adresi (reply-to)" :error="err.reply_to" hint="Boşsa gönderen adresi kullanılır.">
-                                <BaseInput v-model="form.reply_to" type="email" autocomplete="off" />
-                            </FormField>
-                            <FormField v-if="form.mailer === 'smtp'" label="Zaman aşımı (saniye)" :error="err.timeout" hint="5–120 arası">
-                                <BaseInput v-model="form.timeout" inputmode="numeric" autocomplete="off" />
-                            </FormField>
-                        </div>
-
-                        <div class="flex flex-wrap items-center gap-3 pt-1">
-                            <BaseButton type="submit" :loading="saving[activeScope]">Kaydet</BaseButton>
-                            <BaseButton
-                                v-if="activeScope === 'tenant' && hasOverride"
-                                variant="danger"
-                                type="button"
-                                @click="removeModalOpen = true"
-                            >
-                                Override’ı kaldır
-                            </BaseButton>
-                        </div>
-                    </form>
-                </BaseCard>
-
-                <!-- ================= Bağlantı testi ================= -->
-                <BaseCard title="Bağlantı testi">
-                    <p class="mb-4 text-sm text-muted">
-                        Şu an <strong class="text-body">geçerli</strong> ayarla ({{ sourceLabel(effectiveSource) }})
-                        girilen adrese gerçek bir deneme e-postası gönderilir. Kaydedilmemiş form
-                        değişiklikleri teste dahil değildir — önce kaydedin.
-                    </p>
-                    <form class="flex max-w-md flex-col gap-4" novalidate @submit.prevent="sendTest">
-                        <FormField label="Alıcı adresi" required>
-                            <BaseInput v-model="testAddress" type="email" autocomplete="off" />
-                        </FormField>
-                        <div>
-                            <BaseButton type="submit" variant="secondary" :loading="testing">
-                                Test e-postası gönder
-                            </BaseButton>
-                        </div>
-                    </form>
-
-                    <div
-                        v-if="testResult"
-                        class="mt-4 flex items-start gap-2.5 rounded-md border p-3 text-sm"
-                        :class="testResult.ok ? 'border-success/40 text-body' : 'border-danger/50 text-body'"
-                        role="status"
-                    >
-                        <AppIcon
-                            :name="testResult.ok ? 'check-circle' : 'alert-circle'"
-                            :size="18"
-                            :class="testResult.ok ? 'mt-0.5 shrink-0 text-success' : 'mt-0.5 shrink-0 text-danger'"
-                        />
-                        <div class="flex flex-col gap-1">
-                            <span class="font-medium">{{ testResult.ok ? 'Gönderim başarılı' : 'Gönderim başarısız' }}</span>
-                            <span class="text-muted">{{ testResult.message }}</span>
-                            <span v-if="testResult.note" class="font-medium text-warning">{{ testResult.note }}</span>
-                        </div>
-                    </div>
-                </BaseCard>
+                    </section>
+                </div>
             </template>
 
             <!-- ================= Override kaldırma onayı ================= -->

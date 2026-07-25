@@ -271,7 +271,7 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                             </BaseBadge>
                             <span class="font-medium">{{ o.table_name ?? o.channel_label }}</span>
                             <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
-                            <span class="text-sm font-semibold text-body">{{ o.total_display }} ₺</span>
+                            <span class="whitespace-nowrap text-sm font-semibold tabular-nums text-body">{{ o.total_display }} ₺</span>
                             <span class="text-xs text-subtle">{{ orderElapsed(o) }} önce</span>
                         </div>
                         <div class="flex gap-2">
@@ -342,7 +342,7 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                              kalem sayısı ve süre ikincil ve AYRI (soluk, küçük, kendi satırında). -->
                         <div v-if="t.orders.length > 0" class="flex flex-col gap-0.5">
                             <div class="flex items-baseline justify-between gap-2">
-                                <span class="text-lg font-bold tabular-nums text-body">
+                                <span class="whitespace-nowrap text-lg font-bold tabular-nums text-body">
                                     {{ money(t.orders.reduce((n, o) => n + o.remaining_minor, 0)) }} ₺
                                 </span>
                                 <span class="text-xs font-medium text-muted">{{ t.orders.reduce((n, o) => n + o.items_count, 0) }} kalem</span>
@@ -381,7 +381,7 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                         </div>
                         <div class="flex items-center gap-3">
                             <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
-                            <span class="text-sm font-semibold text-body">{{ o.total_display }} ₺</span>
+                            <span class="whitespace-nowrap text-sm font-semibold tabular-nums text-body">{{ o.total_display }} ₺</span>
                             <span class="text-xs text-subtle">{{ orderElapsed(o) }} önce</span>
                             <BaseBadge :variant="o.status_variant" no-icon>
                                 <AppIcon :name="o.status_icon" :size="12" />
@@ -405,7 +405,7 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                     @click="busyModal = false; router.visit(`/panel/siparisler/${o.id}`)"
                 >
                     <span class="font-medium">Adisyon #{{ o.id }}</span>
-                    <span class="text-sm text-muted">{{ o.items_count }} kalem · {{ o.total_display }} ₺</span>
+                    <span class="text-sm text-muted">{{ o.items_count }} kalem · <span class="whitespace-nowrap tabular-nums">{{ o.total_display }} ₺</span></span>
                 </button>
             </div>
             <FormField label="Kişi sayısı" hint="Yeni adisyon için">

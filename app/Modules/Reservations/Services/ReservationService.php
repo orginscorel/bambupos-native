@@ -23,12 +23,32 @@ class ReservationService
     }
 
     /**
+     * Kullanıcının girdiği "duvar saati"ni ŞUBE saat diliminde yorumlayıp
+     * uygulama dilimine (UTC) çevirir. Uygulama UTC çalışır ama personel ve
+     * müşteri şube saatiyle düşünür; çevrim yapılmazsa yaklaşan-rezervasyon /
+     * gecikme / hatırlatma hesapları saat farkı kadar kayar.
+     */
+    public static function parseBranchTime(int $branchId, string $value): Carbon
+    {
+        $tz = \App\Modules\Tenancy\Models\Branch::query()
+            ->withoutGlobalScopes()
+            ->whereKey($branchId)
+            ->value('timezone') ?: config('app.timezone');
+
+        return Carbon::parse($value, $tz)->setTimezone(config('app.timezone'));
+    }
+
+    /**
      * @param  array<string, mixed>  $data  doğrulanmış girdi
      * @param  array<int, int>  $tableIds  atanacak masalar (boş olabilir)
      */
     public function create(array $data, array $tableIds, ?User $actor, string $source): Reservation
     {
-        $startsAt = Carbon::parse($data['reserved_at']);
+        // Carbon geldiyse an zaten çözülmüştür (public uç); string ise şube
+        // duvar saati olarak yorumlanır (panel).
+        $startsAt = $data['reserved_at'] instanceof Carbon
+            ? $data['reserved_at']->copy()->setTimezone(config('app.timezone'))
+            : self::parseBranchTime((int) $data['branch_id'], (string) $data['reserved_at']);
         $duration = (int) ($data['duration_minutes'] ?? config('reservations.default_duration_minutes', 120));
         $buffer = (int) ($data['buffer_minutes'] ?? config('reservations.default_buffer_minutes', 15));
 
@@ -97,7 +117,15 @@ class ReservationService
         }
 
         return DB::transaction(function () use ($reservation, $data, $tableIds): Reservation {
-            $startsAt = isset($data['reserved_at']) ? Carbon::parse($data['reserved_at']) : $reservation->startsAt();
+            $startsAt = match (true) {
+                ! isset($data['reserved_at']) => $reservation->startsAt(),
+                $data['reserved_at'] instanceof Carbon => $data['reserved_at']->copy()->setTimezone(config('app.timezone')),
+                default => self::parseBranchTime((int) $reservation->branch_id, (string) $data['reserved_at']),
+            };
+
+            if (isset($data['reserved_at'])) {
+                $data['reserved_at'] = $startsAt; // fill() aynı dönüştürülmüş anı yazsın
+            }
             $duration = (int) ($data['duration_minutes'] ?? $reservation->duration_minutes);
             $buffer = (int) ($data['buffer_minutes'] ?? $reservation->buffer_minutes);
             $partySize = (int) ($data['party_size'] ?? $reservation->party_size);

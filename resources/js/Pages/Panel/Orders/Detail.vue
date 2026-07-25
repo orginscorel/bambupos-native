@@ -722,12 +722,10 @@ const eventTypeLabels: Record<string, string> = {
                                     <AppIcon v-else name="utensils" :size="16" class="text-subtle" />
                                 </div>
                                 <div class="flex min-w-0 flex-1 flex-col justify-between gap-1 self-stretch">
-                                    <span class="line-clamp-2 text-sm font-medium leading-tight text-body">{{ p.name }}</span>
+                                    <span class="line-clamp-2 min-h-[2.25rem] text-sm font-medium leading-tight text-body">{{ p.name }}</span>
                                     <span class="flex items-center justify-between gap-1">
-                                        <span class="text-sm font-semibold text-body">{{ money(productPrice(p)) }} ₺</span>
+                                        <span class="whitespace-nowrap text-sm font-bold tabular-nums text-primary">{{ money(productPrice(p)) }} ₺</span>
                                         <BaseBadge v-if="!p.is_available" variant="danger" no-icon>Tükendi</BaseBadge>
-                                        <AppIcon v-else-if="p.variants.length > 0 || p.option_groups.length > 0" name="chevron-right" :size="14" class="shrink-0 text-muted" />
-                                        <AppIcon v-else name="plus" :size="14" class="shrink-0 text-muted" />
                                     </span>
                                 </div>
                             </button>
@@ -757,7 +755,7 @@ const eventTypeLabels: Record<string, string> = {
                                     <p v-if="item.is_comp" class="text-xs font-medium text-success">İkram — {{ item.comp_reason }}</p>
                                 </div>
                                 <div class="text-right">
-                                    <p class="font-semibold text-body" :class="{ 'line-through opacity-60': item.is_comp }">
+                                    <p class="whitespace-nowrap font-semibold tabular-nums text-body" :class="{ 'line-through opacity-60': item.is_comp }">
                                         {{ item.line_total_display }} ₺
                                     </p>
                                     <p class="text-xs text-muted">{{ item.qty }} × {{ money(item.unit_price_minor + item.options_price_minor) }}</p>
@@ -813,20 +811,20 @@ const eventTypeLabels: Record<string, string> = {
 
                         <!-- Toplamlar -->
                         <div class="rounded-lg bg-inset p-3 text-sm">
-                            <div class="flex justify-between py-0.5"><span class="text-muted">Ara toplam</span><span>{{ money(order.items_total_minor) }} ₺</span></div>
+                            <div class="flex justify-between gap-2 py-0.5"><span class="text-muted">Ara toplam</span><span class="whitespace-nowrap tabular-nums">{{ money(order.items_total_minor) }} ₺</span></div>
                             <div v-if="order.discount_minor > 0" class="flex justify-between py-0.5 text-warning">
                                 <span>İndirim<template v-if="order.discount_percent"> (%{{ order.discount_percent }})</template> — {{ order.discount_reason }}</span>
-                                <span>−{{ money(order.discount_minor) }} ₺</span>
+                                <span class="whitespace-nowrap tabular-nums shrink-0">−{{ money(order.discount_minor) }} ₺</span>
                             </div>
                             <div v-if="order.comp_total_minor > 0" class="flex justify-between py-0.5 text-success">
-                                <span>İkramlar</span><span>{{ money(order.comp_total_minor) }} ₺</span>
+                                <span>İkramlar</span><span class="whitespace-nowrap tabular-nums">{{ money(order.comp_total_minor) }} ₺</span>
                             </div>
-                            <div class="flex justify-between py-0.5 text-xs text-muted"><span>Dahil KDV</span><span>{{ money(order.vat_total_minor) }} ₺</span></div>
+                            <div class="flex justify-between gap-2 py-0.5 text-xs text-muted"><span>Dahil KDV</span><span class="whitespace-nowrap tabular-nums">{{ money(order.vat_total_minor) }} ₺</span></div>
                             <div class="flex justify-between border-t border-default py-1 text-base font-semibold">
-                                <span>Toplam</span><span>{{ order.total_display }} ₺</span>
+                                <span>Toplam</span><span class="whitespace-nowrap tabular-nums">{{ order.total_display }} ₺</span>
                             </div>
-                            <div v-if="order.paid_minor > 0" class="flex justify-between py-0.5"><span class="text-muted">Ödenen</span><span>{{ money(order.paid_minor) }} ₺</span></div>
-                            <div v-if="order.paid_minor > 0" class="flex justify-between py-0.5 font-medium"><span>Kalan</span><span>{{ order.remaining_display }} ₺</span></div>
+                            <div v-if="order.paid_minor > 0" class="flex justify-between gap-2 py-0.5"><span class="text-muted">Ödenen</span><span class="whitespace-nowrap tabular-nums">{{ money(order.paid_minor) }} ₺</span></div>
+                            <div v-if="order.paid_minor > 0" class="flex justify-between gap-2 py-0.5 font-medium"><span>Kalan</span><span class="whitespace-nowrap tabular-nums">{{ order.remaining_display }} ₺</span></div>
                         </div>
 
                         <!-- Olay günlüğü -->
@@ -897,7 +895,7 @@ const eventTypeLabels: Record<string, string> = {
                             </BaseButton>
                         </div>
                     </FormField>
-                    <p class="text-lg font-semibold">{{ money(pmTotal) }} ₺</p>
+                    <p class="whitespace-nowrap text-lg font-semibold tabular-nums">{{ money(pmTotal) }} ₺</p>
                 </div>
 
                 <FormField label="Not">
@@ -939,7 +937,7 @@ const eventTypeLabels: Record<string, string> = {
         <!-- Ödeme -->
         <BaseModal :open="payModal" title="Ödeme al" size="sm" @close="closeModal(() => (payModal = false))">
             <div class="flex flex-col gap-3">
-                <p class="text-sm text-muted">Kalan: <strong>{{ order?.remaining_display }} ₺</strong></p>
+                <p class="text-sm text-muted">Kalan: <strong class="whitespace-nowrap tabular-nums">{{ order?.remaining_display }} ₺</strong></p>
                 <FormField label="Tutar (₺)" required>
                     <BaseInput v-model="payAmount" inputmode="decimal" placeholder="0,00" />
                 </FormField>
@@ -1021,7 +1019,7 @@ const eventTypeLabels: Record<string, string> = {
         <BaseModal :open="debtModal" title="Adisyonu borca taşı" size="sm" @close="closeModal(() => (debtModal = false))">
             <div class="flex flex-col gap-3">
                 <p class="text-sm text-muted">
-                    Kalan tutar (<strong>{{ order?.remaining_display }} ₺</strong>) seçilen cariye borç olarak yazılır; adisyon
+                    Kalan tutar (<strong class="whitespace-nowrap tabular-nums">{{ order?.remaining_display }} ₺</strong>) seçilen cariye borç olarak yazılır; adisyon
                     <strong>ödendi SAYILMAZ</strong>, ama masa boşalır — başka müşteri sipariş verebilir.
                 </p>
 
@@ -1090,7 +1088,7 @@ const eventTypeLabels: Record<string, string> = {
                     <p class="pb-1 font-medium">Paylar (kuruş kaybı yok):</p>
                     <ol class="flex flex-col gap-0.5">
                         <li v-for="(s, i) in splitShares" :key="i" class="flex justify-between">
-                            <span>{{ i + 1 }}. kişi</span><span>{{ money(s) }} ₺</span>
+                            <span>{{ i + 1 }}. kişi</span><span class="whitespace-nowrap tabular-nums">{{ money(s) }} ₺</span>
                         </li>
                     </ol>
                 </div>

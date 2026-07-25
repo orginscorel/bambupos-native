@@ -53,8 +53,8 @@
 
     <dl>
         <dt>Ad Soyad</dt><dd>{{ $reservation->customer_name }}</dd>
-        <dt>Tarih</dt><dd>{{ $reservation->reserved_at->format('d.m.Y') }}</dd>
-        <dt>Saat</dt><dd>{{ $reservation->reserved_at->format('H:i') }}</dd>
+        <dt>Tarih</dt><dd>{{ $reservation->localReservedAt()->format('d.m.Y') }}</dd>
+        <dt>Saat</dt><dd>{{ $reservation->localReservedAt()->format('H:i') }}</dd>
         <dt>Kişi</dt><dd>{{ $reservation->party_size }} kişi</dd>
         <dt>Durum</dt><dd><span class="badge {{ $badgeClass }}">{{ $status->label() }}</span></dd>
     </dl>

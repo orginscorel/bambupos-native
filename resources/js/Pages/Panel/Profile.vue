@@ -34,6 +34,8 @@ const tabs = [
     { key: 'sessions', label: 'Oturumlar', icon: 'dashboard' },
 ];
 
+const userInitial = computed(() => (user.value?.name?.trim()?.charAt(0) ?? '?').toUpperCase());
+
 /* ================= Tema tercihi ================= */
 const savingTheme = ref(false);
 
@@ -329,223 +331,309 @@ onMounted(() => {
     <Head title="Hesabım" />
 
     <PanelShell title="Hesabım">
-        <div class="mx-auto flex w-full max-w-3xl flex-col gap-5">
+        <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
+            <div class="flex flex-col gap-1.5">
+                <h1 class="text-2xl font-semibold text-body">Hesabım</h1>
+                <p class="max-w-2xl text-[15px] leading-relaxed text-muted">
+                    Profil bilgileriniz, güvenlik ayarlarınız ve bu hesapla açık oturumlarınız burada.
+                </p>
+            </div>
+
             <BaseTabs v-model="activeTab" :tabs="tabs">
             <!-- ================= Profil ================= -->
             <template #profile>
-                <div class="flex flex-col gap-5">
-                <BaseCard title="Hesap bilgileri">
-                    <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                        <div>
-                            <dt class="text-xs font-medium text-subtle">Ad Soyad</dt>
-                            <dd class="mt-0.5 text-sm text-body">{{ user?.name || '—' }}</dd>
+                <div class="flex flex-col divide-y divide-(--ui-border)">
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 first:pt-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Kimlik</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Hesap bilgileriniz sistem yönetimi tarafından tanımlanır; burada yalnız görüntülenir.
+                            </p>
                         </div>
-                        <div>
-                            <dt class="text-xs font-medium text-subtle">E-posta</dt>
-                            <dd class="mt-0.5 text-sm text-body">{{ user?.email || '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-subtle">Personel kodu</dt>
-                            <dd class="mt-0.5 text-sm text-body">{{ user?.staff_code || '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-subtle">Görev</dt>
-                            <dd class="mt-0.5 text-sm text-body">{{ user?.position || '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-subtle">Roller</dt>
-                            <dd class="mt-1 flex flex-wrap gap-1.5">
-                                <BaseBadge v-for="role in user?.roles ?? []" :key="role" variant="primary" no-icon>
-                                    {{ role }}
-                                </BaseBadge>
-                                <span v-if="(user?.roles ?? []).length === 0" class="text-sm text-body">—</span>
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-xs font-medium text-subtle">Son giriş</dt>
-                            <dd class="mt-0.5 text-sm text-body">
-                                {{ user?.last_login_at ? formatDateTime(user.last_login_at) : '—' }}
-                            </dd>
-                        </div>
-                    </dl>
-                </BaseCard>
+                        <div class="min-w-0">
+                            <BaseCard flush>
+                                <div class="flex flex-col gap-6 p-5 sm:p-6">
+                                    <div
+                                        class="flex flex-wrap items-center gap-4 rounded-lg bg-linear-to-br from-primary-soft to-transparent p-5 sm:p-6"
+                                    >
+                                        <span
+                                            class="flex size-16 shrink-0 items-center justify-center rounded-full bg-primary text-xl font-bold text-on-primary"
+                                        >
+                                            {{ userInitial }}
+                                        </span>
+                                        <div class="min-w-0">
+                                            <p class="text-lg font-semibold text-body">{{ user?.name || '—' }}</p>
+                                            <p class="text-sm text-muted">{{ user?.email || '—' }}</p>
+                                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                                <BaseBadge v-for="role in user?.roles ?? []" :key="role" variant="primary" no-icon>
+                                                    {{ role }}
+                                                </BaseBadge>
+                                                <span v-if="(user?.roles ?? []).length === 0" class="text-sm text-muted">Rol atanmamış</span>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                <BaseCard title="Görünüm">
-                    <p class="mb-3 text-sm text-muted">
-                        Tema tercihiniz bu cihazda ve hesabınızda saklanır.
-                    </p>
-                    <div class="inline-flex rounded-md border border-strong p-0.5" role="group" aria-label="Tema seçimi">
-                        <button
-                            type="button"
-                            class="flex h-9 items-center gap-2 rounded px-4 text-sm font-medium transition-colors duration-(--dur-fast)"
-                            :class="theme === 'light' ? 'bg-primary text-on-primary' : 'text-muted hover:text-body'"
-                            :aria-pressed="theme === 'light'"
-                            @click="chooseTheme('light')"
-                        >
-                            <AppIcon name="sun" :size="16" /> Açık
-                        </button>
-                        <button
-                            type="button"
-                            class="flex h-9 items-center gap-2 rounded px-4 text-sm font-medium transition-colors duration-(--dur-fast)"
-                            :class="theme === 'dark' ? 'bg-primary text-on-primary' : 'text-muted hover:text-body'"
-                            :aria-pressed="theme === 'dark'"
-                            @click="chooseTheme('dark')"
-                        >
-                            <AppIcon name="moon" :size="16" /> Koyu
-                        </button>
-                    </div>
+                                    <dl class="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-3">
+                                        <div>
+                                            <dt class="text-xs font-medium text-subtle">Personel kodu</dt>
+                                            <dd class="mt-0.5 text-sm text-body">{{ user?.staff_code || '—' }}</dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium text-subtle">Görev / Ünvan</dt>
+                                            <dd class="mt-0.5 text-sm text-body">{{ user?.position || '—' }}</dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium text-subtle">Son giriş</dt>
+                                            <dd class="mt-0.5 text-sm text-body">
+                                                {{ user?.last_login_at ? formatDateTime(user.last_login_at) : '—' }}
+                                            </dd>
+                                        </div>
+                                    </dl>
+                                </div>
+                            </BaseCard>
+                        </div>
+                    </section>
 
-                    <div class="mt-5 max-w-md border-t border-default pt-4">
-                        <FormField
-                            label="Varsayılan açılış ekranı"
-                            hint="Giriş yaptığınızda ilk düşeceğiniz ekran. Otomatik: rolünüze en uygun ekran seçilir."
-                        >
-                            <BaseSelect
-                                :model-value="defaultScreen"
-                                :options="screenOptions"
-                                :disabled="savingScreen"
-                                @update:model-value="chooseScreen(String($event))"
-                            />
-                        </FormField>
-                    </div>
-                </BaseCard>
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Görünüm</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Tema tercihiniz bu cihazda ve hesabınızda saklanır.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <div class="inline-flex rounded-md border border-strong p-0.5" role="group" aria-label="Tema seçimi">
+                                    <button
+                                        type="button"
+                                        class="flex h-9 items-center gap-2 rounded px-4 text-sm font-medium transition-colors duration-(--dur-fast)"
+                                        :class="theme === 'light' ? 'bg-primary text-on-primary' : 'text-muted hover:text-body'"
+                                        :aria-pressed="theme === 'light'"
+                                        @click="chooseTheme('light')"
+                                    >
+                                        <AppIcon name="sun" :size="16" /> Açık
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="flex h-9 items-center gap-2 rounded px-4 text-sm font-medium transition-colors duration-(--dur-fast)"
+                                        :class="theme === 'dark' ? 'bg-primary text-on-primary' : 'text-muted hover:text-body'"
+                                        :aria-pressed="theme === 'dark'"
+                                        @click="chooseTheme('dark')"
+                                    >
+                                        <AppIcon name="moon" :size="16" /> Koyu
+                                    </button>
+                                </div>
+                                <p v-if="savingTheme" class="mt-2 text-xs text-subtle">Kaydediliyor…</p>
+                            </BaseCard>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 last:pb-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Açılış ekranı</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Giriş yaptığınızda ilk düşeceğiniz ekranı seçin. Otomatik: rolünüze en uygun ekran seçilir.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <div class="max-w-sm">
+                                    <FormField label="Varsayılan ekran">
+                                        <BaseSelect
+                                            :model-value="defaultScreen"
+                                            :options="screenOptions"
+                                            :disabled="savingScreen"
+                                            @update:model-value="chooseScreen(String($event))"
+                                        />
+                                    </FormField>
+                                </div>
+                            </BaseCard>
+                        </div>
+                    </section>
                 </div>
             </template>
 
             <!-- ================= Güvenlik ================= -->
             <template #security>
-                <div class="flex flex-col gap-5">
-                <BaseCard title="Parola değiştir">
-                    <form class="flex max-w-md flex-col gap-4" novalidate @submit.prevent="changePassword">
-                        <FormField label="Mevcut parola" :error="pwErrors.current_password" required>
-                            <BaseInput v-model="pw.current" type="password" autocomplete="current-password" />
-                        </FormField>
-                        <FormField label="Yeni parola" :error="pwErrors.password" hint="En az 10 karakter" required>
-                            <BaseInput v-model="pw.next" type="password" autocomplete="new-password" />
-                        </FormField>
-                        <FormField label="Yeni parola (tekrar)" required>
-                            <BaseInput v-model="pw.confirm" type="password" autocomplete="new-password" />
-                        </FormField>
-                        <div>
-                            <BaseButton type="submit" :loading="pwLoading">Parolayı güncelle</BaseButton>
+                <div class="flex flex-col divide-y divide-(--ui-border)">
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 first:pt-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Parola</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Hesabınıza giriş için kullandığınız parola. Değiştirdikten sonra bir sonraki girişte geçerli olur.
+                            </p>
                         </div>
-                    </form>
-                </BaseCard>
-
-                <BaseCard title="Hızlı giriş PIN'i">
-                    <template #actions>
-                        <BaseBadge :variant="hasPin ? 'success' : 'neutral'" :no-icon="!hasPin">
-                            {{ hasPin ? 'Tanımlı' : 'Tanımlı değil' }}
-                        </BaseBadge>
-                    </template>
-                    <p class="mb-4 text-sm text-muted">
-                        PIN, kasada/serviste hızlı giriş içindir: 6-10 hane, yalnız rakam. Tekrarlı (111111) ve ardışık
-                        (123456) diziler kabul edilmez.
-                    </p>
-                    <form class="flex max-w-md flex-col gap-4" novalidate @submit.prevent="setPin">
-                        <FormField label="Parolanız" :error="pinErrors.password" required>
-                            <BaseInput v-model="pinForm.password" type="password" autocomplete="current-password" />
-                        </FormField>
-                        <FormField :label="hasPin ? 'Yeni PIN' : 'PIN'" :error="pinErrors.pin" required>
-                            <BaseInput
-                                v-model="pinForm.pin"
-                                type="password"
-                                inputmode="numeric"
-                                autocomplete="off"
-                                placeholder="••••••"
-                            />
-                        </FormField>
-                        <div>
-                            <BaseButton type="submit" :loading="pinLoading">
-                                {{ hasPin ? 'PIN\'i değiştir' : 'PIN belirle' }}
-                            </BaseButton>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <form class="flex flex-col gap-5" novalidate @submit.prevent="changePassword">
+                                    <div class="max-w-sm">
+                                        <FormField label="Mevcut parola" :error="pwErrors.current_password" required>
+                                            <BaseInput v-model="pw.current" type="password" autocomplete="current-password" />
+                                        </FormField>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-4 sm:max-w-xl sm:grid-cols-2">
+                                        <FormField label="Yeni parola" :error="pwErrors.password" hint="En az 10 karakter" required>
+                                            <BaseInput v-model="pw.next" type="password" autocomplete="new-password" />
+                                        </FormField>
+                                        <FormField label="Yeni parola (tekrar)" required>
+                                            <BaseInput v-model="pw.confirm" type="password" autocomplete="new-password" />
+                                        </FormField>
+                                    </div>
+                                    <div>
+                                        <BaseButton type="submit" :loading="pwLoading">Parolayı güncelle</BaseButton>
+                                    </div>
+                                </form>
+                            </BaseCard>
                         </div>
-                    </form>
-                </BaseCard>
+                    </section>
 
-                <BaseCard title="İki faktörlü doğrulama (2FA)">
-                    <template #actions>
-                        <BaseBadge :variant="twoFactorEnabled ? 'success' : 'neutral'" :no-icon="!twoFactorEnabled">
-                            {{ twoFactorEnabled ? 'Açık' : 'Kapalı' }}
-                        </BaseBadge>
-                    </template>
-                    <p class="mb-4 text-sm text-muted">
-                        Girişte parolanıza ek olarak doğrulama uygulamasından (Google Authenticator, Aegis vb.)
-                        6 haneli kod istenir.
-                    </p>
-                    <BaseButton v-if="!twoFactorEnabled" :loading="tfaLoading" @click="startTwoFactor">
-                        2FA'yı etkinleştir
-                    </BaseButton>
-                    <BaseButton v-else variant="danger" @click="disableModalOpen = true">
-                        2FA'yı devre dışı bırak
-                    </BaseButton>
-                </BaseCard>
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Hızlı giriş PIN'i</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                PIN, kasada/serviste hızlı giriş içindir: 6-10 hane, yalnız rakam. Tekrarlı (111111) ve
+                                ardışık (123456) diziler kabul edilmez.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <template #actions>
+                                    <BaseBadge :variant="hasPin ? 'success' : 'neutral'" :no-icon="!hasPin">
+                                        {{ hasPin ? 'Tanımlı' : 'Tanımlı değil' }}
+                                    </BaseBadge>
+                                </template>
+                                <form class="grid grid-cols-1 gap-4 sm:max-w-xl sm:grid-cols-2" novalidate @submit.prevent="setPin">
+                                    <FormField label="Parolanız" :error="pinErrors.password" required>
+                                        <BaseInput v-model="pinForm.password" type="password" autocomplete="current-password" />
+                                    </FormField>
+                                    <FormField :label="hasPin ? 'Yeni PIN' : 'PIN'" :error="pinErrors.pin" required>
+                                        <BaseInput
+                                            v-model="pinForm.pin"
+                                            type="password"
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                            placeholder="••••••"
+                                        />
+                                    </FormField>
+                                    <div class="sm:col-span-2">
+                                        <BaseButton type="submit" :loading="pinLoading">
+                                            {{ hasPin ? 'PIN\'i değiştir' : 'PIN belirle' }}
+                                        </BaseButton>
+                                    </div>
+                                </form>
+                            </BaseCard>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 last:pb-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">İki faktörlü doğrulama (2FA)</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Girişte parolanıza ek olarak doğrulama uygulamasından (Google Authenticator, Aegis vb.)
+                                6 haneli kod istenir. Hesabınız için önerilen ek koruma katmanı.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard>
+                                <template #actions>
+                                    <BaseBadge :variant="twoFactorEnabled ? 'success' : 'neutral'" :no-icon="!twoFactorEnabled">
+                                        {{ twoFactorEnabled ? 'Açık' : 'Kapalı' }}
+                                    </BaseBadge>
+                                </template>
+                                <BaseButton v-if="!twoFactorEnabled" :loading="tfaLoading" @click="startTwoFactor">
+                                    2FA'yı etkinleştir
+                                </BaseButton>
+                                <BaseButton v-else variant="danger" @click="disableModalOpen = true">
+                                    2FA'yı devre dışı bırak
+                                </BaseButton>
+                            </BaseCard>
+                        </div>
+                    </section>
                 </div>
             </template>
 
             <!-- ================= Oturumlar ================= -->
             <template #sessions>
-                <BaseCard title="Aktif cihazlar ve oturumlar" flush>
-                    <template #actions>
-                        <BaseButton
-                            v-if="sessions.length > 1"
-                            variant="secondary"
-                            size="sm"
-                            @click="othersModalOpen = true"
-                        >
-                            Diğer cihazlardan çıkış
-                        </BaseButton>
-                    </template>
-
-                    <div v-if="sessionsLoading" class="flex flex-col gap-3 p-4">
-                        <BaseSkeleton v-for="n in 2" :key="n" variant="rect" size-class="h-16 w-full" />
+                <section class="grid grid-cols-1 gap-x-12 gap-y-4 md:grid-cols-[260px_1fr]">
+                    <div class="flex flex-col gap-1.5">
+                        <h2 class="text-base font-semibold text-body">Aktif cihazlar</h2>
+                        <p class="text-sm leading-relaxed text-muted">
+                            Hesabınıza giriş yapılmış tüm cihaz ve tarayıcılar. Tanımadığınız bir cihaz görürseniz
+                            hemen sonlandırın.
+                        </p>
                     </div>
+                    <div class="min-w-0">
+                        <BaseCard flush>
+                            <template #actions>
+                                <BaseButton
+                                    v-if="sessions.length > 1"
+                                    variant="secondary"
+                                    size="sm"
+                                    @click="othersModalOpen = true"
+                                >
+                                    <AppIcon name="logout" :size="15" />
+                                    Diğer cihazlardan çıkış
+                                </BaseButton>
+                            </template>
 
-                    <div v-else-if="sessionsError" class="p-4">
-                        <div
-                            class="flex items-start gap-2.5 rounded-md border border-danger-border bg-danger-soft px-3 py-2.5 text-sm text-danger"
-                            role="alert"
-                        >
-                            <AppIcon name="alert-circle" :size="17" class="mt-0.5" />
-                            <p>{{ sessionsError }}</p>
-                        </div>
-                    </div>
-
-                    <EmptyState
-                        v-else-if="sessions.length === 0"
-                        icon="dashboard"
-                        title="Aktif oturum bulunamadı"
-                        description="Bu beklenmedik bir durum; sayfayı yenilemeyi deneyin."
-                    />
-
-                    <ul v-else class="divide-y divide-(--ui-border)">
-                        <li
-                            v-for="row in sessions"
-                            :key="row.id"
-                            class="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                            <div class="min-w-0">
-                                <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-body">
-                                    {{ describeAgent(row.user_agent) }}
-                                    <BaseBadge v-if="row.current" variant="success">Bu cihaz</BaseBadge>
-                                </p>
-                                <p class="mt-0.5 text-xs text-muted">
-                                    IP: {{ row.ip_address || '—' }} · Son etkinlik:
-                                    {{ formatRelative(row.last_activity) }}
-                                </p>
+                            <div v-if="sessionsLoading" class="flex flex-col gap-3 p-4 sm:p-5">
+                                <BaseSkeleton v-for="n in 2" :key="n" variant="rect" size-class="h-20 w-full" />
                             </div>
-                            <BaseButton
-                                v-if="!row.current"
-                                variant="secondary"
-                                size="sm"
-                                :loading="revoking === row.id"
-                                @click="revokeSession(row)"
-                            >
-                                Sonlandır
-                            </BaseButton>
-                        </li>
-                    </ul>
-                </BaseCard>
+
+                            <div v-else-if="sessionsError" class="p-4 sm:p-5">
+                                <div
+                                    class="flex items-start gap-2.5 rounded-md border border-danger-border bg-danger-soft px-3 py-2.5 text-sm text-danger"
+                                    role="alert"
+                                >
+                                    <AppIcon name="alert-circle" :size="17" class="mt-0.5" />
+                                    <p>{{ sessionsError }}</p>
+                                </div>
+                            </div>
+
+                            <EmptyState
+                                v-else-if="sessions.length === 0"
+                                icon="dashboard"
+                                title="Aktif oturum bulunamadı"
+                                description="Bu beklenmedik bir durum; sayfayı yenilemeyi deneyin."
+                            />
+
+                            <ul v-else class="flex flex-col gap-3 p-4 sm:p-5">
+                                <li
+                                    v-for="row in sessions"
+                                    :key="row.id"
+                                    class="flex flex-col gap-3 rounded-lg border border-default p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-5"
+                                >
+                                    <div class="flex items-start gap-3.5 sm:items-center">
+                                        <span class="flex size-11 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                                            <AppIcon name="dashboard" :size="20" />
+                                        </span>
+                                        <div class="min-w-0">
+                                            <p class="flex flex-wrap items-center gap-2 text-sm font-semibold text-body">
+                                                {{ describeAgent(row.user_agent) }}
+                                                <BaseBadge v-if="row.current" variant="success">Bu cihaz</BaseBadge>
+                                            </p>
+                                            <p class="mt-1 text-xs text-muted">
+                                                IP: {{ row.ip_address || '—' }} · Son etkinlik:
+                                                {{ formatRelative(row.last_activity) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <BaseButton
+                                        v-if="!row.current"
+                                        variant="secondary"
+                                        size="sm"
+                                        class="self-start sm:self-auto"
+                                        :loading="revoking === row.id"
+                                        @click="revokeSession(row)"
+                                    >
+                                        <AppIcon name="trash" :size="15" />
+                                        Sonlandır
+                                    </BaseButton>
+                                </li>
+                            </ul>
+                        </BaseCard>
+                    </div>
+                </section>
             </template>
             </BaseTabs>
         </div>

@@ -1,0 +1,296 @@
+<?php
+
+namespace App\Modules\Reports\Services;
+
+use App\Modules\Identity\Models\User;
+use App\Modules\Orders\Enums\OrderStatus;
+use App\Modules\Payments\Enums\PaymentMethod;
+use App\Modules\Reports\Support\ReportFilters;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Panel açılış ekranı (rol bazlı — prompt §20).
+ *
+ * "Rol" burada İZİN türevidir: işletmeler kendi rollerini kurduğu için
+ * (config/authz.php şablon + özelleştirme) pano, rol ADINA değil kullanıcının
+ * gerçek izinlerine göre bölüm döndürür. Sahip (reports.view) ciro/karşılaştırma
+ * görür; şube müdürü operasyon + kasa; garson yalnız operasyonel bölümler;
+ * mutfak hiçbirini (KDS'e yönlenir). İzin yoksa bölüm HİÇ dönmez — finans
+ * verisi yetkisiz role sızmaz.
+ *
+ * Veri yoksa alanlar 0/boş döner; UYDURMA SAYI YOK — boş durumu ekran anlatır.
+ */
+class DashboardService
+{
+    private const EXCLUDED = ['draft', 'pending_approval', 'cancelled'];
+
+    public function __construct(
+        private readonly SalesReportService $sales,
+        private readonly FinanceReportService $finance,
+    ) {
+    }
+
+    public function build(User $user, ReportFilters $today, ReportFilters $trendRange): array
+    {
+        $sections = [];
+
+        $canReports = $user->hasPermission('reports.view');
+        $canOrders = $user->hasPermission('orders.view');
+        $canTables = $user->hasPermission('tables.view');
+        $canCash = $user->hasPermission('cash.view');
+
+        if ($canReports) {
+            $sections['today'] = $this->today($today);
+            $sections['trend'] = $this->sales->daily($trendRange);
+            $sections['payment_mix'] = $this->paymentMix($today);
+        }
+
+        if ($canOrders) {
+            $sections['open_orders'] = $this->openOrders($today);
+            $sections['service_requests'] = $this->openServiceRequests($today);
+        }
+
+        if ($canTables) {
+            $sections['occupancy'] = $this->occupancy($today);
+        }
+
+        if ($canCash) {
+            $sections['cash'] = $this->cashStatus($today);
+        }
+
+        // Şube müdürü / sahip: bugünkü iptal & ikramlar (denetim görünürlüğü).
+        if ($canReports && ($user->hasPermission('orders.cancel') || $user->hasPermission('orders.comp'))) {
+            $sections['adjustments'] = $this->adjustments($today);
+        }
+
+        return $sections;
+    }
+
+    /** Bugünkü ciro/sipariş/sepet + dün ve geçen haftanın aynı günüyle kıyas. */
+    private function today(ReportFilters $f): array
+    {
+        $summary = $this->sales->summary($f);
+
+        // Geçen haftanın aynı günü (dün kıyası summary.previous'ta hazır).
+        $lastWeek = ReportFilters::fromArray([
+            'tenant_id' => $f->tenantId,
+            'branch_id' => $f->branchId,
+            'timezone' => $f->timezone,
+            'from' => \Carbon\CarbonImmutable::parse($f->from, $f->timezone)->subDays(7)->toDateString(),
+            'to' => \Carbon\CarbonImmutable::parse($f->to, $f->timezone)->subDays(7)->toDateString(),
+        ]);
+
+        $lastWeekTotals = $this->sales->summary($lastWeek);
+
+        return [
+            'date' => $f->from,
+            'current' => $summary['current'],
+            'yesterday' => $summary['previous'],
+            'last_week' => $lastWeekTotals['current'],
+            'cancelled' => $summary['cancelled'],
+        ];
+    }
+
+    /** Bugünkü başarılı tahsilatların yöntem kırılımı. */
+    private function paymentMix(ReportFilters $f): array
+    {
+        $rows = $f->apply(DB::table('payments'), 'payments', 'paid_at')
+            ->whereIn('payments.status', ['succeeded', 'partially_refunded', 'refunded'])
+            ->where('payments.kind', 'payment')
+            ->selectRaw('payments.method AS method, COUNT(*) AS c, COALESCE(SUM(payments.amount_minor), 0) AS amount, COALESCE(SUM(payments.tip_minor), 0) AS tips')
+            ->groupBy('payments.method')
+            ->orderByDesc('amount')
+            ->get();
+
+        $total = (int) $rows->sum('amount');
+
+        return [
+            'total_minor' => $total,
+            'tips_minor' => (int) $rows->sum('tips'),
+            'rows' => $rows->map(fn ($r) => [
+                'method' => (string) $r->method,
+                'label' => PaymentMethod::tryFrom((string) $r->method)?->label() ?? (string) $r->method,
+                'count' => (int) $r->c,
+                'amount_minor' => (int) $r->amount,
+            ])->all(),
+        ];
+    }
+
+    /** Açık adisyonlar: aşama sayaçları + gecikenler (ANLIK durum). */
+    private function openOrders(ReportFilters $f): array
+    {
+        $threshold = (int) config('reports.delayed_threshold_minutes', 20);
+        $cutoff = now()->subMinutes($threshold);
+
+        $query = DB::table('orders')
+            ->where('orders.tenant_id', $f->tenantId)
+            ->whereNotIn('orders.status', ['draft', 'paid', 'cancelled', 'refunded']);
+
+        if ($f->branchId !== null) {
+            $query->where('orders.branch_id', $f->branchId);
+        }
+
+        $rows = $query->selectRaw(
+            "orders.status AS status,
+             COUNT(*) AS c,
+             SUM(CASE WHEN orders.created_at < ? THEN 1 ELSE 0 END) AS delayed",
+            [$cutoff]
+        )->groupBy('orders.status')->get();
+
+        $pending = 0;
+        $kitchen = 0;
+        $awaitingPayment = 0;
+        $delayed = 0;
+
+        foreach ($rows as $r) {
+            $status = OrderStatus::tryFrom((string) $r->status);
+            $count = (int) $r->c;
+
+            if ($status === OrderStatus::PendingApproval) {
+                $pending += $count;
+            } elseif ($status !== null && $status->isKitchenPhase() && $status !== OrderStatus::Served) {
+                $kitchen += $count;
+                $delayed += (int) $r->delayed;
+            } else {
+                $awaitingPayment += $count;
+            }
+        }
+
+        return [
+            'open_total' => (int) $rows->sum('c'),
+            'pending_approval' => $pending,
+            'in_kitchen' => $kitchen,
+            'awaiting_payment' => $awaitingPayment,
+            'delayed' => $delayed,
+            'delayed_threshold_minutes' => $threshold,
+        ];
+    }
+
+    /** Açık servis talepleri (garson çağrısı vb.) — masa + yaş. */
+    private function openServiceRequests(ReportFilters $f): array
+    {
+        $query = DB::table('service_requests')
+            ->where('service_requests.tenant_id', $f->tenantId)
+            ->where('service_requests.status', 'open');
+
+        if ($f->branchId !== null) {
+            $query->where('service_requests.branch_id', $f->branchId);
+        }
+
+        $labels = ['waiter' => 'Garson çağrısı', 'bill' => 'Hesap istendi', 'water' => 'Su istendi'];
+
+        $rows = $query
+            ->leftJoin('tables', 'tables.id', '=', 'service_requests.table_id')
+            ->orderBy('service_requests.created_at')
+            ->limit(10)
+            ->get(['service_requests.id', 'service_requests.kind', 'service_requests.created_at', 'tables.name AS table_name']);
+
+        return [
+            'open' => $rows->count(),
+            'rows' => $rows->map(fn ($r) => [
+                'id' => (int) $r->id,
+                'kind' => (string) $r->kind,
+                'label' => $labels[(string) $r->kind] ?? (string) $r->kind,
+                'table' => $r->table_name !== null ? (string) $r->table_name : null,
+                'age_minutes' => (int) floor(now()->diffInSeconds(\Carbon\Carbon::parse($r->created_at)) / 60),
+            ])->all(),
+        ];
+    }
+
+    /** Masa doluluğu: açık adisyonu olan masa / aktif masa. */
+    private function occupancy(ReportFilters $f): array
+    {
+        $tables = DB::table('tables')
+            ->where('tables.tenant_id', $f->tenantId)
+            ->where('tables.is_active', true);
+
+        if ($f->branchId !== null) {
+            $tables->where('tables.branch_id', $f->branchId);
+        }
+
+        $totalTables = (int) $tables->count();
+
+        $occupied = DB::table('orders')
+            ->where('orders.tenant_id', $f->tenantId)
+            ->whereNotIn('orders.status', ['draft', 'paid', 'cancelled', 'refunded'])
+            ->whereNotNull('orders.table_id');
+
+        if ($f->branchId !== null) {
+            $occupied->where('orders.branch_id', $f->branchId);
+        }
+
+        $occupiedCount = (int) $occupied->distinct()->count('orders.table_id');
+
+        return [
+            'tables' => $totalTables,
+            'occupied' => $occupiedCount,
+            'rate' => $totalTables > 0 ? round($occupiedCount * 100 / $totalTables, 1) : null,
+        ];
+    }
+
+    /** Kasa durumu: açık oturum(lar) + çekmecedeki beklenen nakit. */
+    private function cashStatus(ReportFilters $f): array
+    {
+        $query = DB::table('cash_sessions')
+            ->where('cash_sessions.tenant_id', $f->tenantId)
+            ->where('cash_sessions.status', 'open');
+
+        if ($f->branchId !== null) {
+            $query->where('cash_sessions.branch_id', $f->branchId);
+        }
+
+        $sessions = $query
+            ->leftJoin('cash_registers', 'cash_registers.id', '=', 'cash_sessions.cash_register_id')
+            ->leftJoin('users', 'users.id', '=', 'cash_sessions.opened_by_id')
+            ->get([
+                'cash_sessions.id', 'cash_sessions.z_number', 'cash_sessions.opened_at',
+                'cash_sessions.opening_float_minor',
+                'cash_registers.name AS register_name', 'users.name AS opened_by',
+            ]);
+
+        if ($sessions->isEmpty()) {
+            return ['open_sessions' => []];
+        }
+
+        // Çekmece beklentisi: değişmez defterden (in - out).
+        $movements = DB::table('cash_movements')
+            ->where('cash_movements.tenant_id', $f->tenantId)
+            ->whereIn('cash_movements.cash_session_id', $sessions->pluck('id'))
+            ->selectRaw(
+                "cash_movements.cash_session_id AS sid,
+                 COALESCE(SUM(CASE WHEN cash_movements.direction = 'in' THEN cash_movements.amount_minor ELSE -cash_movements.amount_minor END), 0) AS net"
+            )
+            ->groupBy('sid')
+            ->pluck('net', 'sid');
+
+        return [
+            'open_sessions' => $sessions->map(fn ($s) => [
+                'id' => (int) $s->id,
+                'z_number' => (int) $s->z_number,
+                'register' => (string) ($s->register_name ?? '—'),
+                'opened_by' => $s->opened_by !== null ? (string) $s->opened_by : null,
+                'opened_at' => $s->opened_at,
+                'expected_cash_minor' => (int) ($movements[$s->id] ?? 0),
+            ])->all(),
+        ];
+    }
+
+    /** Bugünkü iptal/ikram/indirimler (yetkili yönetici görünürlüğü). */
+    private function adjustments(ReportFilters $f): array
+    {
+        $orders = $f->apply(DB::table('orders'), 'orders')
+            ->selectRaw(
+                "SUM(CASE WHEN orders.status = 'cancelled' THEN 1 ELSE 0 END) AS cancels,
+                 COALESCE(SUM(CASE WHEN orders.status = 'cancelled' THEN orders.total_minor ELSE 0 END), 0) AS cancel_minor,
+                 COALESCE(SUM(CASE WHEN orders.status NOT IN ('draft','pending_approval','cancelled') THEN orders.discount_minor ELSE 0 END), 0) AS discount_minor,
+                 COALESCE(SUM(CASE WHEN orders.status NOT IN ('draft','pending_approval','cancelled') THEN orders.comp_total_minor ELSE 0 END), 0) AS comp_minor"
+            )->first();
+
+        return [
+            'cancelled_orders' => (int) $orders->cancels,
+            'cancelled_minor' => (int) $orders->cancel_minor,
+            'discount_minor' => (int) $orders->discount_minor,
+            'comp_minor' => (int) $orders->comp_minor,
+        ];
+    }
+}

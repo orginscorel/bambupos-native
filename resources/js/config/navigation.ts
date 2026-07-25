@@ -26,12 +26,15 @@ export const defaultNavigation: NavItem[] = [
     { key: 'receivables', label: 'Borçlar', icon: 'inbox', href: '/panel/borclar', permission: 'receivables.view' },
     { key: 'kds', label: 'Mutfak', icon: 'chef-hat', href: '/panel/mutfak', permission: 'kds.view' },
     { key: 'runner', label: 'Komi', icon: 'utensils', href: '/panel/komi', permission: 'kds.deliver' },
+    { key: 'reports', label: 'Raporlar', icon: 'chart', href: '/panel/raporlar', permission: 'reports.view' },
+    { key: 'wiki', label: 'Nasıl Çalışır', icon: 'info', href: '/panel/nasil-calisir' },
     { key: 'staff', label: 'Personel', icon: 'users', href: '/panel/personel', permission: 'staff.view' },
     { key: 'branches', label: 'Şubeler', icon: 'store', href: '/panel/subeler', permission: 'tables.view' },
     // 'Hesabım' sidebar'dan kaldırıldı (2026-07-23, kullanıcı talebi) — Profil
     // sayfasına sağ üstteki kullanıcı avatarı menüsünden ulaşılır; /panel/profil
     // rotası KALDI, yalnız bu sidebar kısayolu gitti.
     { key: 'settings', label: 'Ayarlar', icon: 'settings', href: '/panel/ayarlar/e-posta', permission: 'settings.view' },
+    { key: 'kiosk', label: 'Kiosk', icon: 'store', href: '/panel/kiosklar', permission: 'kiosk.view' },
     // İzin gerektirmez: herkes sürüm notlarını görebilir (alt bilgi rozetleriyle de bağlantılı).
     { key: 'changelog', label: 'Sürüm Notları', icon: 'info', href: '/panel/surum-notlari' },
 ];

@@ -115,9 +115,9 @@ class AvailabilityService
                 'reserved_at' => [sprintf(
                     'Çakışma: %s için %s saatinde başka bir rezervasyon var (%s, tampon dahil %s kadar dolu).',
                     $first->tables->pluck('name')->implode(', '),
-                    $first->reserved_at->format('d.m.Y H:i'),
+                    $first->localReservedAt()->format('d.m.Y H:i'),
                     $first->customer_name,
-                    $first->blocksUntil()->format('H:i'),
+                    $first->blocksUntil()->setTimezone($first->branch?->timezone ?: config('app.timezone'))->format('H:i'),
                 )],
             ]);
         }

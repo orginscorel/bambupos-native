@@ -16,7 +16,7 @@ import StationManager from './StationManager.vue';
 import {
     createKdsSound,
     createPollingFeed,
-    forceDarkTheme,
+    useKdsTheme,
     getOrNull,
     metaFromKdsProps,
     minutesSince,
@@ -35,8 +35,10 @@ import {
  * GÖMÜLÜ DEĞİL, kasıtlı: ~2 metreden okunan bir duvar/tezgah ekranı, panelin
  * dar içerik alanına sığmaz). Bar = aynı ekran, istasyon süzgeci "bar".
  *
- * Görsel dil PANELİN --ui-* token'larını (koyu tema zorlanır — forceDarkTheme)
- * ve Components/ui bileşenlerini kullanır; ekrana özgü düzen/aralık/görsel
+ * Görsel dil PANELİN --ui-* token'larını kullanır; varsayılan AÇIK/beyaz,
+ * ekranın kendi açık/koyu düğmesiyle bağımsız değiştirilebilir (useKdsTheme,
+ * localStorage 'kds_theme' — panelin genel tema tercihine dokunmaz).
+ * Ekrana özgü düzen/aralık/görsel
  * yerleşim bu dosyada kalır (Components/ui değişmez). Kart üç soruya bakışta
  * cevap verir: hangi masa (büyük başlık) · ne yapılacak (görsel + kalem +
  * TEK eylem) · ne kadar acil (yalnız bekleme çipi renklenir). Ürün görseli
@@ -148,12 +150,11 @@ async function restartFeed(): Promise<void> {
     feed.start();
 }
 
-let releaseTheme: (() => void) | null = null;
+const kdsTheme = useKdsTheme();
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 const clockTick = ref(Date.now());
 
 onMounted(() => {
-    releaseTheme = forceDarkTheme();
     void restartFeed();
     // Otomatik oynatma kısıtı: ilk dokunuş sesi kilitten çıkarır.
     const unlock = () => sound.unlock();
@@ -165,7 +166,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     feed?.stop();
     if (clockTimer) clearInterval(clockTimer);
-    releaseTheme?.();
+    kdsTheme.release();
 });
 
 function selectStation(key: string): void {
@@ -327,7 +328,7 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 <template>
     <Head :title="pageTitle" />
 
-    <div class="fixed inset-0 flex flex-col overflow-hidden bg-surface-alt text-body">
+    <div class="kds-canvas fixed inset-0 flex flex-col overflow-hidden text-body">
         <!-- ================= Üst çubuk (panel başlık dili) ================= -->
         <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2">
             <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
@@ -338,11 +339,13 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 
             <span class="text-sm text-muted tabular-nums">{{ totalPending }} bekleyen</span>
 
-            <span v-if="lateCount > 0" role="alert" class="inline-flex">
-                <BaseBadge variant="danger" no-icon>
-                    <AppIcon name="alert-triangle" :size="13" />
-                    {{ lateCount }} gecikti
-                </BaseBadge>
+            <span
+                v-if="lateCount > 0"
+                role="alert"
+                class="inline-flex items-center gap-1 rounded-full border border-danger bg-danger px-2.5 py-1 text-xs font-semibold text-on-status"
+            >
+                <AppIcon name="alert-triangle" :size="13" />
+                {{ lateCount }} gecikti
             </span>
 
             <div class="ml-auto flex flex-wrap items-center gap-1.5">
@@ -385,6 +388,16 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                     variant="ghost"
                     size="lg"
                     icon-only
+                    :label="kdsTheme.theme.value === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'"
+                    @click="kdsTheme.toggle()"
+                >
+                    <KdsIcon :name="kdsTheme.theme.value === 'dark' ? 'sun' : 'moon'" :size="20" />
+                </BaseButton>
+
+                <BaseButton
+                    variant="ghost"
+                    size="lg"
+                    icon-only
                     :label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
                     @click="toggleFullscreen"
                 >
@@ -394,7 +407,10 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
         </header>
 
         <!-- ================= İstasyon süzgeci ================= -->
-        <nav class="flex flex-wrap items-center gap-2 border-b border-default px-3 py-2" aria-label="İstasyon süzgeci">
+        <nav
+            class="flex flex-wrap items-center gap-2 border-b border-default bg-surface-alt px-3 py-2 shadow-[0_6px_16px_-12px_rgba(0,0,0,0.6)]"
+            aria-label="İstasyon süzgeci"
+        >
             <button
                 v-if="showAllChip"
                 type="button"
@@ -435,11 +451,11 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                 />
             </div>
 
-            <div v-else class="grid items-start gap-4" style="grid-template-columns: repeat(auto-fill, minmax(380px, 1fr))">
+            <div v-else class="kds-masonry">
                 <article
                     v-for="card in orders"
                     :key="card.id"
-                    class="flex flex-col overflow-hidden rounded-xl border bg-raised shadow-card"
+                    class="flex flex-col overflow-hidden rounded-xl border bg-raised shadow-[0_1px_2px_0_rgb(28_25_23_/_0.05),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
                     :class="cardBorderClass(card)"
                 >
                     <!-- Başlık: HANGİ MASA (büyük, hiç kırpılmaz) · NE KADAR ACİL (tek çip) -->
@@ -484,16 +500,27 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
                                 <p v-if="item.options.length" class="mt-0.5 text-sm text-muted">{{ item.options.join(' · ') }}</p>
                                 <p v-if="item.note" class="mt-0.5 text-sm font-medium text-info">Not: {{ item.note }}</p>
 
-                                <!-- Renk YALNIZ alerjende güçlü; diyet etiketi sessiz düz metin -->
+                                <!-- Renk YALNIZ alerjende güçlü; diyet etiketi sessiz düz metin.
+                                     Dolgu (soft) rozet yerine DOLU kırmızı: açık temada
+                                     BaseBadge'in soft-danger ikilisi AA'nın (4.5:1) az altında
+                                     kalıyor (ölçülen 4.41:1) — alerjen güvenlik bilgisi olduğundan
+                                     burada dolu bg-danger/text-on-status kullanılır (ölçülen
+                                     4.83:1 açık, 6.32:1 koyu — her iki temada da AA geçer). -->
                                 <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                                    <BaseBadge v-for="a in item.allergens" :key="a.name" variant="danger" no-icon>
+                                    <span
+                                        v-for="a in item.allergens"
+                                        :key="a.name"
+                                        class="inline-flex items-center gap-1 rounded-full border border-danger bg-danger px-2 py-0.5 text-xs font-semibold text-on-status"
+                                    >
                                         <AppIcon name="alert-triangle" :size="12" />
                                         {{ a.name }}
-                                    </BaseBadge>
+                                    </span>
                                     <span v-if="item.diets.length" class="text-xs text-subtle">{{ item.diets.join(' · ') }}</span>
                                 </p>
 
-                                <p v-if="!station" class="mt-1 text-xs font-medium uppercase tracking-wide text-subtle">
+                                <!-- Yalnız "Tümü" görünümünde ve çok sessiz: üstteki süzme çipi zaten
+                                     istasyonu belirtir, kart içi etiket yalnız karışık listede yön verir. -->
+                                <p v-if="!station" class="mt-1 text-[11px] text-subtle/70">
                                     {{ item.station_label }}
                                 </p>
 
@@ -582,3 +609,53 @@ const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mut
 
     <ToastHost />
 </template>
+
+<style scoped>
+/*
+ * Zemin: --ui-surface üstünde çok hafif üstten ışık düşümü — düz/tek
+ * tondan "katmanlı yüzey" hissine geçiş; hem açık hem koyu temada çalışır
+ * (renk katkısı yok, yalnız beyaz alfa). Kartlar (--ui-surface-raised)
+ * zeminden daha açık kalarak ikinci kademeyi oluşturur. Kademeler:
+ * header/nav (raised → surface-alt) > zemin (surface) — bkz. şablondaki
+ * bg-raised / bg-surface-alt sınıfları.
+ */
+.kds-canvas {
+    background-color: var(--ui-surface);
+    background-image: radial-gradient(1200px 640px at 50% -12%, rgb(255 255 255 / 0.035), transparent 60%);
+}
+
+/*
+ * Kart ızgarası: masonry (CSS çoklu sütun). Sabit satır hizası YOK — her
+ * sütun kendi içinde akar, kısa kartın altında uzun bir satırın boşluğu
+ * kalmaz. Sütun sayısı genişliğe göre uyarlanır (dar 1 → geniş 5).
+ */
+.kds-masonry {
+    column-gap: 1rem;
+    column-count: 1;
+}
+@media (min-width: 640px) {
+    .kds-masonry {
+        column-count: 2;
+    }
+}
+@media (min-width: 1024px) {
+    .kds-masonry {
+        column-count: 3;
+    }
+}
+@media (min-width: 1280px) {
+    .kds-masonry {
+        column-count: 4;
+    }
+}
+@media (min-width: 1536px) {
+    .kds-masonry {
+        column-count: 5;
+    }
+}
+.kds-masonry > * {
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    margin-bottom: 1rem;
+}
+</style>

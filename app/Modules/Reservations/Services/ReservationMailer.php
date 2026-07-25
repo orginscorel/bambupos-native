@@ -31,7 +31,7 @@ class ReservationMailer
             '',
             sprintf(
                 'Rezervasyonunuz onaylanmıştır: %s, %d kişi.',
-                $reservation->reserved_at->format('d.m.Y H:i'),
+                $reservation->localReservedAt()->format('d.m.Y H:i'),
                 $reservation->party_size,
             ),
             '',
@@ -47,7 +47,7 @@ class ReservationMailer
             '',
             sprintf(
                 'Rezervasyonunuz iptal edilmiştir: %s, %d kişi.',
-                $reservation->reserved_at->format('d.m.Y H:i'),
+                $reservation->localReservedAt()->format('d.m.Y H:i'),
                 $reservation->party_size,
             ),
         ]));
@@ -60,7 +60,7 @@ class ReservationMailer
             '',
             sprintf(
                 'Hatırlatma: bugünkü rezervasyonunuz %s saatinde, %d kişi.',
-                $reservation->reserved_at->format('H:i'),
+                $reservation->localReservedAt()->format('H:i'),
                 $reservation->party_size,
             ),
             '',

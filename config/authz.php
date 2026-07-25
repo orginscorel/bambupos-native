@@ -37,6 +37,9 @@ return [
         'theme' => ['manage'],
         'integrations' => ['manage'],
         'settings' => ['view', 'manage'],
+        // Kiosk (Faz-8): view = cihaz listesi + sağlık durumu (salt-okunur);
+        // manage = cihaz ekle/kaldır, token yenile, uzaktan kilit/aç.
+        'kiosk' => ['view', 'manage'],
         'audit' => ['view'],
     ],
 
@@ -79,6 +82,7 @@ return [
         'theme' => 'Tema',
         'integrations' => 'Entegrasyonlar',
         'settings' => 'Ayarlar',
+        'kiosk' => 'Kiosk',
         'audit' => 'Denetim Kaydı',
     ],
 
@@ -144,6 +148,7 @@ return [
                 'roles.view',
                 'branches.view',
                 'settings.view',
+                'kiosk.view', 'kiosk.manage',
             ],
         ],
         'garson' => [

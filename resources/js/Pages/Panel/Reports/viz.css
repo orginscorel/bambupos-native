@@ -1,0 +1,28 @@
+/**
+ * Rapor grafik paleti (dataviz yöntemi — doğrulanmış referans paleti).
+ * Kategorik sıra SABİTTİR (CVD güvenlik mekanizması): mavi → turuncu →
+ * deniz yeşili → sarı. Seri rengi VARLIĞI izler, sırayı değil; 4'ten
+ * fazlası "Diğer" (gri) altında toplanır.
+ * Koyu tema aynı tonların koyu yüzeye göre seçilmiş adımlarıdır (otomatik
+ * çevirme değildir) ve <html data-theme="dark"> ile devreye girer.
+ */
+:root {
+    --viz-1: #2a78d6;
+    --viz-2: #eb6834;
+    --viz-3: #1baf7a;
+    --viz-4: #eda100;
+    --viz-other: #898781;
+    --viz-grid: #e7e5e4;
+    --viz-axis: #d6d3d1;
+    --viz-area-opacity: 0.1;
+}
+
+:root[data-theme='dark'] {
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
+    --viz-4: #c98500;
+    --viz-other: #898781;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #383835;
+}

@@ -5,7 +5,6 @@ import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
 import ToastHost from '@/Components/ui/ToastHost.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
-import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
@@ -14,7 +13,7 @@ import KdsItemImage from './KdsItemImage.vue';
 import {
     createKdsSound,
     createPollingFeed,
-    forceDarkTheme,
+    useKdsTheme,
     getOrNull,
     metaFromKdsProps,
     minutesSince,
@@ -33,7 +32,9 @@ import {
  * kırpılmaz) · ne kadar acil (yalnız bekleme çipi renklenir). Akış iki
  * adımdır: "Teslim aldım" → "Masaya götürdüm"; yanlış işaret için geri alma
  * vardır. Görsel dil mutfak ekranıyla ve panelin geri kalanıyla birebir
- * aynıdır (--ui-* token'ları); yerleşim bu dosyaya özgüdür.
+ * aynıdır (--ui-* token'ları); yerleşim bu dosyaya özgüdür. Varsayılan
+ * AÇIK tema; ekranın kendi açık/koyu düğmesi vardır (useKdsTheme,
+ * localStorage 'kds_theme' — panelin genel tema tercihinden bağımsız).
  */
 const page = usePage();
 const meta = metaFromKdsProps(page.props as Record<string, unknown>);
@@ -106,12 +107,11 @@ async function restartFeed(): Promise<void> {
     feed.start();
 }
 
-let releaseTheme: (() => void) | null = null;
+const kdsTheme = useKdsTheme();
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 const clockTick = ref(Date.now());
 
 onMounted(() => {
-    releaseTheme = forceDarkTheme();
     void restartFeed();
     const unlock = () => sound.unlock();
     window.addEventListener('pointerdown', unlock, { once: true });
@@ -121,7 +121,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     feed?.stop();
     if (clockTimer) clearInterval(clockTimer);
-    releaseTheme?.();
+    kdsTheme.release();
 });
 
 function waitMinutes(iso: string | null): number {
@@ -222,9 +222,11 @@ function selectBranch(id: string): void {
 <template>
     <Head title="Komi Ekranı" />
 
-    <div class="fixed inset-0 flex flex-col overflow-hidden bg-surface-alt text-body">
+    <div class="kds-canvas fixed inset-0 flex flex-col overflow-hidden text-body">
         <!-- ================= Üst çubuk (mutfakla aynı dil) ================= -->
-        <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2">
+        <header
+            class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2 shadow-[0_6px_16px_-12px_rgba(0,0,0,0.6)]"
+        >
             <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
                 <AppIcon name="arrow-left" :size="20" />
             </BaseButton>
@@ -257,6 +259,16 @@ function selectBranch(id: string): void {
                     variant="ghost"
                     size="lg"
                     icon-only
+                    :label="kdsTheme.theme.value === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'"
+                    @click="kdsTheme.toggle()"
+                >
+                    <KdsIcon :name="kdsTheme.theme.value === 'dark' ? 'sun' : 'moon'" :size="20" />
+                </BaseButton>
+
+                <BaseButton
+                    variant="ghost"
+                    size="lg"
+                    icon-only
                     :label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
                     @click="toggleFullscreen"
                 >
@@ -281,7 +293,7 @@ function selectBranch(id: string): void {
                 <li
                     v-for="item in sorted"
                     :key="item.id"
-                    class="rounded-xl border bg-raised shadow-card"
+                    class="rounded-xl border bg-raised shadow-[0_1px_2px_0_rgb(28_25_23_/_0.05),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
                     :class="newItemIds.has(item.id) ? 'border-primary-soft-border' : 'border-default'"
                 >
                     <div class="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3.5">
@@ -303,15 +315,21 @@ function selectBranch(id: string): void {
                                 <span class="tabular-nums">{{ item.qty }}×</span>
                                 {{ item.name }}<span v-if="item.variant_name" class="font-normal text-muted"> — {{ item.variant_name }}</span>
                             </p>
-                            <p class="mt-0.5 text-sm text-muted">
-                                {{ item.station_label }}<span v-if="item.note" class="font-medium text-info"> · Not: {{ item.note }}</span>
-                            </p>
-                            <!-- Renk YALNIZ alerjende güçlü; diyet etiketi sessiz düz metin -->
+                            <!-- Komi istasyon ayrımıyla ilgilenmez (süzmez, taşımaz) — yalnız
+                                 gerçekten faydalı bilgi olan not burada kalır. -->
+                            <p v-if="item.note" class="mt-0.5 text-sm font-medium text-info">Not: {{ item.note }}</p>
+                            <!-- Renk YALNIZ alerjende güçlü; diyet etiketi sessiz düz metin.
+                                 Dolu (solid) kırmızı — bkz. Kitchen.vue'daki AA notu:
+                                 soft-danger ikilisi açık temada 4.41:1 (AA 4.5:1 altı) ölçüldü. -->
                             <p v-if="item.allergens.length || item.diets.length" class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                                <BaseBadge v-for="a in item.allergens" :key="a.name" variant="danger" no-icon>
+                                <span
+                                    v-for="a in item.allergens"
+                                    :key="a.name"
+                                    class="inline-flex items-center gap-1 rounded-full border border-danger bg-danger px-2 py-0.5 text-xs font-semibold text-on-status"
+                                >
                                     <AppIcon name="alert-triangle" :size="12" />
                                     {{ a.name }}
-                                </BaseBadge>
+                                </span>
                                 <span v-if="item.diets.length" class="text-xs text-subtle">{{ item.diets.join(' · ') }}</span>
                             </p>
                         </div>
@@ -359,7 +377,7 @@ function selectBranch(id: string): void {
         <!-- Son götürülenler: yanlış işareti geri alma şeridi -->
         <footer
             v-if="recentDelivered.length > 0"
-            class="flex flex-wrap items-center gap-2 border-t border-default bg-raised px-4 py-2"
+            class="flex flex-wrap items-center gap-2 border-t border-default bg-raised px-4 py-2 shadow-[0_-6px_16px_-12px_rgba(0,0,0,0.6)]"
         >
             <span class="text-xs font-medium uppercase tracking-wide text-subtle">Son götürülenler</span>
             <span
@@ -378,3 +396,14 @@ function selectBranch(id: string): void {
 
     <ToastHost />
 </template>
+
+<style scoped>
+/*
+ * Zemin: mutfak ekranıyla birebir aynı katmanlı yüzey (bkz. Kitchen.vue) —
+ * --ui-surface üstünde çok hafif üstten ışık düşümü, düz siyah yerine.
+ */
+.kds-canvas {
+    background-color: var(--ui-surface);
+    background-image: radial-gradient(1200px 640px at 50% -12%, rgb(255 255 255 / 0.035), transparent 60%);
+}
+</style>

@@ -105,6 +105,18 @@ class Reservation extends Model
         return $this->reserved_at->copy();
     }
 
+    /**
+     * Şube saat dilimindeki (müşteriye/personele gösterilen) başlangıç.
+     * Saklama UTC'dir (app.timezone); giriş de şube diliminde yorumlanır —
+     * ReservationService::parseBranchTime.
+     */
+    public function localReservedAt(): Carbon
+    {
+        $tz = $this->branch?->timezone ?: config('app.timezone');
+
+        return $this->reserved_at->copy()->setTimezone($tz);
+    }
+
     /** Masanın dolu sayıldığı bitiş (süre dahil, tampon HARİÇ). */
     public function endsAt(): Carbon
     {

@@ -1,0 +1,90 @@
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| Public QR menü metinleri (i18n altyapısı)
+|--------------------------------------------------------------------------
+| Dil eklemek için bu dosyayı lang/{en,de,ar}/menu.php olarak kopyalayıp
+| çevirin. Sayfa tam-sayfa cache'lendiği için dil seçimi çerezle DEĞİL,
+| URL ile yapılmalı (ör. /m/{token}?lang=en + LiteSpeed cache vary) —
+| aktifleştirme notu: PublicMenuController::show + ADR-011.
+| 'js' alt dizisi olduğu gibi window.QRM_L olarak sayfaya gömülür.
+*/
+
+return [
+    'title_suffix' => 'Menü',
+    'search_placeholder' => 'Menüde ara…',
+    'filters' => 'Filtrele',
+    'menu_empty' => 'Bu şube menüsünü henüz yayınlamadı. Lütfen personelden basılı menü isteyin.',
+    'call_waiter' => 'Garson çağır',
+    'request_bill' => 'Hesap iste',
+    'request_water' => 'Su iste',
+    'info_title' => 'İşletme Bilgileri',
+    'info_address' => 'Adres',
+    'info_phone' => 'Telefon',
+    'powered_by' => 'powered by bogahost',
+
+    // JS katmanına gömülen sözlük (window.QRM_L)
+    'js' => [
+        'cart_view' => 'Sepeti gör',
+        'cart_title' => 'Sepetiniz',
+        'cart_empty' => 'Sepetiniz boş.',
+        'cart_added' => 'Sepete eklendi',
+        'cart_note' => 'Not (isteğe bağlı)',
+        'cart_note_ph' => 'Ör. az pişmiş, soğansız…',
+        'cart_total' => 'Toplam',
+        'cart_submit' => 'Siparişi gönder',
+        'cart_submitting' => 'Gönderiliyor…',
+        'cart_line_gone' => 'ürün artık menüde olmadığı için sepetten çıkarıldı.',
+        'add_to_cart' => 'Sepete ekle',
+        'update_line' => 'Güncelle',
+        'remove' => 'Kaldır',
+        'qty_dec' => 'Adedi azalt',
+        'qty_inc' => 'Adedi artır',
+        'close' => 'Kapat',
+        'free' => 'Ücretsiz',
+        'free_limit' => ':n adedi ücretsiz',
+        'choose_required' => 'Zorunlu seçim',
+        'choose_min' => 'En az :n seçim yapın',
+        'choose_max' => 'En fazla :n seçilebilir',
+        'none_option' => 'İstemiyorum',
+        'variant_title' => 'Boyut / Seçenek',
+        'sold_out' => 'Tükendi',
+        'off_hours' => 'Şu an servis edilmiyor',
+        'tag_new' => 'Yeni',
+        'tag_chef' => 'Şef Önerisi',
+        'tag_best' => 'Popüler',
+        'spicy' => 'Acı seviyesi',
+        'prep' => 'dk hazırlık',
+        'kcal' => 'kkal',
+        'nutrition' => 'Besin Değerleri',
+        'protein' => 'Protein',
+        'carbs' => 'Karbonhidrat',
+        'fat' => 'Yağ',
+        'allergens_title' => 'Alerjen Uyarısı',
+        'allergens_none' => 'Bildirilmiş alerjen yok. Yine de hassasiyetiniz varsa personele danışın.',
+        'diet_title' => 'Diyet',
+        'filters_title' => 'Arama ve Filtreler',
+        'filters_cats' => 'Kategoriler',
+        'filters_diet' => 'Diyet tercihleri',
+        'filters_allergens' => 'Şunları içermesin',
+        'filters_price' => 'Fiyat aralığı (₺)',
+        'filters_price_min' => 'En az',
+        'filters_price_max' => 'En çok',
+        'filters_clear' => 'Temizle',
+        'filters_apply' => 'Sonuçları göster',
+        'filters_active' => 'aktif filtre',
+        'no_results' => 'Aramanıza uygun ürün bulunamadı.',
+        'no_results_hint' => 'Filtreleri temizleyerek tüm menüyü görebilirsiniz.',
+        'confirm_waiter' => 'Garson çağrılsın mı?',
+        'confirm_bill' => 'Hesap istensin mi?',
+        'confirm_water' => 'Su istensin mi?',
+        'service_sent' => 'İsteğiniz iletildi.',
+        'api_not_ready' => 'Bu özellik henüz devrede değil. Lütfen isteğinizi personele iletin.',
+        'api_error' => 'İsteğiniz iletilemedi. Lütfen tekrar deneyin veya personele bildirin.',
+        'order_sent' => 'Siparişiniz iletildi.',
+        'order_not_ready' => 'Sipariş gönderimi henüz devrede değil. Sepetiniz kayıtlı — lütfen siparişinizi personele iletin.',
+        'order_error' => 'Sipariş gönderilemedi. Bağlantınızı kontrol edip tekrar deneyin; sepetiniz kayıtlı.',
+        'currency' => '₺',
+    ],
+];

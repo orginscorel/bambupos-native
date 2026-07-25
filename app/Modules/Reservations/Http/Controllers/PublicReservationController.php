@@ -72,7 +72,11 @@ class PublicReservationController extends Controller
             return response()->json(['message' => 'Geçersiz QR kod.'], 404);
         }
 
-        $reservedAt = Carbon::parse($data['date'].' '.$data['time']);
+        // Müşteri şube duvar saatiyle seçer; UTC anına çevrilir.
+        $reservedAt = ReservationService::parseBranchTime(
+            (int) $resolution->branch->id,
+            $data['date'].' '.$data['time'],
+        );
 
         if ($reservedAt->lte(now())) {
             return response()->json(['message' => 'Geçmiş bir saat için rezervasyon yapılamaz.'], 422);
@@ -88,7 +92,7 @@ class PublicReservationController extends Controller
                     'customer_name' => $data['customer_name'],
                     'customer_phone' => $data['customer_phone'],
                     'customer_email' => $data['customer_email'] ?? null,
-                    'reserved_at' => $reservedAt->toDateTimeString(),
+                    'reserved_at' => $reservedAt,
                     'party_size' => (int) $data['party_size'],
                     'special_note' => $data['note'] ?? null,
                     'allergy_note' => $data['allergy_note'] ?? null,

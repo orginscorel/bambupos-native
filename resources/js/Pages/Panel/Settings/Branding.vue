@@ -121,7 +121,14 @@ async function removeLogo(): Promise<void> {
     <Head title="İşletme / Marka" />
 
     <PanelShell title="İşletme / Marka">
-        <div class="mx-auto flex w-full max-w-2xl flex-col gap-5">
+        <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
+            <div class="flex flex-col gap-1.5">
+                <h1 class="text-2xl font-semibold text-body">Ayarlar</h1>
+                <p class="max-w-2xl text-[15px] leading-relaxed text-muted">
+                    İşletmenizin markası — müşterilerin QR ile açtığı public menüde görünen kimliği.
+                </p>
+            </div>
+
             <div class="flex gap-1 overflow-x-auto border-b border-default">
                 <Link
                     v-for="tab in settingsTabs"
@@ -139,43 +146,49 @@ async function removeLogo(): Promise<void> {
             </template>
 
             <template v-else-if="!loadFailed && branding">
-                <BaseCard title="Logo">
-                    <p class="mb-4 text-sm text-muted">
-                        Bu logo, müşterilerin QR kod ile açtığı public menünün üst başlığında gösterilir.
-                        Logo tanımlı değilse yerine işletme adının baş harfiyle markalı bir daire gösterilir —
-                        menü hiçbir zaman "bozuk" görünmez.
-                    </p>
-
-                    <div class="flex flex-wrap items-center gap-4">
-                        <div
-                            class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-default bg-primary text-xl font-bold text-on-primary"
-                        >
-                            <img v-if="branding.logo_url" :src="branding.logo_url" alt="" class="h-full w-full object-cover" />
-                            <span v-else>{{ initial }}</span>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <div class="flex flex-wrap gap-2">
-                                <input
-                                    ref="fileInput"
-                                    type="file"
-                                    accept=".jpg,.jpeg,.png,.webp"
-                                    class="hidden"
-                                    @change="uploadLogo"
-                                />
-                                <BaseButton variant="secondary" :loading="uploading" @click="fileInput?.click()">
-                                    <AppIcon name="plus" :size="16" />
-                                    {{ branding.logo_url ? 'Logoyu değiştir' : 'Logo yükle' }}
-                                </BaseButton>
-                                <BaseButton v-if="branding.logo_url" variant="ghost" @click="removeModalOpen = true">
-                                    <AppIcon name="trash" :size="16" />
-                                    Kaldır
-                                </BaseButton>
-                            </div>
-                            <p class="text-xs text-muted">JPG, PNG veya WebP · en fazla 2 MB · kare görsel önerilir</p>
-                        </div>
+                <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-2 md:grid-cols-[260px_1fr]">
+                    <div class="flex flex-col gap-1.5">
+                        <h2 class="text-base font-semibold text-body">Logo</h2>
+                        <p class="text-sm leading-relaxed text-muted">
+                            Bu logo, müşterilerin QR kod ile açtığı public menünün üst başlığında gösterilir.
+                            Logo tanımlı değilse yerine işletme adının baş harfiyle markalı bir daire gösterilir —
+                            menü hiçbir zaman "bozuk" görünmez.
+                        </p>
                     </div>
-                </BaseCard>
+                    <div class="min-w-0">
+                        <BaseCard>
+                            <div class="flex flex-col gap-6 sm:flex-row sm:items-center">
+                                <div
+                                    class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-default bg-primary text-3xl font-bold text-on-primary"
+                                >
+                                    <img v-if="branding.logo_url" :src="branding.logo_url" alt="" class="h-full w-full object-cover" />
+                                    <span v-else>{{ initial }}</span>
+                                </div>
+
+                                <div class="flex flex-col gap-3">
+                                    <div class="flex flex-wrap gap-2">
+                                        <input
+                                            ref="fileInput"
+                                            type="file"
+                                            accept=".jpg,.jpeg,.png,.webp"
+                                            class="hidden"
+                                            @change="uploadLogo"
+                                        />
+                                        <BaseButton variant="secondary" :loading="uploading" @click="fileInput?.click()">
+                                            <AppIcon name="plus" :size="16" />
+                                            {{ branding.logo_url ? 'Logoyu değiştir' : 'Logo yükle' }}
+                                        </BaseButton>
+                                        <BaseButton v-if="branding.logo_url" variant="ghost" @click="removeModalOpen = true">
+                                            <AppIcon name="trash" :size="16" />
+                                            Kaldır
+                                        </BaseButton>
+                                    </div>
+                                    <p class="text-xs text-muted">JPG, PNG veya WebP · en fazla 2 MB · kare görsel önerilir</p>
+                                </div>
+                            </div>
+                        </BaseCard>
+                    </div>
+                </section>
             </template>
 
             <BaseModal :open="removeModalOpen" title="Logo kaldırılsın mı?" @close="removeModalOpen = false">

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { usePage } from '@inertiajs/vue3';
+import { computed, onMounted, ref } from 'vue';
+import { Link, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { authFromPage, type BranchOption } from '@/types/auth';
 import { useTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import type { NavItem } from '@/types/nav';
+import { defaultNavigation } from '@/config/navigation';
 import PanelLayout from '@/Layouts/PanelLayout.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
+import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseDropdown from '@/Components/ui/BaseDropdown.vue';
 import DropdownItem from '@/Components/ui/DropdownItem.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
@@ -25,11 +27,16 @@ const auth = computed(() => authFromPage(page.props as Record<string, unknown>))
 const { theme, toggleTheme } = useTheme();
 const { success, danger } = useToast();
 
-/* ---- Menü: yalnız gerçekten var olan sayfalar (ölü bağlantı yok) ---- */
-const nav: NavItem[] = [
-    { key: 'dashboard', label: 'Panel', icon: 'dashboard', href: '/panel', exact: true, mobile: true },
-    { key: 'profile', label: 'Hesabım', icon: 'user', href: '/panel/profil', mobile: true },
-];
+/* ---- Menü: TEK KAYNAK → @/config/navigation ----
+ *
+ * 2026-07-22: Menü İKİ ayrı yerde tanımlıydı — burada yerel bir dizi ve
+ * ayrıca `config/navigation.ts`. Gerçekte SADECE bu yerel dizi kullanılıyordu
+ * ve içinde yalnız 2 bağlantı vardı; Menü / Masalar / Şubeler / Ayarlar
+ * sayfaları yazılmış olmasına rağmen menüden ULAŞILAMIYORDU.
+ * İki kaynak birleştirildi: yeni modül eklerken YALNIZ `config/navigation.ts`
+ * düzenlenir, burası değişmez.
+ */
+const nav: NavItem[] = defaultNavigation;
 
 /* ---- Şube değiştirici ---- */
 const branches = computed<BranchOption[]>(() => auth.value?.branches ?? []);
@@ -74,16 +81,75 @@ const initials = computed(() => {
         .map((p) => p[0]?.toLocaleUpperCase('tr-TR'))
         .join('');
 });
+
+/* ---- Sürüm rozetleri: alt bilgide "Site" + "Uygulama (native)" ----
+ * Tek kaynak /config/changelog.php + /config/native_changelog.php;
+ * burada tam liste değil yalnız güncel sürüm numarası çekilir (hafif uç,
+ * bkz. routes/changelog.php). İkisi de /panel/surum-notlari'na bağlanır. */
+interface VersionInfo {
+    site: { version: string; released_at: string | null };
+    native: { status: 'not_released' | 'released'; version: string | null };
+}
+const versions = ref<VersionInfo | null>(null);
+onMounted(async () => {
+    try {
+        versions.value = await api<VersionInfo>('/api/v1/changelog/version');
+    } catch {
+        /* rozet süsleyicidir; yüklenemezse sessizce gizli kalır */
+    }
+});
+const nativeVersionLabel = computed(() =>
+    versions.value?.native.status === 'released' && versions.value.native.version
+        ? `v${versions.value.native.version}`
+        : 'yakında',
+);
 </script>
 
 <template>
     <PanelLayout :title="title" :nav="nav">
         <template #brand>QR Menü</template>
 
+        <!-- Alt bilgi: sürüm rozetleri (Site + Uygulama) + marka bloğu — tek,
+             rafine bir blok halinde. İkisi de /panel/surum-notlari'na bağlanır
+             (ilgili sekmeyle); marka satırı en altta kalır. -->
         <template #sidebar-footer>
-            <div class="flex flex-col gap-0.5">
-                <span v-if="auth?.tenant" class="truncate font-medium text-muted">{{ auth.tenant.name }}</span>
-                <span>powered by bogahost</span>
+            <div class="flex flex-col gap-1 rounded-lg border border-default bg-surface p-2">
+                <Link
+                    href="/panel/surum-notlari?sekme=site"
+                    class="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors duration-(--dur-fast) hover:bg-inset"
+                    title="Site sürüm notları"
+                >
+                    <AppIcon name="dashboard" :size="14" class="shrink-0 text-subtle group-hover:text-muted" />
+                    <span class="grow truncate text-xs font-medium text-muted group-hover:text-body">Site</span>
+                    <BaseBadge variant="primary" no-icon class="shrink-0">
+                        {{ versions ? `v${versions.site.version}` : '—' }}
+                    </BaseBadge>
+                </Link>
+                <Link
+                    href="/panel/surum-notlari?sekme=native"
+                    class="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors duration-(--dur-fast) hover:bg-inset"
+                    title="Uygulama (native) sürüm notları"
+                >
+                    <AppIcon name="qr-code" :size="14" class="shrink-0 text-subtle group-hover:text-muted" />
+                    <span class="grow truncate text-xs font-medium text-muted group-hover:text-body">Uygulama</span>
+                    <BaseBadge variant="neutral" no-icon class="shrink-0">
+                        {{ versions ? nativeVersionLabel : '—' }}
+                    </BaseBadge>
+                </Link>
+
+                <div class="my-0.5 border-t border-default" />
+
+                <div class="flex items-center gap-2.5 px-1.5 py-1">
+                    <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                        <AppIcon name="store" :size="15" />
+                    </span>
+                    <div class="flex min-w-0 flex-col">
+                        <span v-if="auth?.tenant" class="truncate text-[13px] font-semibold text-body">{{ auth.tenant.name }}</span>
+                        <span class="text-[11px] font-medium text-subtle">
+                            powered by <span class="font-semibold text-muted">bogahost</span>
+                        </span>
+                    </div>
+                </div>
             </div>
         </template>
 
