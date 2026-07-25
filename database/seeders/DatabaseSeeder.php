@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
             StaffRoleDefaultsSeeder::class, // var olan kiracılara şablon rol varsayılanları
             CatalogSeeder::class,
             InventorySeeder::class, // stok/depo demo verisi (CatalogSeeder'dan SONRA: reçeteler ürünlere bağlanır)
+            ShiftsSeeder::class, // vardiya/mesai demo verisi (DemoTenantSeeder'dan SONRA: roller + şube hazır)
         ]);
     }
 }
