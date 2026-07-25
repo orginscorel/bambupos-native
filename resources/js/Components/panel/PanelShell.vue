@@ -19,7 +19,12 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
  * menüsü yuvalarını gerçek davranışla doldurur. Tüm panel sayfaları
  * bunu kullanır; yinelenen slot kodu olmaz.
  */
-defineProps<{ title?: string }>();
+defineProps<{
+    title?: string;
+    /** Immersive (KDS/mutfak) mod: kenar çubuğu masaüstünde varsayılan kapalı,
+     *  içerik tam genişlik. Siparişler & Kasa true verir; PanelLayout'a iletilir. */
+    immersive?: boolean;
+}>();
 
 const page = usePage();
 const auth = computed(() => authFromPage(page.props as Record<string, unknown>));
@@ -106,7 +111,7 @@ const nativeVersionLabel = computed(() =>
 </script>
 
 <template>
-    <PanelLayout :title="title" :nav="nav">
+    <PanelLayout :title="title" :nav="nav" :immersive="immersive">
         <template #brand>QR Menü</template>
 
         <!-- Alt bilgi: sürüm rozetleri (Site + Uygulama) + marka bloğu — tek,

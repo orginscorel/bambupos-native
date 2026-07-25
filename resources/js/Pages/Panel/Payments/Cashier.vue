@@ -505,7 +505,7 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
 
 <template>
     <Head title="Kasa" />
-    <PanelShell title="Kasa">
+    <PanelShell title="Kasa" immersive>
         <div class="flex flex-col gap-4">
             <!-- Kasa oturumu göstergesi -->
             <div v-if="meta.canCashView" class="flex flex-wrap items-center gap-3 rounded-lg border border-default bg-raised p-3">

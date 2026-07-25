@@ -49,7 +49,8 @@
 
 ## 3. Paylaşılan/çekişmeli dosyalar (tek yerden)
 - `resources/js/config/navigation.ts` — sidebar TEK KAYNAK (yeni modül=tek satır).
-- `resources/js/Components/panel/PanelShell.vue` — kabuk; menü buradan gelmez; Ctrl+K + bildirim zili burada.
+- `resources/js/Components/panel/PanelShell.vue` — kabuk; menü buradan gelmez; Ctrl+K + bildirim zili burada. `immersive` prop'u PanelLayout'a iletilir.
+- `resources/js/Layouts/PanelLayout.vue` — kenar çubuğu daraltılabilir (üst bar sol-üstteki menü/x düğmesi; `collapsed`, tercih localStorage `bhx-sidebar-*`). `immersive` sayfalarda (Siparişler=Board.vue, Kasa=Cashier.vue → `immersive` prop) çubuk VARSAYILAN kapalı = tam-ekran KDS; diğer sayfalar açık. Yalnız masaüstü (lg); mobil alt-nav/çekmece aynı.
 - `bootstrap/app.php` — rota kaydı + guest→401(api). Her modül kendi satırı.
 - Staff izin kataloğu — yeni modül izinleri (`x.view`) buraya.
 

@@ -16,8 +16,11 @@ const props = withDefaults(
         nav?: NavItem[];
         /** Bildirim zili rozet sayısı (Notify modülü dolduracak) */
         notificationCount?: number;
+        /** Immersive (KDS/mutfak) mod: masaüstü kenar çubuğu VARSAYILAN kapalı
+         *  gelir (tam genişlik). Siparişler & Kasa bunu true verir. */
+        immersive?: boolean;
     }>(),
-    { title: '', notificationCount: 0 },
+    { title: '', notificationCount: 0, immersive: false },
 );
 
 const page = usePage();
@@ -62,6 +65,24 @@ const navItems = computed<NavItem[]>(() => {
 const mobileItems = computed(() => navItems.value.filter((i) => i.mobile).slice(0, 4));
 const mobileNavOpen = ref(false);
 
+/* ===== Masaüstü kenar çubuğu daraltma (immersive KDS modu) =====
+ * `immersive` sayfalar (Siparişler & Kasa) kenar çubuğunu VARSAYILAN kapalı
+ * açar → içerik tam genişlik (büyük, ferah ekran). Diğer sayfalar açık gelir.
+ * Kullanıcı üst bardaki menü düğmesiyle aç/kapatır; tercih (immersive olan/
+ * olmayan bağlam için AYRI anahtar) localStorage'da tutulur ki varsayılanla
+ * çakışmasın. Yalnız masaüstünü (lg) etkiler; mobil (alt nav + çekmece) aynı. */
+const collapsed = ref(props.immersive);
+const collapsePrefKey = computed(() => (props.immersive ? 'bhx-sidebar-immersive' : 'bhx-sidebar-normal'));
+
+function toggleSidebar(): void {
+    collapsed.value = !collapsed.value;
+    try {
+        localStorage.setItem(collapsePrefKey.value, collapsed.value ? '1' : '0');
+    } catch {
+        /* localStorage engelliyse tercih hatırlanmaz — sorun değil */
+    }
+}
+
 /* ===== Üst çubuk saati =====
  * - Şube saat dilimi esastır (auth.branches[].timezone + activeBranchId).
  * - İstemcinin duvar saatine güvenilmez: app.blade.php'deki
@@ -105,6 +126,14 @@ const onClockVisibility = () => {
 };
 
 onMounted(() => {
+    // Kenar çubuğu tercihi (varsa) — yoksa immersive varsayılanı korunur.
+    try {
+        const storedCollapse = localStorage.getItem(collapsePrefKey.value);
+        if (storedCollapse !== null) collapsed.value = storedCollapse === '1';
+    } catch {
+        /* localStorage okunamıyorsa varsayılan geçerli */
+    }
+
     const epoch = Number(document.querySelector('meta[name="app-server-epoch"]')?.getAttribute('content'));
     if (Number.isFinite(epoch)) serverOffsetMs.value = epoch - Date.now();
     syncClock();
@@ -147,7 +176,9 @@ const isActive = (item: NavItem) =>
 
         <!-- ===== Sol menü (masaüstü) ===== -->
         <aside
-            class="fixed inset-y-0 left-0 z-(--z-sticky) hidden w-60 flex-col border-r border-default bg-surface lg:flex"
+            class="fixed inset-y-0 left-0 z-(--z-sticky) hidden w-60 flex-col border-r border-default bg-surface transition-transform duration-(--dur-normal) lg:flex"
+            :class="collapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'"
+            :inert="collapsed || undefined"
             aria-label="Ana menü"
         >
             <div class="flex h-14 items-center gap-2.5 border-b border-default px-4">
@@ -191,8 +222,21 @@ const isActive = (item: NavItem) =>
 
         <!-- ===== Üst çubuk ===== -->
         <header
-            class="sticky top-0 z-(--z-sticky) flex h-14 items-center gap-2 border-b border-default bg-surface px-3 sm:px-4 lg:ml-60"
+            class="sticky top-0 z-(--z-sticky) flex h-14 items-center gap-2 border-b border-default bg-surface px-3 transition-[margin] duration-(--dur-normal) sm:px-4"
+            :class="collapsed ? 'lg:ml-0' : 'lg:ml-60'"
         >
+            <!-- Kenar çubuğu aç/kapa (masaüstü). Kapalıyken içerik tam genişlik
+                 olur; bu düğme sol üstte KALICI kalır ve çubuğu geri getirir. -->
+            <button
+                type="button"
+                class="hidden size-10 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body lg:flex"
+                :aria-label="collapsed ? 'Menüyü aç' : 'Menüyü kapat'"
+                :aria-pressed="!collapsed"
+                @click="toggleSidebar"
+            >
+                <AppIcon :name="collapsed ? 'menu' : 'x'" :size="18" />
+            </button>
+
             <!-- Şube değiştirici yeri (Tenancy modülü dolduracak) -->
             <div class="min-w-0">
                 <slot name="branch-switcher">
@@ -282,7 +326,12 @@ const isActive = (item: NavItem) =>
         </header>
 
         <!-- ===== İçerik ===== -->
-        <main id="icerik" class="p-4 pb-24 sm:p-6 lg:ml-60 lg:pb-6" tabindex="-1">
+        <main
+            id="icerik"
+            class="p-4 pb-24 transition-[margin] duration-(--dur-normal) sm:p-6 lg:pb-6"
+            :class="collapsed ? 'lg:ml-0' : 'lg:ml-60'"
+            tabindex="-1"
+        >
             <slot />
         </main>
 

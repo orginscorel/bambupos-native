@@ -321,7 +321,7 @@ async function approveOrder(order: OrderSummary): Promise<void> {
 
 <template>
     <Head title="Siparişler" />
-    <PanelShell title="Siparişler">
+    <PanelShell title="Siparişler" immersive>
         <div class="flex flex-col gap-4">
             <!-- Açık servis talepleri (garson çağır / hesap iste / su iste) -->
             <BaseCard v-if="board.service_requests.length > 0">
