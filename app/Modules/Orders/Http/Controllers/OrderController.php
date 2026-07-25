@@ -175,12 +175,29 @@ class OrderController extends Controller
         $data['branch_id'] = (int) $branch->id;
         $data['channel'] = $data['channel'] ?? OrderChannel::Table->value;
 
+        // Rezervasyon ↔ walk-in çakışması (§8): boş görünen masaya YENİ adisyon
+        // açılırken masanın yaklaşan/aktif rezervasyonu varsa personel ONAYI
+        // (confirm=true) olmadan açma; uyarı döndür (Board onay diyaloğu).
+        if (! $request->boolean('confirm')) {
+            $warning = $this->reservationConflictWarning($data);
+
+            if ($warning !== null) {
+                return response()->json($warning, 409);
+            }
+        }
+
         $order = $this->orders->open($data, $request->user());
 
         // Tek-adisyon kuralı: masada zaten açık adisyon varsa YENİSİ
         // açılmaz, var olan İDEMPOTENT biçimde döner (201 DEĞİL, 200 —
         // yeni kaynak oluşmadı).
         $status = $order->wasRecentlyCreated ? 201 : 200;
+
+        // Yeni oturma + masaya bağlıysa: rezervasyonu ilerlet (seated) ya da
+        // net çakışma işaretle (ReservationService; idempotent open'da çalışmaz).
+        if ($order->wasRecentlyCreated && $order->table_id !== null) {
+            $this->progressReservationForWalkIn($order, $request->user());
+        }
 
         return response()->json(['order' => OrderPresenter::summary($order->fresh(['table']))], $status);
     }
@@ -529,6 +546,110 @@ class OrderController extends Controller
         $v = $request->input('expected_version');
 
         return $v === null || $v === '' ? null : (int) $v;
+    }
+
+    /**
+     * Rezervasyon ↔ walk-in çakışma ön-kontrolü (§8). Yalnız masaya
+     * BAĞLANACAK (table/qr kanal ya da dine_in) ve masasında HENÜZ açık
+     * adisyon OLMAYAN (gerçek yeni oturma) açılışlar denetlenir. Yaklaşan/
+     * aktif rezervasyon varsa Board'a onay için uyarı payload'ı döner.
+     * En kötü durumda (rezervasyon modülü sorunu) açılışı ENGELLEMEZ.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>|null
+     */
+    private function reservationConflictWarning(array $data): ?array
+    {
+        $channel = OrderChannel::tryFrom((string) $data['channel']) ?? OrderChannel::Table;
+        $serviceType = isset($data['service_type'])
+            ? (ServiceType::tryFrom((string) $data['service_type']) ?? ServiceType::fromChannel($channel))
+            : ServiceType::fromChannel($channel);
+        $tableId = (int) ($data['table_id'] ?? 0);
+
+        if ($tableId <= 0 || ! ($channel->usesTable() || $serviceType->requiresTable())) {
+            return null;
+        }
+
+        if (! \App\Modules\Reservations\Support\ReservationFeature::enabled((int) $data['branch_id'])) {
+            return null;
+        }
+
+        try {
+            $table = \App\Modules\Tables\Models\Table::query()
+                ->where('branch_id', (int) $data['branch_id'])
+                ->find($tableId);
+
+            if ($table === null) {
+                return null; // open() zaten alan-bazlı doğrulama hatası verir
+            }
+
+            // Zaten açık adisyon varsa açılış İDEMPOTENT (yeni oturma değil) → uyarma.
+            $hasOpen = Order::query()
+                ->where('table_id', $tableId)
+                ->whereNotIn('status', OrderStatus::closedValues())
+                ->exists();
+
+            if ($hasOpen) {
+                return null;
+            }
+
+            $reservation = app(\App\Modules\Reservations\Services\ReservationTableSync::class)
+                ->imminentReservationForTable($table);
+
+            if ($reservation === null) {
+                return null;
+            }
+
+            $time = $reservation->localReservedAt()->format('H:i');
+
+            return [
+                'requires_confirmation' => true,
+                'reason' => 'reservation_conflict',
+                'message' => sprintf('Bu masa %s %s için rezerve — yine de açılsın mı?', $time, $reservation->customer_name),
+                'reservation' => [
+                    'id' => $reservation->id,
+                    'customer_name' => $reservation->customer_name,
+                    'reserved_time' => $time,
+                    'party_size' => (int) $reservation->party_size,
+                    'status' => $reservation->status->value,
+                    'status_label' => $reservation->status->label(),
+                ],
+            ];
+        } catch (\Throwable $e) {
+            report($e); // rezervasyon denetimi adisyon açılışını bozmasın (fail-open)
+
+            return null;
+        }
+    }
+
+    /**
+     * Walk-in rezervasyonlu masaya oturunca ilgili rezervasyonu ilerletir
+     * (seated) ya da net çakışma olarak işaretler (ReservationService).
+     * Best-effort: rezervasyon tarafı hata verse de adisyon akışı sürer.
+     */
+    private function progressReservationForWalkIn(Order $order, ?User $actor): void
+    {
+        if (! \App\Modules\Reservations\Support\ReservationFeature::enabled((int) $order->branch_id)) {
+            return;
+        }
+
+        try {
+            $table = \App\Modules\Tables\Models\Table::query()->find($order->table_id);
+
+            if ($table === null) {
+                return;
+            }
+
+            $reservation = app(\App\Modules\Reservations\Services\ReservationTableSync::class)
+                ->imminentReservationForTable($table);
+
+            if ($reservation !== null) {
+                app(\App\Modules\Reservations\Services\ReservationService::class)
+                    ->markWalkInSeated($reservation, $actor);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

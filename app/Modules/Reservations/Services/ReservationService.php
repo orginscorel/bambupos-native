@@ -234,6 +234,42 @@ class ReservationService
     }
 
     /**
+     * Walk-in bir müşteri rezervasyonlu masaya oturdu (Orders bu masaya
+     * adisyon açtı+onaylandı — §8). Masa katmanı zaten canlı operasyona
+     * geçmiştir (TableStatusSynchronizer); burada yalnız REZERVASYON kaydı
+     * uygun biçimde ilerletilir. Mevcut durum makinesi KULLANILIR:
+     *
+     *  - Onaylı/gecikmiş/gelmiş (confirmed/late/arrived) rezervasyon → Seated
+     *    (masaya alındı; oturan bu müşteri kabul edilir). transition() masayı
+     *    zaten bırakmaya çalışır ama açık adisyon nedeniyle no-op'tur —
+     *    ReservationTableSync ile tutarlı (açık adisyon rezervasyonu ezmez).
+     *  - Henüz onaylanmamış (requested/pending) rezervasyon seated'a GEÇEMEZ →
+     *    net ÇAKIŞMA olarak işaretlenir (special_note başına damga + otomatik
+     *    denetim kaydı) ki yönetici görüp karar versin.
+     */
+    public function markWalkInSeated(Reservation $reservation, ?User $actor = null): Reservation
+    {
+        if ($reservation->status === ReservationStatus::Seated || $reservation->status->isFinal()) {
+            return $reservation; // zaten oturmuş / kapanmış — dokunma
+        }
+
+        if ($reservation->status->canTransitionTo(ReservationStatus::Seated)) {
+            return $this->transition($reservation, ReservationStatus::Seated);
+        }
+
+        // Onaylanmamış rezervasyon: seated'a geçemez → görünür çakışma damgası.
+        $mark = sprintf('[ÇAKIŞMA %s] Masaya walk-in adisyon açıldı.', now()->format('d.m.Y H:i'));
+
+        if (! str_starts_with((string) $reservation->special_note, '[ÇAKIŞMA')) {
+            $note = $reservation->special_note ? $mark.' '.$reservation->special_note : $mark;
+            $reservation->special_note = mb_substr($note, 0, 500);
+            $reservation->save(); // Auditable → reservations.updated denetim kaydı
+        }
+
+        return $reservation;
+    }
+
+    /**
      * Rezervasyon saati yaklaşıyorsa (lead penceresi içindeyse) masayı
      * hemen 'reserved' yap; uzaktaysa cron (reservations:sync-tables)
      * zamanı gelince yapacak.

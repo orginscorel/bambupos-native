@@ -64,6 +64,32 @@ class ReservationTableSync
         return ! $this->hasOpenOrder($table);
     }
 
+    /**
+     * Bu masada ŞU AN geçerli (yaklaşan / aktif / gecikmiş) yer tutan
+     * rezervasyonu döndürür — walk-in çakışma uyarısı (§8) için. "Yaklaşan"
+     * = başlangıç `reserve_lead_minutes` içinde; "aktif/gecikmiş" = tamponlu
+     * blokaj bitişi henüz geçmemiş. Yer TUTAN durumlar (blocking) baz alınır;
+     * en yakın başlangıçlı rezervasyon seçilir.
+     *
+     * Timezone: reserved_at DB'de UTC saklanır, now() de UTC bind edilir —
+     * karşılaştırma instant-tutarlıdır (BranchLocalDateTime cast okuma-zamanı
+     * çevirir; blocksUntil() Carbon karşılaştırması an-tabanlıdır).
+     */
+    public function imminentReservationForTable(Table $table): ?Reservation
+    {
+        $now = now();
+        $lead = (int) config('reservations.reserve_lead_minutes', 60);
+
+        return Reservation::withoutTenancy()
+            ->blocking()
+            ->whereHas('tables', fn ($q) => $q->where('tables.id', $table->id))
+            ->where('reserved_at', '<=', $now->copy()->addMinutes($lead))
+            ->orderBy('reserved_at')
+            ->with('tables')
+            ->get()
+            ->first(fn (Reservation $r): bool => $r->blocksUntil()->gt($now));
+    }
+
     private function applyHold(Table $table, TableStatus $target): void
     {
         if (! $this->canHold($table)) {

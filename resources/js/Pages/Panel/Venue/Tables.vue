@@ -573,8 +573,8 @@ function groupBusyCount(g: TableGroup): number {
                                 selected.has(t.id)
                                     ? 'border-primary ring-2 ring-primary/30'
                                     : isBusy(t.status_variant)
-                                        ? 'border-primary-soft-border'
-                                        : 'border-default',
+                                        ? 'border-danger-border'
+                                        : 'border-success-border',
                                 t.is_active ? '' : 'opacity-60',
                             ]"
                         >
@@ -591,8 +591,8 @@ function groupBusyCount(g: TableGroup): number {
                             <div
                                 class="-mx-4 -mt-4 flex h-24 items-center justify-center overflow-hidden rounded-t-xl border-b transition-colors duration-(--dur-fast)"
                                 :class="isBusy(t.status_variant)
-                                    ? 'border-primary-soft-border bg-primary-soft text-primary'
-                                    : 'border-default bg-inset text-subtle'"
+                                    ? 'border-danger-border bg-danger-soft text-danger'
+                                    : 'border-success-border bg-success-soft text-success'"
                             >
                                 <TablePreview3D
                                     :shape="t.shape"
@@ -606,7 +606,7 @@ function groupBusyCount(g: TableGroup): number {
                             <div class="flex items-center gap-3 pe-7">
                                 <span
                                     class="flex size-11 shrink-0 items-center justify-center rounded-xl text-lg font-bold tabular-nums"
-                                    :class="isBusy(t.status_variant) ? 'bg-primary text-on-primary' : 'bg-inset text-body'"
+                                    :class="isBusy(t.status_variant) ? 'bg-danger text-white' : 'bg-success-soft text-success'"
                                 >
                                     {{ t.number ?? '—' }}
                                 </span>
@@ -624,14 +624,14 @@ function groupBusyCount(g: TableGroup): number {
                                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                                     <span
                                         v-if="isBusy(t.status_variant)"
-                                        class="inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-on-primary"
+                                        class="inline-flex items-center gap-1.5 rounded-full bg-danger px-2.5 py-1 text-xs font-semibold text-white"
                                     >
                                         <span class="size-1.5 rounded-full bg-current" />
                                         Dolu
                                     </span>
                                     <span
                                         v-else
-                                        class="inline-flex items-center gap-1.5 rounded-full bg-inset px-2.5 py-1 text-xs font-medium text-muted"
+                                        class="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success"
                                     >
                                         <span class="size-1.5 rounded-full bg-current opacity-50" />
                                         Boş

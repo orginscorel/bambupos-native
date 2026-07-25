@@ -112,6 +112,16 @@ const filteredTables = computed(() =>
 const openTable = ref<BoardTable | null>(null);
 const openBusy = ref(false);
 
+/* Rezervasyon ↔ walk-in çakışma onayı (§8): boş görünen masaya adisyon
+   açılırken masanın yaklaşan/aktif rezervasyonu varsa backend 409 +
+   requires_confirmation döndürür; personel onaylarsa confirm=true ile açılır. */
+interface ReservationConflict {
+    message: string;
+    table: BoardTable;
+    reservation?: { customer_name?: string; reserved_time?: string; party_size?: number; status_label?: string };
+}
+const reservationConflict = ref<ReservationConflict | null>(null);
+
 function onTableClick(table: BoardTable): void {
     if (table.orders.length === 1) {
         router.visit(`/panel/siparisler/${table.orders[0].id}`);
@@ -131,7 +141,7 @@ function closeTableModal(): void {
     busyModal = false;
 }
 
-async function createOrder(table: BoardTable): Promise<void> {
+async function createOrder(table: BoardTable, confirm = false): Promise<void> {
     if (openBusy.value) return;
     openBusy.value = true;
     try {
@@ -142,16 +152,42 @@ async function createOrder(table: BoardTable): Promise<void> {
                 channel: 'table',
                 table_id: table.id,
                 guest_count: null,
+                confirm,
             },
         });
         success('Adisyon açıldı', `${table.name} için yeni adisyon oluşturuldu.`);
+        reservationConflict.value = null;
         closeTableModal();
         router.visit(`/panel/siparisler/${res.order.id}`);
     } catch (e) {
+        // Rezervasyon çakışması: onay iste (adisyon henüz açılmadı).
+        if (e instanceof ApiError && e.status === 409 && e.data?.requires_confirmation) {
+            const r = e.data.reservation as ReservationConflict['reservation'];
+            reservationConflict.value = {
+                message: typeof e.data.message === 'string' ? e.data.message : 'Bu masa rezerve — yine de açılsın mı?',
+                table,
+                reservation: r,
+            };
+            busyModal = true;
+            return;
+        }
         danger('Adisyon açılamadı', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen bir hata oluştu.');
     } finally {
         openBusy.value = false;
     }
+}
+
+function cancelReservationConflict(): void {
+    reservationConflict.value = null;
+    busyModal = false;
+}
+
+async function confirmReservationConflict(): Promise<void> {
+    const pending = reservationConflict.value;
+    if (!pending) return;
+    reservationConflict.value = null;
+    busyModal = false;
+    await createOrder(pending.table, true);
 }
 
 /* ================= Masasız kanal siparişi (paket / gel-al / kiosk) ================= */
@@ -446,6 +482,41 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                 <BaseButton :loading="openBusy" @click="openTable && createOrder(openTable)">
                     <AppIcon name="plus" :size="14" />
                     Yeni adisyon aç
+                </BaseButton>
+            </template>
+        </BaseModal>
+
+        <!-- Rezervasyon ↔ walk-in çakışma onayı (§8): masanın yaklaşan/aktif
+             rezervasyonu varsa personel açılışı açıkça onaylar. -->
+        <BaseModal
+            :open="reservationConflict !== null"
+            title="Masa rezerve"
+            size="sm"
+            @close="cancelReservationConflict"
+        >
+            <div class="flex flex-col gap-3">
+                <div class="flex items-start gap-2 text-sm">
+                    <AppIcon name="alert-triangle" :size="18" class="mt-0.5 shrink-0 text-warning" />
+                    <p>{{ reservationConflict?.message }}</p>
+                </div>
+                <div
+                    v-if="reservationConflict?.reservation"
+                    class="rounded-lg border border-default p-3 text-sm"
+                >
+                    <p class="font-medium">{{ reservationConflict.reservation.customer_name }}</p>
+                    <p class="text-muted">
+                        {{ reservationConflict.reservation.reserved_time }}
+                        · {{ reservationConflict.reservation.party_size }} kişi
+                        <template v-if="reservationConflict.reservation.status_label">
+                            · {{ reservationConflict.reservation.status_label }}
+                        </template>
+                    </p>
+                </div>
+            </div>
+            <template #footer>
+                <BaseButton variant="secondary" @click="cancelReservationConflict">Vazgeç</BaseButton>
+                <BaseButton variant="danger" :loading="openBusy" @click="confirmReservationConflict">
+                    Yine de aç
                 </BaseButton>
             </template>
         </BaseModal>

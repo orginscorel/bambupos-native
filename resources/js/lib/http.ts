@@ -13,6 +13,8 @@ export class ApiError extends Error {
         public readonly status: number,
         message: string,
         public readonly errors: FieldErrors = {},
+        /** Ham yanıt gövdesi (ör. rezervasyon çakışma onayı: requires_confirmation). */
+        public readonly data: Record<string, unknown> = {},
     ) {
         super(message);
     }
@@ -79,6 +81,7 @@ export async function api<T = unknown>(
             response.status,
             typeof payload.message === 'string' ? payload.message : 'İşlem tamamlanamadı.',
             (payload.errors as FieldErrors | undefined) ?? {},
+            payload,
         );
     }
 
