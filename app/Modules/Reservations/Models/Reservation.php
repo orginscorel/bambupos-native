@@ -52,7 +52,7 @@ class Reservation extends Model
     protected function casts(): array
     {
         return [
-            'reserved_at' => 'datetime',
+            'reserved_at' => \App\Modules\Reservations\Casts\BranchLocalDateTime::class,
             'duration_minutes' => 'integer',
             'buffer_minutes' => 'integer',
             'party_size' => 'integer',

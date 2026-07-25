@@ -36,7 +36,7 @@
 - Staff (staff.php, staff `/panel/personel`) — OK (kişi-bazlı izin, switch)
 - Settings (settings.php, settings `/panel/ayarlar/e-posta`) — OK (SMTP manuel)
 - Reports (reports.php, Reports/**, reports `/panel/raporlar`) — OK (ciro fix)
-- **Reservations** (reservations.php, Reservations/**) — YARIM, bitirilecek + timezone testi
+- Reservations (reservations.php, Reservations/**, rezervasyonlar `/panel/rezervasyonlar`) — OK (panel gün/hafta takvim+liste, oluştur/düzenle/iptal/durum makinesi, çakışma+tampon denetimi AvailabilityService, bekleme listesi, masa-durumu bağı ReservationTableSync yaklaşan-pencere/late/no-show cron, public QR talebi /api/v1/public/reservations rate-limit+doğrulama "beklemede", alerji-notu hassas izin. **Timezone kök neden:** app.timezone=UTC iken şube tz=Europe/Istanbul → reserved_at 19:30 yerine 16:30 okunuyordu; config/app.php global değişimi kapsam dışı olduğundan modül-yerel `BranchLocalDateTime` cast'i ile çözüldü: DB'de UTC SAKLANIR (cron/now() bind'leri tutarlı), OKUMADA şube tz'ye çevrilir; Carbon karşılaştırmaları instant-tabanlı olduğundan yaklaşan/gecikme hesapları etkilenmez. Feature-flag kancası `ReservationFeature::enabled` (yer tutucu true, §9 TODO; kapalı=panel+public 404). izin reservations.view/manage vb. authz.php'de; menü tek satır calendar ikonu.)
 - **Shifts** (shifts.php, Shifts/**) — YARIM, YAPILACAK
 - **Inventory** (inventory.php, Inventory/**) — YARIM → DEPO detay (aşağı §7) ile tamamlanacak
 - Kiosk (kiosk.php, Kiosk/**, panel Kiosk/Index `/panel/kiosklar`) — OK (opak cihaz token=ADR-008 26-char base32, kiracı/şube token'dan türer + rotasyon 410 + uzaktan kilit; oturumsuz tam-ekran /kiosk/{token}, sepet yalnız bellekte→reset=location.reload; sipariş kanal=kiosk + tek-adisyon, mock POS §22 dürüst pending/fail; izin kiosk.view/kiosk.manage; feature-flag kancası KioskFeature::enabled (yer tutucu true, §9 TODO))
@@ -107,3 +107,10 @@ Kiosk → Rezervasyon(+timezone) → Depo/Stok(§7) → Vardiya → Bildirim/Pus
 - **Komi = hepsi:** komi ekranı TÜM istasyonların (Mutfak+Barista+...) hazır kalemlerini görüp teslim alabilir — istasyon farkı komiyi bölmez.
 - **İstasyon yönetimi:** yönetici istasyon ekleyip ürünleri atayabilsin (Catalog/KDS ayarı). "İstasyon" kavramı kullanıcıyı önce karıştırıyordu → net etiket (Mutfak/Barista) + basit atama UI.
 - Not: mevcut `station` alanı/kavramı Orders & KDS'te var; bunu gerçek Mutfak/Barista ayrımına oturt, yeni kavram uydurma.
+
+## 13. İSTASYON CİHAZ MODU (kiosk gibi kilitli terminaller) — yapılacak (kullanıcı 2026-07-25)
+- **Sektör standardı:** kiosk müşteri içindir; personel istasyonları (Mutfak, Barista, Komi, Sipariş-giriş/POS) da **cihaza-bağlı, tam-ekran, KİLİTLİ terminal** olmalı. O cihaz yalnız KENDİ istasyonunun ekranını gösterir; personel tüm paneli/sistemi görmez (KDS bump-screen deseni). Amaç: "herkes her şeyi görmesin".
+- **Kimlik = kiosk deseni (ADR-008):** her istasyon terminaline opak **cihaz token'ı** (Mutfak/Barista/Komi/POS ayrı). URL token'la açılır, tenant+şube+istasyon token'dan türer. Hassas eylemler (sipariş kapatma/iptal/iade) için **PIN** (tam panel girişi değil).
+- **Kapsam:** Mutfak→yalnız Mutfak kuyruğu; Barista→yalnız Barista; Komi→tüm istasyonların HAZIR kalemleri (§12); Sipariş-giriş→sadece adisyon açma/ürün ekleme. Para: mutfak/barista/komi PARA GÖRMEZ; sipariş-giriş görebilir.
+- **Panelden yönetim:** kiosk cihaz yönetiminin aynısı (ekle/kaldır, token yenile, kilit, istasyon/şube). Kiosk `KioskDevice`/token altyapısı genelleştirilebilir.
+- **İlişki:** §12 tamamlanınca üstüne kurulur; Barista dalgasıyla planla.

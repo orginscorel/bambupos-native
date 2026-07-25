@@ -8,6 +8,8 @@ use App\Modules\Reservations\Enums\ReservationSource;
 use App\Modules\Reservations\Enums\ReservationStatus;
 use App\Modules\Reservations\Enums\WaitlistStatus;
 use App\Modules\Reservations\Models\Reservation;
+use App\Modules\Reservations\Support\ReservationFeature;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -19,6 +21,7 @@ class ReservationPageController extends Controller
 {
     public function index(): Response
     {
+        $this->featureGate();
         $this->authorize('viewAny', Reservation::class);
 
         return Inertia::render('Panel/Reservations/Index', $this->meta());
@@ -26,6 +29,7 @@ class ReservationPageController extends Controller
 
     public function waitlist(): Response
     {
+        $this->featureGate();
         $this->authorize('viewAny', Reservation::class);
 
         return Inertia::render('Panel/Reservations/Waitlist', $this->meta());
@@ -33,9 +37,20 @@ class ReservationPageController extends Controller
 
     public function noShowReport(): Response
     {
+        $this->featureGate();
         $this->authorize('viewAny', Reservation::class);
 
         return Inertia::render('Panel/Reservations/NoShowReport', $this->meta());
+    }
+
+    /**
+     * Feature-flag kapısı (§9): rezervasyon özelliği kapalıysa panel yüzeyi de
+     * yok (ADR: kapalı=render edilmez). 404 → izin (403) kontrolünden ÖNCE
+     * gelir (Kiosk deseni: özellik yoksa hiç sızdırma).
+     */
+    private function featureGate(): void
+    {
+        abort_unless(ReservationFeature::enabled((int) Auth::user()?->tenant_id), 404);
     }
 
     /** @return array<string, mixed> */

@@ -72,6 +72,13 @@ class PublicReservationController extends Controller
             return response()->json(['message' => 'Geçersiz QR kod.'], 404);
         }
 
+        // Feature-flag kapısı (§9): işletmede rezervasyon kapalıysa public uç yok
+        // (ADR: kapalı=render/kabul edilmez). Token geçerli olsa da 404.
+        abort_unless(
+            \App\Modules\Reservations\Support\ReservationFeature::enabled((int) $resolution->branch->tenant_id),
+            404,
+        );
+
         // Müşteri şube duvar saatiyle seçer; UTC anına çevrilir.
         $reservedAt = ReservationService::parseBranchTime(
             (int) $resolution->branch->id,
