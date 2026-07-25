@@ -23,13 +23,39 @@ class KdsPageController extends Controller
     ) {
     }
 
-    /** Mutfak/bar ekranı. Bar = aynı ekran, ?istasyon=bar süzgeci. */
+    /** MUTFAK ekranı (§12): varsayılan süzgeç = Mutfak (tüm yemekler). */
     public function kitchen(Request $request): Response
     {
-        abort_unless($request->user()->hasPermission('kds.view'), 403);
+        return $this->screen($request, 'kitchen');
+    }
+
+    /** BARİSTA ekranı (§12): aynı ekran, varsayılan süzgeç = Barista (içecekler). */
+    public function barista(Request $request): Response
+    {
+        return $this->screen($request, 'barista');
+    }
+
+    /**
+     * Mutfak/Barista ekranı — aynı premium tasarım, yalnız varsayılan istasyon
+     * süzgeci değişir. ?istasyon=X açıkça verilirse o kazanır; verilmezse
+     * ekranın kendi varsayılanı ($default) uygulanır. Kullanıcının istasyon
+     * ataması VARSA ve varsayılan ona atanmamışsa boş süzgeç kullanılır (kendi
+     * atanan istasyonları) — mismatch'te 403'e düşmeyelim.
+     */
+    private function screen(Request $request, string $default): Response
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('kds.view'), 403);
+
+        $requested = (string) $request->query('istasyon', '');
+
+        if ($requested === '') {
+            $allowed = $this->kds->allowedStations($user);
+            $requested = ($allowed === null || in_array($default, $allowed, true)) ? $default : '';
+        }
 
         return Inertia::render('Panel/Kds/Kitchen', $this->meta($request) + [
-            'initialStation' => (string) $request->query('istasyon', ''),
+            'initialStation' => $requested,
         ]);
     }
 

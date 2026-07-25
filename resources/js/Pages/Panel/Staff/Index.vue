@@ -183,6 +183,31 @@ async function reactivate(row: StaffRow): Promise<void> {
     }
 }
 
+/* ---- Test için giriş (impersonation) ----
+ * Yönetici, personelin oturumuna geçip gördüğü ekran/yetkiyi test eder.
+ * Sistem rolü (ör. Sahip) taşıyanlar gizlenir; nihai denetim backend'de. */
+const impersonateTarget = ref<StaffRow | null>(null);
+const impersonating = ref(false);
+
+function canImpersonate(row: StaffRow): boolean {
+    return canManage.value && row.is_active && row.id !== actorId.value && !row.roles.some((r) => r.is_system);
+}
+
+async function impersonate(): Promise<void> {
+    const row = impersonateTarget.value;
+    if (!row || impersonating.value) return;
+    impersonating.value = true;
+    try {
+        const res = await api<{ redirect_to?: string }>(`/api/v1/staff/${row.id}/impersonate`, { method: 'POST' });
+        // Tam sayfa yenileme: Inertia paylaşılan auth + impersonating prop'ları yeniden yüklensin.
+        window.location.href = res.redirect_to ?? '/panel';
+    } catch (e) {
+        danger('Test girişi yapılamadı', e instanceof ApiError ? e.displayMessage : 'Lütfen tekrar deneyin.');
+        impersonating.value = false;
+        impersonateTarget.value = null;
+    }
+}
+
 function formatDate(value: string | null): string {
     if (!value) return '—';
     try {
@@ -291,6 +316,9 @@ function formatDate(value: string | null): string {
                                             {{ row.has_pin ? 'PIN sıfırla / kaldır' : 'PIN belirle' }}
                                         </DropdownItem>
                                         <DropdownItem icon="inbox" @select="sendResetLink(row)">Parola sıfırlama bağlantısı gönder</DropdownItem>
+                                        <DropdownItem v-if="canImpersonate(row)" icon="user" @select="impersonateTarget = row">
+                                            Test için giriş yap
+                                        </DropdownItem>
                                         <DropdownItem
                                             v-if="row.is_active && row.id !== actorId"
                                             icon="logout"
@@ -348,6 +376,20 @@ function formatDate(value: string | null): string {
                 <div class="flex justify-end gap-2">
                     <BaseButton variant="secondary" @click="terminateTarget = null">Vazgeç</BaseButton>
                     <BaseButton variant="danger" :loading="terminating" @click="terminate">İşten Çıkar</BaseButton>
+                </div>
+            </div>
+        </BaseModal>
+
+        <BaseModal :open="impersonateTarget !== null" title="Test için giriş" size="sm" @close="impersonateTarget = null">
+            <div class="flex flex-col gap-4">
+                <p class="text-sm text-body">
+                    <strong>{{ impersonateTarget?.name }}</strong> personelinin oturumuna geçeceksiniz: onun gördüğü
+                    ekranları ve yetkileri birebir test edersiniz. Üst tarafta kalıcı bir şerit çıkar; istediğiniz an
+                    <strong>Yöneticiye dön</strong> ile kendi hesabınıza geri dönersiniz.
+                </p>
+                <div class="flex justify-end gap-2">
+                    <BaseButton variant="secondary" @click="impersonateTarget = null">Vazgeç</BaseButton>
+                    <BaseButton :loading="impersonating" @click="impersonate">Bu kişi olarak gir</BaseButton>
                 </div>
             </div>
         </BaseModal>

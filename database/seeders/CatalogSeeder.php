@@ -305,6 +305,15 @@ class CatalogSeeder extends Seeder
             'hardal' => ['hardal'],
         ];
 
+        // Kategori → hazırlık istasyonu (§12): içecekler Barista'ya, nargile
+        // kendi istasyonuna, geri kalan tüm YEMEKLER Mutfak'a. Böylece Mutfak
+        // ekranı tüm yemekleri, Barista ekranı tüm içecekleri tek listede görür.
+        $categoryStation = [
+            'Sıcak İçecekler' => 'barista',
+            'Soğuk İçecekler' => 'barista',
+            'Nargile' => 'hookah',
+        ];
+
         $sort = 0;
 
         foreach ($catalog as [$catName, $catDesc, $catIcon, $groupKeys, $hours, $products]) {
@@ -329,6 +338,7 @@ class CatalogSeeder extends Seeder
                     'currency' => 'TRY',
                     'tax_rate' => 10.00,
                     'prep_minutes' => 15,
+                    'station' => $categoryStation[$catName] ?? 'kitchen', // §12 yönlendirme
                     'unit' => 'porsiyon',
                     'is_new' => $badge === 'new',
                     'is_chef_pick' => $badge === 'chef',

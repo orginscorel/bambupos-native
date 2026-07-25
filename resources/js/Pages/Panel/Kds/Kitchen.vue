@@ -322,7 +322,14 @@ function cardBorderClass(card: KdsOrderCard): string {
 }
 
 const branchOptions = computed(() => branches.map((b) => ({ value: String(b.id), label: b.name })));
-const pageTitle = computed(() => (station.value === 'bar' ? 'Bar Ekranı' : 'Mutfak Ekranı'));
+
+// Başlık seçili istasyonun adını izler (Mutfak / Barista / Izgara …); süzgeç
+// "Tümü" ise genel "Mutfak Ekranı" başlığı kalır (istasyonlar mutfak tarafıdır).
+const pageTitle = computed(() => {
+    if (!station.value) return 'Mutfak Ekranı';
+    const s = meta.stations.find((x) => x.key === station.value);
+    return `${s?.name ?? 'Mutfak'} Ekranı`;
+});
 </script>
 
 <template>

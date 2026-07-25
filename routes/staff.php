@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Identity\Http\Controllers\ImpersonationController;
 use App\Modules\Identity\Http\Controllers\RoleController;
 use App\Modules\Identity\Http\Controllers\StaffAccessController;
 use App\Modules\Identity\Http\Controllers\StaffPageController;
@@ -36,4 +37,8 @@ Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
     });
 
     Route::post('api/v1/roles/{role}/copy', [RoleController::class, 'copy'])->name('roles.copy');
+
+    /* ---- Personel taklidi ("test için giriş") — oturum-tabanlı ---- */
+    Route::post('api/v1/staff/stop-impersonate', [ImpersonationController::class, 'stop'])->name('staff.impersonate.stop');
+    Route::post('api/v1/staff/{staff}/impersonate', [ImpersonationController::class, 'start'])->name('staff.impersonate.start');
 });

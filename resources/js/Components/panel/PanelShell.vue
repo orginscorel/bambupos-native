@@ -24,6 +24,24 @@ defineProps<{ title?: string }>();
 const page = usePage();
 const auth = computed(() => authFromPage(page.props as Record<string, unknown>));
 
+/* ---- Personel taklidi şeridi ---- */
+const impersonating = computed<{ name: string | null } | null>(
+    () => ((page.props as Record<string, unknown>).impersonating as { name: string | null } | null) ?? null,
+);
+const stoppingImpersonation = ref(false);
+
+async function stopImpersonating(): Promise<void> {
+    if (stoppingImpersonation.value) return;
+    stoppingImpersonation.value = true;
+    try {
+        const res = await api<{ redirect_to?: string }>('/api/v1/staff/stop-impersonate', { method: 'POST' });
+        window.location.href = res.redirect_to ?? '/panel/personel';
+    } catch (e) {
+        danger('Yöneticiye dönülemedi', e instanceof ApiError ? e.displayMessage : 'Lütfen tekrar deneyin.');
+        stoppingImpersonation.value = false;
+    }
+}
+
 const { theme, toggleTheme } = useTheme();
 const { success, danger } = useToast();
 
@@ -236,6 +254,27 @@ const nativeVersionLabel = computed(() =>
                 <DropdownItem icon="logout" danger @select="logout">Çıkış yap</DropdownItem>
             </BaseDropdown>
         </template>
+
+        <!-- Personel taklidi aktifken kalıcı uyarı şeridi -->
+        <div
+            v-if="impersonating"
+            class="sticky top-0 z-(--z-sticky) -mx-1 mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning"
+            role="status"
+        >
+            <AppIcon name="user" :size="16" class="shrink-0" />
+            <span class="grow">
+                <strong>{{ impersonating.name ?? 'Personel' }}</strong> olarak görüntülüyorsunuz — bu kişinin ekran ve yetkileriyle test modundasınız.
+            </span>
+            <button
+                type="button"
+                class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-warning-border bg-raised px-2.5 text-xs font-medium text-body transition-colors duration-(--dur-fast) hover:bg-inset disabled:opacity-60"
+                :disabled="stoppingImpersonation"
+                @click="stopImpersonating"
+            >
+                <AppIcon name="logout" :size="14" />
+                Yöneticiye dön
+            </button>
+        </div>
 
         <slot />
     </PanelLayout>

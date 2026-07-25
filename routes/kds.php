@@ -21,8 +21,11 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
 
     /* ---- Inertia sayfaları ---- */
-    // Bar ekranı = aynı ekran, ?istasyon=bar (istasyon süzgeci kalıcıdır).
+    // §12 istasyon ayrımı: MUTFAK ve BARİSTA aynı premium ekranı paylaşır,
+    // yalnız varsayılan istasyon süzgeci farklıdır (Mutfak=yemekler,
+    // Barista=içecekler). Çip'lerle geçiş + ?istasyon=X override serbest.
     Route::get('/panel/mutfak', [KdsPageController::class, 'kitchen'])->name('panel.kds.kitchen');
+    Route::get('/panel/barista', [KdsPageController::class, 'barista'])->name('panel.kds.barista');
     Route::get('/panel/komi', [KdsPageController::class, 'runner'])->name('panel.kds.runner');
 
     /* ---- JSON uçları ---- */

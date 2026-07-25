@@ -14,7 +14,7 @@ class KdsStationTest extends KdsTestCase
 
         $keys = collect($this->getJson('/api/v1/kds/stations')->assertOk()->json('stations'))->pluck('key');
 
-        foreach (['kitchen', 'cold_kitchen', 'grill', 'oven', 'dessert', 'coffee', 'bar', 'hookah', 'packaging'] as $key) {
+        foreach (['kitchen', 'barista', 'cold_kitchen', 'grill', 'oven', 'dessert', 'coffee', 'bar', 'hookah', 'packaging'] as $key) {
             $this->assertTrue($keys->contains($key), "Yerleşik istasyon eksik: {$key}");
         }
     }

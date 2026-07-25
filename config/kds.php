@@ -12,13 +12,20 @@
 return [
 
     // Yerleşik istasyonlar (key ürün kartındaki `station` değeriyle eşleşir).
-    // 'kitchen' Faz-2'den beri "mutfak" olarak kullanılıyor → Sıcak Mutfak.
+    // İKİ ANA İSTASYON önce gelir (§12 — kullanıcı ayrımı net olsun):
+    //   kitchen → MUTFAK (tüm yemekler)  ·  barista → BARİSTA (kahve/çay/içecek/bar)
+    // Mutfakta kimse içecek yapmaz; içecekler Barista'ya düşer. Alttakiler
+    // "genişletilebilir" örnekleridir (Tatlı/Izgara vb.) — işletme dilerse
+    // ürünleri bunlara da atayabilir; demo yalnız Mutfak/Barista/Nargile kullanır.
+    // NOT: 'kitchen' Faz-2'den beri mutfak anahtarıdır — key SABİT kalır
+    // (ürün/kalem yönlendirmesi bozulmasın), yalnız etiket "Mutfak" oldu.
     'builtin_stations' => [
-        ['key' => 'kitchen', 'name' => 'Sıcak Mutfak', 'icon' => 'flame'],
-        ['key' => 'cold_kitchen', 'name' => 'Soğuk Mutfak', 'icon' => 'snowflake'],
+        ['key' => 'kitchen', 'name' => 'Mutfak', 'icon' => 'flame'],
+        ['key' => 'barista', 'name' => 'Barista', 'icon' => 'coffee'],
         ['key' => 'grill', 'name' => 'Izgara', 'icon' => 'flame'],
-        ['key' => 'oven', 'name' => 'Fırın', 'icon' => 'oven'],
         ['key' => 'dessert', 'name' => 'Tatlı', 'icon' => 'cake'],
+        ['key' => 'cold_kitchen', 'name' => 'Soğuk Mutfak', 'icon' => 'snowflake'],
+        ['key' => 'oven', 'name' => 'Fırın', 'icon' => 'oven'],
         ['key' => 'coffee', 'name' => 'Kahve', 'icon' => 'coffee'],
         ['key' => 'bar', 'name' => 'Bar', 'icon' => 'glass'],
         ['key' => 'hookah', 'name' => 'Nargile', 'icon' => 'smoke'],

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
@@ -17,6 +17,7 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
 import InventoryNav from './components/InventoryNav.vue';
+import InventoryOverview from './components/InventoryOverview.vue';
 import {
     fetchCategories, fetchItems, fetchSuppliers, fetchWarehouses,
     itemStatusLabel, itemStatusVariant, metaFromProps, money,
@@ -31,6 +32,16 @@ import {
 const page = usePage();
 const meta = metaFromProps(page.props as Record<string, unknown>);
 const { success, danger } = useToast();
+
+/**
+ * Aynı rota (/panel/stok) iki ekranı barındırır: varsayılan GENEL BAKIŞ,
+ * `?gorunum=kartlar` ise STOK KARTLARI. Böylece yeni backend rotası açmadan
+ * ayrı sekme gibi davranır (InventoryNav bu parametreyi kullanır).
+ */
+const view = computed<'overview' | 'items'>(() => {
+    const query = page.url.split('?')[1] ?? '';
+    return new URLSearchParams(query).get('gorunum') === 'kartlar' ? 'items' : 'overview';
+});
 
 const items = ref<ItemRow[]>([]);
 const warehouses = ref<WarehouseRow[]>([]);
@@ -59,7 +70,8 @@ async function load(): Promise<void> {
     }
 }
 
-onMounted(load);
+onMounted(() => { if (view.value === 'items') void load(); });
+watch(view, (v) => { if (v === 'items') void load(); });
 
 const filtered = computed(() => items.value.filter((i) => {
     if (categoryFilter.value && String(i.category_id ?? '') !== categoryFilter.value) return false;
@@ -284,8 +296,12 @@ const warehouseSelect = computed(() => warehouses.value.filter((w) => w.is_activ
 <template>
     <Head title="Stok" />
     <PanelShell title="Stok">
-        <InventoryNav active="items" />
+        <InventoryNav :active="view" />
 
+        <!-- Genel Bakış (varsayılan açılış) -->
+        <InventoryOverview v-if="view === 'overview'" />
+
+        <template v-else>
         <div class="flex flex-col gap-4">
             <!-- Araç çubuğu -->
             <div class="flex flex-wrap items-center gap-2">
@@ -522,5 +538,6 @@ const warehouseSelect = computed(() => warehouses.value.filter((w) => w.is_activ
                 </div>
             </form>
         </BaseModal>
+        </template>
     </PanelShell>
 </template>

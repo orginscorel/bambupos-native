@@ -27,6 +27,7 @@ export const defaultNavigation: NavItem[] = [
     { key: 'receivables', label: 'Borçlar', icon: 'inbox', href: '/panel/borclar', permission: 'receivables.view' },
     { key: 'inventory', label: 'Depo / Stok', icon: 'package', href: '/panel/stok', permission: 'stock.view' },
     { key: 'kds', label: 'Mutfak', icon: 'chef-hat', href: '/panel/mutfak', permission: 'kds.view' },
+    { key: 'barista', label: 'Barista', icon: 'coffee', href: '/panel/barista', permission: 'kds.view' },
     { key: 'runner', label: 'Komi', icon: 'utensils', href: '/panel/komi', permission: 'kds.deliver' },
     { key: 'reports', label: 'Raporlar', icon: 'chart', href: '/panel/raporlar', permission: 'reports.view' },
     { key: 'wiki', label: 'Nasıl Çalışır', icon: 'info', href: '/panel/nasil-calisir' },

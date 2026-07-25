@@ -41,7 +41,31 @@ class HandleInertiaRequests extends Middleware
             // Closure yalnız Inertia yanıtı üretilirken çalışır;
             // /api/v1 JSON isteklerine ek sorgu maliyeti binmez.
             'auth' => fn () => $this->authPayload($request),
+
+            // Personel taklidi aktifse: kalıcı şerit için görüntülenen kişinin adı
+            // (aktif kullanıcı = taklit edilen personel). Aksi hâlde null.
+            'impersonating' => fn () => $this->impersonatingPayload($request),
         ];
+    }
+
+    /**
+     * Taklit oturumu aktifse görüntülenen personelin adını döndürür.
+     *
+     * @return array{name: string|null}|null
+     */
+    private function impersonatingPayload(Request $request): ?array
+    {
+        if (! $request->hasSession() || $request->session()->get('impersonator_id') === null) {
+            return null;
+        }
+
+        $user = $request->user();
+
+        if ($user === null) {
+            return null;
+        }
+
+        return ['name' => $user->name];
     }
 
     /**
