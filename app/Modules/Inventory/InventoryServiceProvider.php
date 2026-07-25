@@ -28,14 +28,18 @@ use Illuminate\Support\ServiceProvider;
  * OrderService/KdsService her durum değişimini `$item->save()` /
  * `$locked->save()` ile yazar → updated olayı burada dinlenir.
  *
- *  - OrderItem `served` oldu → kalemin reçete tüketimi düşer
+ * STOK DÜŞÜMÜ — TEK BİRİNCİL TETİK = TESLİM/SERVED:
+ *  - OrderItem `served` oldu → BİRİNCİL tetik: kalemin reçete tüketimi düşer
  *    (yemek mutfaktan çıktı; ödeme beklemez; ikram da served olur → ikram
- *    tüketimi türü),
- *  - Order `paid` oldu → henüz düşülmemiş aktif kalemler düşer (servis
- *    işaretlemeden kapatılan adisyonların güvenlik ağı).
+ *    tüketimi türü). Her kalem stoktan yalnız burada, tutarlı anda düşer.
+ *  - Order `paid` oldu → GÜVENLİK AĞI: yalnız served aşamasından geçmeden
+ *    kapanan (kiosk gibi) veya served düşümü başarısız kalemler — defterde
+ *    tüketim satırı OLMAYAN aktif kalemler — düşer. Served ile zaten düşmüş
+ *    kalem burada TEKRAR düşmez.
  *
- * İdempotens ConsumptionService'te (kalem başına defter ref kontrolü);
- * stok hatası sipariş akışını ASLA düşürmez (safe* sarmalayıcılar).
+ * İdempotens ConsumptionService'te tek kaynakta (hasConsumption: kalem başına
+ * defter ref kontrolü) — paid süzgeci + consumeOrderItem içi, çift-tetikte de
+ * TAM BİR KEZ; stok hatası sipariş akışını ASLA düşürmez (safe* sarmalayıcılar).
  */
 class InventoryServiceProvider extends ServiceProvider
 {

@@ -16,16 +16,23 @@ use Illuminate\Validation\ValidationException;
 /**
  * Sipariş ↔ stok köprüsü (§17 madde 5).
  *
- * TETİK: Orders modülüne DOKUNMADAN, OrderItem/Order Eloquent model
- * olaylarından (InventoryServiceProvider::boot) beslenir:
- *   - kalem `served` olduğunda → o kalemin reçete tüketimi düşer
- *     (yemek fiziksel olarak mutfaktan çıkmıştır; ödeme beklenmez),
- *   - sipariş `paid` olduğunda → henüz düşülmemiş aktif kalemler düşer
- *     (güvenlik ağı: servis işaretlenmeden kapatılan adisyonlar).
+ * TETİK — TEK BİRİNCİL KAYNAK = TESLİM/SERVED. Orders modülüne DOKUNMADAN,
+ * OrderItem/Order Eloquent model olaylarından (InventoryServiceProvider::boot)
+ * beslenir:
+ *   - BİRİNCİL: kalem `served` olduğunda → o kalemin reçete tüketimi düşer
+ *     (yemek fiziksel olarak mutfaktan çıkmıştır; ödeme beklenmez). Her kalem
+ *     stoktan yalnız BURADA, tutarlı bir anda (teslim anı) düşer.
+ *   - GÜVENLİK AĞI: sipariş `paid` olduğunda → YALNIZ served aşamasından
+ *     GEÇMEDEN kapanan kalemler (kiosk gibi teslim işaretlemeyen yollar) VEYA
+ *     served anındaki düşümü başarısız olmuş kalemler yakalanır. Defterde
+ *     order_item tüketim satırı OLMAYAN aktif kalemler düşülür; served ile
+ *     zaten düşmüş kalem burada TEKRAR ele alınmaz.
  *
  * KURALLAR:
- *   - Kalem başına İDEMPOTENT: defterde ref(order_item, id) satırı varsa
- *     ikinci kez düşülmez (served + paid çifte tetikte çift düşüm olmaz).
+ *   - Kalem başına İDEMPOTENT (tek doğruluk kaynağı: hasConsumption): defterde
+ *     ref(order_item, id) tüketim satırı varsa ikinci kez düşülmez. Bu hem
+ *     paid güvenlik-ağı süzgecinde (tekrar işlemeyi önler) hem consumeOrderItem
+ *     içinde (yarış/çift-tetik koruması) uygulanır → her kalem TAM BİR KEZ.
  *   - İkram kalemleri comp_consumption türüyle düşer (§17.4 listesi).
  *   - Reçete yoksa hareket YAZILMAZ; ürün uyarı panosunda "reçetesiz
  *     satış" olarak listelenir (AlertService).
@@ -60,18 +67,40 @@ class ConsumptionService
         }
     }
 
-    /** Model olayından güvenli çağrı (asla fırlatmaz). */
+    /**
+     * GÜVENLİK AĞI (paid): birincil tetik SERVED'dir. Burada YALNIZ served
+     * aşamasından geçmeden kapanan (kiosk gibi) veya served anında düşümü
+     * başarısız olmuş kalemler yakalanır — yani defterde tüketim satırı OLMAYAN
+     * aktif kalemler. Zaten düşülmüş (served) kalemler burada TEKRAR işlenmez,
+     * böylece her kalem tek bir kez ve tutarlı anda düşer.
+     *
+     * Model olayından güvenli çağrı (asla fırlatmaz).
+     */
     public function safeConsumeOrder(Order $order): void
     {
         try {
             foreach ($order->items()->get() as $item) {
-                if ($item->isActive()) {
+                if ($item->isActive() && ! $this->hasConsumption($item)) {
                     $this->consumeOrderItem($item);
                 }
             }
         } catch (\Throwable $e) {
             report($e);
         }
+    }
+
+    /**
+     * İDEMPOTENS PREDİKATI (tek kaynak): bu kalem için defterde zaten bir
+     * order_item tüketim satırı var mı? Hem paid güvenlik-ağı süzgeci hem
+     * consumeOrderItem içindeki çift-tetik koruması bunu kullanır.
+     */
+    private function hasConsumption(OrderItem $item): bool
+    {
+        return StockMovement::withoutTenancy()
+            ->where('tenant_id', $item->tenant_id)
+            ->where('ref_type', 'order_item')
+            ->where('ref_id', $item->getKey())
+            ->exists();
     }
 
     /**
@@ -86,14 +115,9 @@ class ConsumptionService
         }
 
         return DB::transaction(function () use ($item): array {
-            // İdempotens: bu kalem için tüketim zaten defterdeyse çık.
-            $already = StockMovement::withoutTenancy()
-                ->where('tenant_id', $item->tenant_id)
-                ->where('ref_type', 'order_item')
-                ->where('ref_id', $item->getKey())
-                ->exists();
-
-            if ($already) {
+            // İdempotens (tek kaynak: hasConsumption): tüketim zaten defterdeyse
+            // çık. served + paid çift-tetikte ikinci düşüm olmaz.
+            if ($this->hasConsumption($item)) {
                 return [];
             }
 
