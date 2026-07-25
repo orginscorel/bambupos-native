@@ -62,6 +62,14 @@ class ImpersonationController extends Controller
             ])->status(422);
         }
 
+        // §13: gizli terminal (cihaz) hesabı impersonate EDİLEMEZ — insan
+        // personel değildir, Personel listesinde de görünmez.
+        if ($staff->is_terminal) {
+            throw ValidationException::withMessages([
+                'staff' => ['Terminal cihaz hesabı için test girişi yapılamaz.'],
+            ])->status(422);
+        }
+
         if ($this->holdsSystemRole($staff) || $staff->hasPermission('staff.manage')) {
             throw ValidationException::withMessages([
                 'staff' => ['Bu personel en az sizin kadar yetkili; test için giriş yapılamaz.'],

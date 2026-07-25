@@ -312,6 +312,17 @@ const showStations = ref(false);
 // Nav çekmecesi (soldan overlay) — diğer panel bölümlerine kaçış-kapısı.
 const showNav = ref(false);
 
+// §13 Terminal kilitli mod: cihaz oturumunda nav çekmecesi GİZLENİR (başka
+// sayfaya geçilemez) ve "Terminal · {istasyon}" kilit rozeti gösterilir.
+const isTerminal = computed(() => Boolean((page.props.auth as { is_terminal?: boolean } | null)?.is_terminal));
+const terminalStationLabel = computed(() => {
+    const key = (page.props.auth as { terminal_station?: string | null } | null)?.terminal_station ?? '';
+    if (key === 'barista') return 'Barista';
+    if (key === 'komi') return 'Komi';
+    if (key === 'kitchen') return 'Mutfak';
+    return key;
+});
+
 function pendingItems(card: KdsOrderCard): KdsItem[] {
     return card.items.filter((i) => i.status !== 'ready');
 }
@@ -341,13 +352,23 @@ const pageTitle = computed(() => {
     <div class="kds-canvas fixed inset-0 flex flex-col overflow-hidden text-body">
         <!-- ================= Üst çubuk (panel başlık dili) ================= -->
         <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2">
-            <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
+            <BaseButton v-if="!isTerminal" variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
                 <AppIcon name="arrow-left" :size="20" />
             </BaseButton>
 
-            <BaseButton variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
+            <BaseButton v-if="!isTerminal" variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
                 <AppIcon name="menu" :size="20" />
             </BaseButton>
+
+            <!-- §13 Terminal kilit rozeti (cihaz oturumu) -->
+            <span
+                v-if="isTerminal"
+                class="inline-flex items-center gap-1.5 rounded-full border border-default bg-inset px-2.5 py-1 text-xs font-semibold text-muted"
+                title="Bu cihaz istasyon terminaline kilitlidir"
+            >
+                <AppIcon name="tablet" :size="13" />
+                Terminal · {{ terminalStationLabel }}
+            </span>
 
             <h1 class="text-lg font-semibold">{{ pageTitle }}</h1>
 
@@ -622,7 +643,7 @@ const pageTitle = computed(() => {
     <StationManager v-if="meta.canManageStations" :open="showStations" @close="showStations = false" />
 
     <!-- ================= Nav çekmecesi (soldan overlay) ================= -->
-    <KdsNavDrawer :open="showNav" @close="showNav = false" />
+    <KdsNavDrawer v-if="!isTerminal" :open="showNav" @close="showNav = false" />
 
     <ToastHost />
 </template>

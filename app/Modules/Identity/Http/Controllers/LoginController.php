@@ -44,6 +44,9 @@ class LoginController extends Controller
         $candidates = User::query()
             ->where('email', $data['email'])
             ->where('is_active', true)
+            // §13: gizli terminal kullanıcıları normal (e-posta/parola) giriş
+            // YAPAMAZ — tek giriş kapıları /terminal/{token} oto-girişidir.
+            ->where('is_terminal', false)
             ->get();
 
         $user = $candidates->first(fn (User $u) => Hash::check($data['password'], $u->password));

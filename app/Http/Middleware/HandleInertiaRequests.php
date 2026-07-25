@@ -128,6 +128,11 @@ class HandleInertiaRequests extends Middleware
             'tenant' => $tenant?->only(['name', 'slug']),
             'branches' => $branches,
             'activeBranchId' => $activeBranchId ?: null,
+            // §13 Terminal kilitli mod: bu oturum bir istasyon cihazı mı?
+            // Frontend bu bayrağa göre KDS ekranlarında nav çekmecesini gizler
+            // ve "Terminal · {istasyon}" kilit rozetini gösterir.
+            'is_terminal' => (bool) $user->is_terminal,
+            'terminal_station' => $user->is_terminal ? $user->terminal_station : null,
         ];
     }
 }

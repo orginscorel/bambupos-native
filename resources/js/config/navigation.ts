@@ -45,6 +45,7 @@ export const defaultNavigation: NavItem[] = [
     { key: 'shifts', label: 'Vardiya', icon: 'clock', href: '/panel/vardiya', permission: 'staff.view' },
     { key: 'branches', label: 'Şubeler', icon: 'store', href: '/panel/subeler', permission: 'tables.view' },
     { key: 'kiosk', label: 'Kiosk', icon: 'monitor', href: '/panel/kiosklar', permission: 'kiosk.view' },
+    { key: 'terminals', label: 'Terminaller', icon: 'tablet', href: '/panel/terminaller', permission: 'terminals.manage' },
     // 'Hesabım' sidebar'dan kaldırıldı (2026-07-23) — Profil'e avatar menüsünden ulaşılır.
     { key: 'settings', label: 'Ayarlar', icon: 'settings', href: '/panel/ayarlar/e-posta', permission: 'settings.view' },
     // --- Yardım ---

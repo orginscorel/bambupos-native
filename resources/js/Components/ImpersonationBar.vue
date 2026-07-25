@@ -1,17 +1,17 @@
 <script setup lang="ts">
 /**
- * Global personel-taklidi (impersonation) şeridi.
+ * Personel-taklidi (impersonation) — kompakt "Yöneticiye dön" düğmesi.
  *
  * Uygulama KÖKÜNDE (app.ts) render edilir → PanelShell kullanmayan tam-ekran
- * sayfalarda (Mutfak/Barista/Komi KDS ekranları vb.) da görünür. Aksi halde
- * bir istasyon personelini taklit edip tam-ekran KDS'e düşünce "Yöneticiye dön"
- * afişi olmadığı için geri dönülemiyordu (kök neden).
- *
- * `impersonating` verisi HandleInertiaRequests ile global paylaşılır.
+ * sayfalarda (Mutfak/Barista/Komi vb.) da erişilebilir. Kullanıcı talebiyle
+ * tam-genişlik banner KALDIRILDI; yalnız sağ altta küçük bir dönüş düğmesi
+ * kalır (kimi taklit ettiğin başlıkta/tooltip'te). `impersonating` verisi
+ * HandleInertiaRequests ile global paylaşılır.
  */
 import { computed, ref } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
+import AppIcon from '@/Components/ui/AppIcon.vue';
 
 const page = usePage();
 const impersonating = computed<{ name: string | null } | null>(
@@ -27,8 +27,6 @@ async function stop(): Promise<void> {
         const res = await api<{ redirect_to?: string }>('/api/v1/staff/stop-impersonate', { method: 'POST' });
         window.location.href = res.redirect_to ?? '/panel/personel';
     } catch (e) {
-        // Köprü hata verse bile yöneticinin çıkabilmesi için sağlam düşüş:
-        // personel sayfasına zorla; oturum sunucuda hâlâ taklitse orada düzelir.
         window.location.href = e instanceof ApiError && e.status === 401 ? '/giris' : '/panel/personel';
     }
 }
@@ -36,22 +34,17 @@ async function stop(): Promise<void> {
 
 <template>
     <Teleport to="body">
-        <div
+        <button
             v-if="impersonating"
-            class="fixed inset-x-0 top-0 z-[2000] flex items-center justify-center gap-3 border-b border-warning-border bg-warning-soft px-4 py-1.5 text-sm text-warning shadow-md"
-            role="alert"
+            type="button"
+            :disabled="stopping"
+            :title="`${impersonating.name ?? 'Personel'} olarak görüntülüyorsunuz — yöneticiye dön`"
+            class="fixed bottom-4 right-4 z-[2000] inline-flex items-center gap-2 rounded-full border border-warning-border bg-warning-soft px-4 py-2 text-sm font-semibold text-warning shadow-lg transition-colors hover:bg-warning hover:text-white disabled:opacity-60"
+            aria-label="Yöneticiye dön"
+            @click="stop"
         >
-            <span class="truncate">
-                <strong>{{ impersonating.name ?? 'Personel' }}</strong> olarak görüntülüyorsunuz — test modu.
-            </span>
-            <button
-                type="button"
-                class="shrink-0 rounded-md border border-warning-border bg-raised px-3 py-1 text-xs font-semibold text-body transition-colors hover:bg-inset disabled:opacity-60"
-                :disabled="stopping"
-                @click="stop"
-            >
-                {{ stopping ? 'Dönülüyor…' : '← Yöneticiye dön' }}
-            </button>
-        </div>
+            <AppIcon name="logout" :size="16" />
+            {{ stopping ? 'Dönülüyor…' : 'Yöneticiye dön' }}
+        </button>
     </Teleport>
 </template>

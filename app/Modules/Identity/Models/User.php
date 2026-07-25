@@ -59,6 +59,10 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            // §13 Terminal cihaz modu: gizli, istasyona-atanmış kullanıcı.
+            // is_terminal BİLİNÇLİ olarak $fillable DIŞINDA — yalnız
+            // TerminalProvisioner set eder; personel formundan atanamaz.
+            'is_terminal' => 'boolean',
             'hired_at' => 'date',
             'last_login_at' => 'datetime',
             'pin_locked_until' => 'datetime',

@@ -80,12 +80,21 @@ return Application::configure(basePath: dirname(__DIR__))
             // Borçlar/Cari (Adisyon-Cari): "adisyonu borca taşı" + tahsilat.
             // Middleware dosyanın içinde (web + auth + tenant); public uç yoktur.
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/receivables.php');
+
+            // Terminal domaini (§13, Faz A): istasyon cihaz modu (kilitli
+            // Mutfak/Barista/Komi terminalleri) + cihaz yönetimi. Middleware
+            // dosyanın içinde: /terminal/{token} token'la oto-giriş (kimlik =
+            // opak cihaz token'ı, ADR-008 deseni).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/terminal.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             // Pasife alınan personelin AÇIK oturumu da düşer (Personel-Yetki).
             \App\Modules\Identity\Http\Middleware\EnsureUserIsActive::class,
+            // §13 Terminal kilitli mod: is_terminal kullanıcı yalnız kendi
+            // istasyon ekranını açar; başka sayfaya gidince kendi ekranına döner.
+            \App\Modules\Terminal\Http\Middleware\EnsureTerminalLocked::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
 

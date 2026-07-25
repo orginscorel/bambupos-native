@@ -25,7 +25,10 @@ class StaffController extends Controller
         $this->authorize('viewAny', User::class);
 
         // Katman 4: liste daima servis-tarafı kiracı süzgeciyle.
+        // §13: gizli terminal kullanıcıları (is_terminal) personel listesinde
+        // GÖRÜNMEZ — bunlar cihaz hesabıdır, insan personel değildir.
         $query = User::ofCurrentTenant()
+            ->where('is_terminal', false)
             ->with(['roles:id,name,is_system', 'branch:id,name'])
             ->withCount('personalPermissions as personal_overrides_count');
 

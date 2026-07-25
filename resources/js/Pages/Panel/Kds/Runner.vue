@@ -216,6 +216,16 @@ function toggleFullscreen(): void {
 // Nav çekmecesi (soldan overlay) — diğer panel bölümlerine kaçış-kapısı.
 const showNav = ref(false);
 
+// §13 Terminal kilitli mod: cihaz oturumunda nav çekmecesi GİZLENİR + rozet.
+const isTerminal = computed(() => Boolean((page.props.auth as { is_terminal?: boolean } | null)?.is_terminal));
+const terminalStationLabel = computed(() => {
+    const key = (page.props.auth as { terminal_station?: string | null } | null)?.terminal_station ?? '';
+    if (key === 'barista') return 'Barista';
+    if (key === 'komi') return 'Komi';
+    if (key === 'kitchen') return 'Mutfak';
+    return key;
+});
+
 const branchOptions = computed(() => branches.map((b) => ({ value: String(b.id), label: b.name })));
 function selectBranch(id: string): void {
     branchId.value = Number(id);
@@ -231,13 +241,23 @@ function selectBranch(id: string): void {
         <header
             class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2 shadow-[0_6px_16px_-12px_rgba(0,0,0,0.6)]"
         >
-            <BaseButton variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
+            <BaseButton v-if="!isTerminal" variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
                 <AppIcon name="arrow-left" :size="20" />
             </BaseButton>
 
-            <BaseButton variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
+            <BaseButton v-if="!isTerminal" variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
                 <AppIcon name="menu" :size="20" />
             </BaseButton>
+
+            <!-- §13 Terminal kilit rozeti (cihaz oturumu) -->
+            <span
+                v-if="isTerminal"
+                class="inline-flex items-center gap-1.5 rounded-full border border-default bg-inset px-2.5 py-1 text-xs font-semibold text-muted"
+                title="Bu cihaz istasyon terminaline kilitlidir"
+            >
+                <AppIcon name="tablet" :size="13" />
+                Terminal · {{ terminalStationLabel }}
+            </span>
 
             <h1 class="text-lg font-semibold">Komi Ekranı</h1>
 
@@ -403,7 +423,7 @@ function selectBranch(id: string): void {
     </div>
 
     <!-- ================= Nav çekmecesi (soldan overlay) ================= -->
-    <KdsNavDrawer :open="showNav" @close="showNav = false" />
+    <KdsNavDrawer v-if="!isTerminal" :open="showNav" @close="showNav = false" />
 
     <ToastHost />
 </template>

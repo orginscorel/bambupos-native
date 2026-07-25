@@ -40,6 +40,10 @@ return [
         // Kiosk (Faz-8): view = cihaz listesi + sağlık durumu (salt-okunur);
         // manage = cihaz ekle/kaldır, token yenile, uzaktan kilit/aç.
         'kiosk' => ['view', 'manage'],
+        // Terminaller (§13): istasyon cihaz modu (kilitli Mutfak/Barista/Komi
+        // terminalleri). view = cihaz listesi + sağlık; manage = ekle/kaldır,
+        // token yenile, uzaktan kilit/aç (her cihaz gizli terminal kullanıcısı).
+        'terminals' => ['view', 'manage'],
         'audit' => ['view'],
     ],
 
@@ -83,6 +87,7 @@ return [
         'integrations' => 'Entegrasyonlar',
         'settings' => 'Ayarlar',
         'kiosk' => 'Kiosk',
+        'terminals' => 'İstasyon Terminalleri',
         'audit' => 'Denetim Kaydı',
     ],
 
@@ -149,6 +154,7 @@ return [
                 'branches.view',
                 'settings.view',
                 'kiosk.view', 'kiosk.manage',
+                'terminals.view', 'terminals.manage',
             ],
         ],
         'garson' => [
