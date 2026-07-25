@@ -2,6 +2,7 @@ import '../css/app.css';
 
 import { createApp, h, type DefineComponent } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
+import ImpersonationBar from '@/Components/ImpersonationBar.vue';
 
 const appName = import.meta.env.VITE_APP_NAME || 'QR Menu';
 
@@ -18,7 +19,9 @@ createInertiaApp({
         return page;
     },
     setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
+        // App + global impersonation şeridi (KDS gibi PanelShell'siz tam-ekran
+        // sayfalarda da "Yöneticiye dön" erişilebilsin diye kökte render edilir).
+        createApp({ render: () => [h(App, props), h(ImpersonationBar)] })
             .use(plugin)
             .mount(el);
     },
