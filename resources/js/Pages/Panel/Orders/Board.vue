@@ -446,9 +446,7 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                             :aria-label="`${t.name} — ${t.status_label}`"
                             @click="onTableClick(t)"
                         >
-                            <span class="absolute inset-x-0 top-0 h-1" :class="tableOccupied(t) ? 'bg-danger' : 'bg-success'" aria-hidden="true"></span>
-
-                            <!-- Başlık: masa adı (büyük) + numara çipi -->
+                            <!-- Başlık: masa adı (büyük) + Dolu/Boş rozeti + numara çipi -->
                             <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
                                     <p class="truncate text-lg font-bold leading-tight text-body">{{ t.name }}</p>
@@ -459,10 +457,16 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                                         </span>
                                     </p>
                                 </div>
-                                <span
-                                    v-if="t.number !== null"
-                                    class="shrink-0 rounded-lg bg-inset px-2 py-0.5 font-mono text-xs font-semibold text-subtle"
-                                >{{ t.number }}</span>
+                                <div class="flex shrink-0 items-center gap-1.5">
+                                    <span
+                                        class="rounded-full px-2 py-0.5 text-xs font-bold text-white"
+                                        :class="tableOccupied(t) ? 'bg-danger' : 'bg-success'"
+                                    >{{ tableOccupied(t) ? 'Dolu' : 'Boş' }}</span>
+                                    <span
+                                        v-if="t.number !== null"
+                                        class="rounded-lg bg-inset px-2 py-0.5 font-mono text-xs font-semibold text-subtle"
+                                    >{{ t.number }}</span>
+                                </div>
                             </div>
 
                             <!-- Dolu: büyük tutar + kalem/süre + servis ilerlemesi + durum/ödeme -->

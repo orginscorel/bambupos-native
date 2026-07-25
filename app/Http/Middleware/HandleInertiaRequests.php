@@ -119,6 +119,10 @@ class HandleInertiaRequests extends Middleware
                     ->pluck('name'),
             ],
             'permissions' => $user->permissionKeys(),
+            // §12 İstasyon-kapsamlı görünürlük: kullanıcının görebileceği istasyon
+            // AİLELERİ (kitchen/barista). [] = kısıt yok (yönetici/çok-istasyonlu →
+            // hepsini görür). Sidebar Mutfak/Barista menüsünü buna göre süzer.
+            'stations' => app(\App\Modules\Kds\Services\KdsService::class)->stationFamilies($user),
             // Açılış ekranı tercih listesi (yalnız izinli ekranlar)
             'screenOptions' => \App\Modules\Identity\Support\HomeScreen::optionsFor($user),
             'tenant' => $tenant?->only(['name', 'slug']),

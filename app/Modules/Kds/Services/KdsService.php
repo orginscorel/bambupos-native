@@ -89,6 +89,36 @@ class KdsService
     }
 
     /**
+     * Kullanıcının GÖREBİLECEĞİ istasyon AİLELERİ (kitchen/barista) — §12
+     * istasyon-kapsamlı görünürlük için normalize edilmiş kapsam (sidebar
+     * menüsü + KDS ekran/rota koruması).
+     *
+     * Atama yoksa (yönetici / çok-istasyonlu) [] döner = KISIT YOK (hepsini
+     * görür). Aksi hâlde atanmış istasyonlar ailelerine indirgenir: barista
+     * ailesindeki (authz.barista_stations) anahtarlar → 'barista', gerisi
+     * (mutfak/ızgara/fırın/nargile…) → 'kitchen'.
+     *
+     * @return array<int, string>  [] = hepsi; aksi ['kitchen'] / ['barista'] / ikisi
+     */
+    public function stationFamilies(User $user): array
+    {
+        $allowed = $this->allowedStations($user);
+
+        if ($allowed === null) {
+            return [];
+        }
+
+        $barista = (array) config('authz.barista_stations', []);
+        $families = [];
+
+        foreach ($allowed as $key) {
+            $families[] = in_array($key, $barista, true) ? 'barista' : 'kitchen';
+        }
+
+        return array_values(array_unique($families));
+    }
+
+    /**
      * İstenen süzgeç + kullanıcı ataması → etkin istasyon listesi.
      * null = tümü. Atama dışı istasyon istenirse 403.
      *

@@ -30,8 +30,8 @@ export const defaultNavigation: NavItem[] = [
     { key: 'orders', label: 'Siparişler', icon: 'orders', href: '/panel/siparisler', permission: 'orders.view', mobile: true },
     { key: 'tables', label: 'Masalar', icon: 'qr-code', href: '/panel/masalar', permission: 'tables.view', mobile: true },
     { key: 'cashier', label: 'Kasa', icon: 'cart', href: '/panel/kasa', permission: 'payments.take', mobile: true },
-    { key: 'kds', label: 'Mutfak', icon: 'chef-hat', href: '/panel/mutfak', permission: 'kds.view', mobile: true },
-    { key: 'barista', label: 'Barista', icon: 'coffee', href: '/panel/barista', permission: 'kds.view' },
+    { key: 'kds', label: 'Mutfak', icon: 'chef-hat', href: '/panel/mutfak', permission: 'kds.view', stations: ['kitchen'], mobile: true },
+    { key: 'barista', label: 'Barista', icon: 'coffee', href: '/panel/barista', permission: 'kds.view', stations: ['barista'] },
     { key: 'runner', label: 'Komi', icon: 'bell', href: '/panel/komi', permission: 'kds.deliver' },
     // --- Kurulum ---
     { key: 'catalog', label: 'Menü', icon: 'utensils', href: '/panel/menu', permission: 'catalog.view' },

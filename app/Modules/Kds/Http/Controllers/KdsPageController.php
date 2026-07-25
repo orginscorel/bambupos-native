@@ -7,6 +7,7 @@ use App\Modules\Kds\Services\KdsService;
 use App\Modules\Kds\Services\StationRegistry;
 use App\Modules\Orders\Enums\OrderChannel;
 use App\Modules\Orders\Enums\OrderItemStatus;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,13 +25,13 @@ class KdsPageController extends Controller
     }
 
     /** MUTFAK ekranı (§12): varsayılan süzgeç = Mutfak (tüm yemekler). */
-    public function kitchen(Request $request): Response
+    public function kitchen(Request $request): Response|RedirectResponse
     {
         return $this->screen($request, 'kitchen');
     }
 
     /** BARİSTA ekranı (§12): aynı ekran, varsayılan süzgeç = Barista (içecekler). */
-    public function barista(Request $request): Response
+    public function barista(Request $request): Response|RedirectResponse
     {
         return $this->screen($request, 'barista');
     }
@@ -38,14 +39,28 @@ class KdsPageController extends Controller
     /**
      * Mutfak/Barista ekranı — aynı premium tasarım, yalnız varsayılan istasyon
      * süzgeci değişir. ?istasyon=X açıkça verilirse o kazanır; verilmezse
-     * ekranın kendi varsayılanı ($default) uygulanır. Kullanıcının istasyon
-     * ataması VARSA ve varsayılan ona atanmamışsa boş süzgeç kullanılır (kendi
-     * atanan istasyonları) — mismatch'te 403'e düşmeyelim.
+     * ekranın kendi varsayılanı ($default) uygulanır.
+     *
+     * §12 İSTASYON-KAPSAMLI ROTA KORUMASI: kullanıcı istasyona atanmışsa
+     * (kısıtlı) yalnız KENDİ ailesinin ekranını açabilir — mutfak-atanmış kişi
+     * /panel/barista'ya gelirse kendi ekranına (/panel/mutfak) yönlendirilir,
+     * ve tersi. Yönetici/çok-istasyonlu (aile [] = kısıt yok) serbest gezer.
      */
-    private function screen(Request $request, string $default): Response
+    private function screen(Request $request, string $default): Response|RedirectResponse
     {
         $user = $request->user();
         abort_unless($user->hasPermission('kds.view'), 403);
+
+        // $default ('kitchen'|'barista') = bu ekranın istasyon AİLESİ.
+        $families = $this->kds->stationFamilies($user);
+
+        if ($families !== [] && ! in_array($default, $families, true)) {
+            // Kısıtlı kullanıcı yalnız barista ailesindeyse Barista'ya, aksi
+            // (mutfak/karışık) hâlde Mutfak ekranına yönlendir.
+            $onlyBarista = $families === ['barista'];
+
+            return redirect()->to($onlyBarista ? '/panel/barista' : '/panel/mutfak');
+        }
 
         $requested = (string) $request->query('istasyon', '');
 

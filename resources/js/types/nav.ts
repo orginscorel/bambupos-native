@@ -11,6 +11,10 @@ export interface NavItem {
     exact?: boolean;
     /** Gerekli izin anahtarı (ör. "orders.view"); boşsa herkes görür */
     permission?: string;
+    /** §12 İstasyon-kapsamı: öğe yalnız bu istasyon AİLELERİNDEN (kitchen/barista)
+     *  en az birine atanmış kullanıcıya görünür. Atanmamış/yönetici (auth.stations
+     *  boş) → kısıt yok, hepsini görür. Boşsa istasyon süzgeci uygulanmaz. */
+    stations?: string[];
     /** Rozet sayısı (ör. bekleyen sipariş) */
     badge?: number;
     /** Mobil alt navigasyonda gösterilsin mi (en fazla 4 öğe önerilir) */

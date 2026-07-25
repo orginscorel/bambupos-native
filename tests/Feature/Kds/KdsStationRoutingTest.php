@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Kds;
 
+use App\Modules\Kds\Models\UserStation;
+
 /**
  * §12 İSTASYON YÖNLENDİRME — Mutfak ↔ Barista ayrımı.
  *
@@ -57,5 +59,60 @@ class KdsStationRoutingTest extends KdsTestCase
             ->assertInertia(fn ($page) => $page
                 ->component('Panel/Kds/Kitchen', false)
                 ->where('initialStation', 'kitchen'));
+    }
+
+    /** §12 rota koruması: mutfak-atanmış kullanıcı Barista'ya giremez → kendi ekranına döner. */
+    public function test_mutfak_atanmis_kullanici_barista_rotasindan_mutfaga_yonlendirilir(): void
+    {
+        $user = $this->makeUserInA(['kds.view']);
+        $this->assignStation($user, 'kitchen');
+
+        $this->actingAs($user)
+            ->get('/panel/barista')
+            ->assertRedirect('/panel/mutfak');
+
+        // Kendi ekranı serbest.
+        $this->get('/panel/mutfak')->assertOk();
+    }
+
+    /** §12 rota koruması: barista-atanmış kullanıcı Mutfak'a giremez → kendi ekranına döner. */
+    public function test_barista_atanmis_kullanici_mutfak_rotasindan_baristaya_yonlendirilir(): void
+    {
+        $user = $this->makeUserInA(['kds.view']);
+        $this->assignStation($user, 'barista');
+
+        $this->actingAs($user)
+            ->get('/panel/mutfak')
+            ->assertRedirect('/panel/barista');
+
+        $this->get('/panel/barista')->assertOk();
+    }
+
+    /** İçecek ailesi (coffee/bar) da barista sayılır — Mutfak'tan Barista'ya döner. */
+    public function test_bar_ailesi_kullanicisi_mutfaktan_baristaya_yonlendirilir(): void
+    {
+        $user = $this->makeUserInA(['kds.view']);
+        $this->assignStation($user, 'bar');
+
+        $this->actingAs($user)
+            ->get('/panel/mutfak')
+            ->assertRedirect('/panel/barista');
+    }
+
+    /** Atanmamış kullanıcı (yönetici/çok-istasyonlu) her iki ekranı da açar. */
+    public function test_atanmamis_kullanici_her_iki_ekrani_da_gorur(): void
+    {
+        $this->actingAs($this->makeUserInA(['kds.view']));
+
+        $this->get('/panel/mutfak')->assertOk();
+        $this->get('/panel/barista')->assertOk();
+    }
+
+    private function assignStation(\App\Modules\Identity\Models\User $user, string $stationKey): void
+    {
+        $this->asTenant($this->a['tenant'], fn () => UserStation::query()->create([
+            'user_id' => $user->id,
+            'station_key' => $stationKey,
+        ]));
     }
 }

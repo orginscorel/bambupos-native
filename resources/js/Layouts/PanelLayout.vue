@@ -30,11 +30,33 @@ const permissions = computed<string[] | null>(() => {
     return auth?.permissions ?? null;
 });
 
+/** §12 İstasyon-kapsamı: kullanıcının görebileceği istasyon aileleri
+ *  (kitchen/barista). [] = kısıt yok (yönetici/çok-istasyonlu → hepsi).
+ *  Prop yoksa (auth yok) null → süzme yapılmaz. */
+const stations = computed<string[] | null>(() => {
+    const auth = (page.props as Record<string, unknown>).auth as { stations?: string[] } | undefined;
+    return auth?.stations ?? null;
+});
+
 const navItems = computed<NavItem[]>(() => {
     const items = props.nav ?? defaultNavigation;
     const perms = permissions.value;
-    if (!perms) return items;
-    return items.filter((i) => !i.permission || perms.includes(i.permission));
+    const userStations = stations.value;
+
+    return items.filter((i) => {
+        // 1) İzin süzgeci (perms yoksa hiç süzme — eski davranış korunur)
+        if (perms && i.permission && !perms.includes(i.permission)) return false;
+
+        // 2) İstasyon-kapsamı: öğe istasyon ailesi tanımlamışsa VE kullanıcı
+        // KISITLIYSA (userStations dolu), yalnız kesişen aile görünür. Atanmamış/
+        // yönetici (userStations boş [] ya da null) → kısıt yok, hepsini görür.
+        if (i.stations && i.stations.length > 0 && userStations && userStations.length > 0
+            && !i.stations.some((s) => userStations.includes(s))) {
+            return false;
+        }
+
+        return true;
+    });
 });
 
 const mobileItems = computed(() => navItems.value.filter((i) => i.mobile).slice(0, 4));
