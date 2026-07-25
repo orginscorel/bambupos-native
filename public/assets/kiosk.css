@@ -50,6 +50,15 @@ html[data-kiosk-a11y="1"] .k-card,
 html[data-kiosk-a11y="1"] .k-tablegrid button { border-width: 2px; border-color: var(--k-ink); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* KRİTİK: JS ekranları/şeritleri `element.hidden = true` ile gizler
+   (kiosk.js §durum makinesi). Aşağıdaki bileşen kuralları `.k-screen`,
+   `.k-offline` vb. üzerinde `display: flex` tanımladığı için `hidden`
+   özniteliği (UA `[hidden]{display:none}`) EZİLİYORDU → gizli olması
+   gereken TÜM ekranlar + çevrimdışı şeridi aynı anda görünüyordu
+   (kiosk kullanılamaz). Bu override `hidden`'ı her yerde galip kılar. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 .k-body {
     font-family: 'Poppins', system-ui, sans-serif;
