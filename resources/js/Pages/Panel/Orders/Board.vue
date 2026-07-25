@@ -104,6 +104,56 @@ const filteredTables = computed(() =>
     }),
 );
 
+/* ================= Kat / alan gruplaması + masa görsel yardımcıları =================
+   Yalnız görünüm (davranış değişmez): masalar aynı alan (+ kat) başlığı altında
+   toplanır; kart rengi doluluğu kodlar (açık adisyon = dolu = danger, boş = success). */
+interface TableGroup {
+    key: string;
+    area: string | null;
+    floor: string | null;
+    tables: BoardTable[];
+}
+
+const groupedTables = computed<TableGroup[]>(() => {
+    const groups = new Map<string, TableGroup>();
+    for (const t of filteredTables.value) {
+        const key = `${t.floor_name ?? ''}||${t.area_name ?? ''}`;
+        let g = groups.get(key);
+        if (!g) {
+            g = { key, area: t.area_name, floor: t.floor_name, tables: [] };
+            groups.set(key, g);
+        }
+        g.tables.push(t);
+    }
+    return [...groups.values()];
+});
+
+/** Masada açık adisyon var mı → kart rengi (dolu = danger, boş = success). */
+function tableOccupied(t: BoardTable): boolean {
+    return t.orders.length > 0;
+}
+/** Bir gruptaki dolu masa sayısı (başlık özeti). */
+function occupiedCount(list: BoardTable[]): number {
+    return list.reduce((n, t) => n + (t.orders.length > 0 ? 1 : 0), 0);
+}
+/** Masadaki tüm açık adisyonların kalan (ödenecek) toplamı — kuruş. */
+function tableTotal(t: BoardTable): number {
+    return t.orders.reduce((n, o) => n + o.remaining_minor, 0);
+}
+/** Kısmi teslim ilerleme çubuğu için yüzde (servis edilen / toplam kalem). */
+function servedPct(t: BoardTable): string {
+    const items = tableItems(t);
+    if (items <= 0) return '0%';
+    return `${Math.round((tableServed(t) / items) * 100)}%`;
+}
+/** Masadaki ödeme özeti — yalnız anlamlı olduğunda rozet çıkar (ödendi / kısmi). */
+function tablePayment(t: BoardTable): 'paid' | 'partial' | null {
+    if (t.orders.length === 0) return null;
+    if (t.orders.every((o) => o.payment_state === 'paid')) return 'paid';
+    if (t.orders.some((o) => o.payment_state !== 'unpaid')) return 'partial';
+    return null;
+}
+
 /* ================= Masa aç / adisyona git =================
    Kişi sayısı AÇILIŞTA SORULMAZ (kullanıcı talebi): masaya tıklayınca boşsa
    direkt adisyon açılır ve içine girilir; tek adisyon varsa ona girilir; birden
@@ -364,97 +414,175 @@ async function approveOrder(order: OrderSummary): Promise<void> {
                 </div>
             </BaseCard>
 
-            <!-- Masa ızgarası: büyük dokunma hedefleri, durum = renk + ikon + metin.
-                 Sütun sayısı sabit değil — auto-fill/minmax genişliğe göre dengelenir,
-                 geniş ekranda kartlar sıkışmaz (min 15rem), dar ekranda tek sütuna düşer. -->
-            <div v-if="filteredTables.length > 0" class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
-                <button
-                    v-for="t in filteredTables"
-                    :key="t.id"
-                    type="button"
-                    class="flex min-h-40 flex-col justify-between gap-3 rounded-xl border border-default bg-surface p-4 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-2"
-                    :aria-label="`${t.name} — ${t.status_label}`"
-                    @click="onTableClick(t)"
-                >
-                    <div class="flex items-start justify-between gap-2">
-                        <div>
-                            <p class="text-base font-semibold text-body">{{ t.name }}</p>
-                            <p class="text-xs text-muted">
-                                <template v-if="t.area_name">{{ t.area_name }}<template v-if="t.floor_name"> · {{ t.floor_name }}</template> · </template>
-                                <AppIcon name="users" :size="11" class="inline" /> {{ t.capacity }}
-                            </p>
-                        </div>
-                        <span class="font-mono text-sm text-subtle">{{ t.number ?? '' }}</span>
+            <!-- Masa panosu: kat/alan gruplu, büyük dokunmatik kartlar. Kart rengi
+                 doluluğu kodlar (dolu = kırmızı şerit, boş = yeşil). Durum rozeti
+                 (3'lü) yalnız görüntüdür — buradan durum ilerletilmez. -->
+            <template v-if="filteredTables.length > 0">
+                <section v-for="g in groupedTables" :key="g.key" class="flex flex-col gap-3">
+                    <!-- Grup başlığı: alan/kat + doluluk özeti (renk anahtarı) -->
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5">
+                        <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-soft text-primary">
+                            <AppIcon name="utensils" :size="16" />
+                        </span>
+                        <h2 class="text-base font-bold text-body">{{ g.area ?? g.floor ?? 'Masalar' }}</h2>
+                        <span v-if="g.area && g.floor" class="text-xs font-medium text-subtle">· {{ g.floor }}</span>
+                        <span class="ml-auto flex items-center gap-3 text-xs font-semibold">
+                            <span class="flex items-center gap-1.5 text-danger">
+                                <span class="h-2 w-2 rounded-full bg-danger"></span>{{ occupiedCount(g.tables) }} dolu
+                            </span>
+                            <span class="flex items-center gap-1.5 text-success">
+                                <span class="h-2 w-2 rounded-full bg-success"></span>{{ g.tables.length - occupiedCount(g.tables) }} boş
+                            </span>
+                        </span>
                     </div>
-                    <div class="flex flex-col gap-2">
-                        <!-- Fiyat = para figürü olarak öne çıkar (büyük/kalın/gövde rengi);
-                             kalem sayısı ve süre ikincil ve AYRI (soluk, küçük, kendi satırında). -->
-                        <div v-if="t.orders.length > 0" class="flex flex-col gap-0.5">
-                            <div class="flex items-baseline justify-between gap-2">
-                                <span class="whitespace-nowrap text-lg font-bold tabular-nums text-body">
-                                    {{ money(t.orders.reduce((n, o) => n + o.remaining_minor, 0)) }} ₺
-                                </span>
-                                <span class="text-xs font-medium text-muted">{{ t.orders.reduce((n, o) => n + o.items_count, 0) }} kalem</span>
-                            </div>
-                            <div class="flex items-baseline justify-between gap-2">
-                                <span class="text-xs text-subtle">{{ orderElapsed(t.orders[0]) }} önce</span>
-                                <!-- Kısmi teslim ilerlemesi (#4) -->
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                        <button
+                            v-for="t in g.tables"
+                            :key="t.id"
+                            type="button"
+                            class="group relative flex min-h-40 flex-col gap-3 overflow-hidden rounded-2xl border p-4 text-left shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            :class="tableOccupied(t) ? 'border-danger-border bg-raised' : 'border-success-border bg-success-soft'"
+                            :aria-label="`${t.name} — ${t.status_label}`"
+                            @click="onTableClick(t)"
+                        >
+                            <span class="absolute inset-x-0 top-0 h-1" :class="tableOccupied(t) ? 'bg-danger' : 'bg-success'" aria-hidden="true"></span>
+
+                            <!-- Başlık: masa adı (büyük) + numara çipi -->
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <p class="truncate text-lg font-bold leading-tight text-body">{{ t.name }}</p>
+                                    <p class="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                                        <span v-if="t.area_name" class="truncate">{{ t.area_name }}</span>
+                                        <span class="inline-flex items-center gap-1 whitespace-nowrap">
+                                            <AppIcon name="users" :size="11" />{{ t.capacity }}
+                                        </span>
+                                    </p>
+                                </div>
                                 <span
-                                    v-if="tableItems(t) > 0 && tableServed(t) < tableItems(t)"
-                                    class="text-xs text-subtle"
-                                >{{ tableServed(t) }}/{{ tableItems(t) }} servis edildi</span>
+                                    v-if="t.number !== null"
+                                    class="shrink-0 rounded-lg bg-inset px-2 py-0.5 font-mono text-xs font-semibold text-subtle"
+                                >{{ t.number }}</span>
                             </div>
-                        </div>
-                        <BaseBadge :variant="t.status_variant" no-icon>
-                            <AppIcon :name="t.status_icon" :size="12" />
-                            {{ t.status_label }}
-                        </BaseBadge>
+
+                            <!-- Dolu: büyük tutar + kalem/süre + servis ilerlemesi + durum/ödeme -->
+                            <template v-if="tableOccupied(t)">
+                                <div class="mt-auto flex flex-col gap-2">
+                                    <div>
+                                        <p class="flex items-baseline gap-1 leading-none">
+                                            <span class="text-2xl font-extrabold tabular-nums text-body">{{ money(tableTotal(t)) }}</span>
+                                            <span class="text-base font-bold text-muted">₺</span>
+                                        </p>
+                                        <p class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-subtle">
+                                            <span class="font-medium text-muted">{{ tableItems(t) }} kalem</span>
+                                            <span aria-hidden="true">·</span>
+                                            <span>{{ orderElapsed(t.orders[0]) }}</span>
+                                            <span v-if="t.orders.length > 1" class="rounded bg-inset px-1.5 py-0.5 font-medium text-muted">{{ t.orders.length }} adisyon</span>
+                                        </p>
+                                    </div>
+
+                                    <!-- Kısmi teslim ilerleme çubuğu (#4) -->
+                                    <div v-if="tableItems(t) > 0 && tableServed(t) < tableItems(t)">
+                                        <div class="mb-1 flex items-center justify-between text-[11px] font-medium text-subtle">
+                                            <span>Servis</span>
+                                            <span class="tabular-nums">{{ tableServed(t) }}/{{ tableItems(t) }}</span>
+                                        </div>
+                                        <div class="h-1.5 w-full overflow-hidden rounded-full bg-inset">
+                                            <div class="h-full rounded-full bg-success transition-all" :style="{ width: servedPct(t) }"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <BaseBadge :variant="t.status_variant" no-icon>
+                                            <AppIcon :name="t.status_icon" :size="12" />
+                                            {{ t.status_label }}
+                                        </BaseBadge>
+                                        <BaseBadge v-if="tablePayment(t)" :variant="tablePayment(t) === 'paid' ? 'success' : 'warning'" no-icon>
+                                            <AppIcon :name="tablePayment(t) === 'paid' ? 'check-circle' : 'cart'" :size="12" />
+                                            {{ tablePayment(t) === 'paid' ? 'Ödendi' : 'Kısmi' }}
+                                        </BaseBadge>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Boş: yeşil davet, dokun → doğrudan adisyon aç -->
+                            <template v-else>
+                                <div class="flex flex-1 flex-col items-center justify-center gap-2 py-2 text-center">
+                                    <span class="flex h-11 w-11 items-center justify-center rounded-full bg-success text-invert shadow-sm transition-transform group-hover:scale-105">
+                                        <AppIcon name="plus" :size="22" />
+                                    </span>
+                                    <span class="text-xs font-semibold text-success">Boş · adisyon aç</span>
+                                </div>
+                            </template>
+                        </button>
                     </div>
-                </button>
-            </div>
+                </section>
+            </template>
             <BaseCard v-else-if="!loading">
                 <EmptyState title="Masa bulunamadı" description="Filtreleri değiştirin ya da Masalar sayfasından masa oluşturun." icon="qr-code" />
             </BaseCard>
 
-            <!-- Masasız kanal siparişleri -->
+            <!-- Masasız kanal siparişleri: paket / gel-al / kiosk — şık kart ızgarası -->
             <BaseCard v-if="board.channel_orders.length > 0">
-                <h2 class="pb-2 text-sm font-semibold text-body">Paket / Gel-Al / Kiosk siparişleri</h2>
-                <div class="flex flex-col gap-2">
+                <template #header>
+                    <div class="flex items-center gap-2">
+                        <AppIcon name="package" :size="18" class="text-primary" />
+                        <h2 class="text-sm font-semibold text-body">Paket / Gel-Al / Kiosk siparişleri</h2>
+                        <span class="rounded-full bg-inset px-2 py-0.5 text-xs font-semibold text-muted">{{ board.channel_orders.length }}</span>
+                    </div>
+                </template>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <button
                         v-for="o in board.channel_orders"
                         :key="o.id"
                         type="button"
-                        class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-default p-3 text-left transition-colors hover:bg-inset"
+                        class="group flex flex-col gap-3 rounded-2xl border border-default bg-raised p-4 text-left shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         @click="router.visit(`/panel/siparisler/${o.id}`)"
                     >
-                        <div class="flex flex-wrap items-center gap-2">
-                            <!-- Kaynak (nereden: Garson/Kiosk/QR) — tek etiket, ServiceType ile çakışmaz (#3) -->
-                            <BaseBadge :variant="o.source_variant" no-icon>
-                                <AppIcon :name="o.source_icon" :size="12" />
-                                {{ o.source_label }}
-                            </BaseBadge>
-                            <!-- Servis tipi (nasıl: Masada/Gel-al/Paket) -->
-                            <BaseBadge :variant="o.service_type_variant" no-icon>
-                                <AppIcon :name="o.service_type_icon" :size="12" />
-                                {{ o.service_type_label }}
-                            </BaseBadge>
-                            <span class="font-medium">#{{ o.id }}</span>
-                            <span v-if="o.customer_name" class="text-sm text-muted">{{ o.customer_name }}</span>
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <!-- Kaynak (nereden: Garson/Kiosk/QR) — tek etiket, ServiceType ile çakışmaz (#3) -->
+                                <BaseBadge :variant="o.source_variant" no-icon>
+                                    <AppIcon :name="o.source_icon" :size="12" />
+                                    {{ o.source_label }}
+                                </BaseBadge>
+                                <!-- Servis tipi (nasıl: Masada/Gel-al/Paket) -->
+                                <BaseBadge :variant="o.service_type_variant" no-icon>
+                                    <AppIcon :name="o.service_type_icon" :size="12" />
+                                    {{ o.service_type_label }}
+                                </BaseBadge>
+                            </div>
+                            <span class="shrink-0 font-mono text-xs font-semibold text-subtle">#{{ o.id }}</span>
                         </div>
-                        <div class="flex items-center gap-3">
-                            <span class="text-sm text-muted">{{ o.items_count }} kalem</span>
-                            <!-- Kısmi teslim ilerlemesi (#4): komi kalemleri tek tek teslim eder -->
-                            <span v-if="o.items_count > 0 && o.served_count < o.items_count" class="text-xs text-subtle">{{ o.served_count }}/{{ o.items_count }} servis edildi</span>
-                            <span class="whitespace-nowrap text-sm font-semibold tabular-nums text-body">{{ o.total_display }} ₺</span>
-                            <BaseBadge :variant="o.payment_state === 'paid' ? 'success' : o.payment_state === 'partial' ? 'warning' : 'neutral'" no-icon>
-                                <AppIcon :name="o.payment_state === 'paid' ? 'check-circle' : 'cart'" :size="12" />
-                                {{ o.payment_label }}
-                            </BaseBadge>
-                            <span class="text-xs text-subtle">{{ orderElapsed(o) }} önce</span>
+
+                        <div class="flex items-end justify-between gap-2">
+                            <div class="min-w-0">
+                                <p v-if="o.customer_name" class="truncate text-sm font-semibold text-body">{{ o.customer_name }}</p>
+                                <p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-subtle">
+                                    <span class="font-medium text-muted">{{ o.items_count }} kalem</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span>{{ orderElapsed(o) }}</span>
+                                </p>
+                            </div>
+                            <p class="flex shrink-0 items-baseline gap-1 leading-none">
+                                <span class="text-xl font-extrabold tabular-nums text-body">{{ o.total_display }}</span>
+                                <span class="text-sm font-bold text-muted">₺</span>
+                            </p>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-1.5 border-t border-default pt-2.5">
                             <BaseBadge :variant="o.status_variant" no-icon>
                                 <AppIcon :name="o.status_icon" :size="12" />
                                 {{ o.status_label }}
                             </BaseBadge>
+                            <BaseBadge :variant="o.payment_state === 'paid' ? 'success' : o.payment_state === 'partial' ? 'warning' : 'neutral'" no-icon>
+                                <AppIcon :name="o.payment_state === 'paid' ? 'check-circle' : 'cart'" :size="12" />
+                                {{ o.payment_label }}
+                            </BaseBadge>
+                            <!-- Kısmi teslim ilerlemesi (#4): komi kalemleri tek tek teslim eder -->
+                            <span v-if="o.items_count > 0 && o.served_count < o.items_count" class="ml-auto text-xs font-medium text-subtle">
+                                {{ o.served_count }}/{{ o.items_count }} servis
+                            </span>
                         </div>
                     </button>
                 </div>

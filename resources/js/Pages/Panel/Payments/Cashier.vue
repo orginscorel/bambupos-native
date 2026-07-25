@@ -637,8 +637,8 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                             </div>
                         </div>
 
-                        <div class="grid gap-4 2xl:grid-cols-2">
-                            <!-- Sol iç: kalem dökümü + toplam -->
+                        <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
+                            <!-- Sol iç: kalem dökümü + toplam (kaydırılabilir inceleme) -->
                             <div class="flex flex-col gap-4">
                                 <!-- Kalem dökümü (gözden geçir + düzelt) -->
                                 <BaseCard flush>
@@ -661,7 +661,7 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                     </p>
                                     <p v-else-if="!detail" class="p-4 text-sm text-muted">Kalemler yükleniyor…</p>
                                     <EmptyState v-else-if="visibleItems.length === 0" title="Kalem yok" icon="cart" />
-                                    <ul v-else class="divide-y divide-default">
+                                    <ul v-else class="divide-y divide-default lg:max-h-[calc(100vh-24rem)] lg:overflow-y-auto">
                                         <li v-for="it in visibleItems" :key="it.id" class="flex items-start gap-3 p-3">
                                             <span class="mt-0.5 min-w-9 shrink-0 rounded-md bg-inset px-2 py-1 text-center text-sm font-semibold tabular-nums text-body">
                                                 {{ it.qty }}×
@@ -741,8 +741,8 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                 </BaseCard>
                             </div>
 
-                            <!-- Sağ iç: ödeme paneli -->
-                            <div class="flex flex-col gap-4 2xl:sticky 2xl:top-4 2xl:self-start">
+                            <!-- Sağ iç: yapışkan ödeme paneli (masaüstünde kaydırmadan erişilebilir) -->
+                            <div class="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
                                 <BaseCard v-if="selected.remaining_minor > 0" title="Ödeme al">
                                     <div class="flex flex-col gap-4">
                                         <!-- Yöntem -->
@@ -823,7 +823,8 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                             </FormField>
                                         </div>
 
-                                        <BaseButton :loading="paying" block size="lg" @click="pay">
+                                        <!-- Masaüstü: yapışkan panelin sonunda erişilebilir; mobilde sabit alt çubuk kullanılır -->
+                                        <BaseButton :loading="paying" block size="lg" class="hidden lg:flex" @click="pay">
                                             {{ methodMeta?.terminal ? 'Terminale gönder' : 'Ödemeyi al' }} — {{ money(amountMinor) }} ₺
                                         </BaseButton>
                                     </div>
@@ -886,6 +887,25 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                 </BaseCard>
                             </div>
                         </div>
+
+                        <!-- Mobil: her zaman erişilebilir ödeme aksiyonu (alt navigasyonun üstünde, safe-area) -->
+                        <div
+                            v-if="selected.remaining_minor > 0"
+                            class="fixed inset-x-0 z-(--z-sticky) border-t border-default bg-raised px-4 py-3 shadow-lg lg:hidden"
+                            style="bottom: calc(3.5rem + env(safe-area-inset-bottom))"
+                        >
+                            <div class="mb-2 flex items-center justify-between gap-2 text-sm">
+                                <span class="text-muted">Kalan <span class="font-semibold text-body">{{ money(selected.remaining_minor) }} ₺</span></span>
+                                <span class="flex items-center gap-1 truncate text-xs text-muted">
+                                    <AppIcon v-if="methodMeta" :name="methodMeta.icon" :size="14" /> {{ methodMeta?.label }}
+                                </span>
+                            </div>
+                            <BaseButton :loading="paying" block size="lg" @click="pay">
+                                {{ methodMeta?.terminal ? 'Terminale gönder' : 'Ödemeyi al' }} — {{ money(amountMinor) }} ₺
+                            </BaseButton>
+                        </div>
+                        <!-- Sabit çubuk son içeriği örtmesin diye mobil boşluk -->
+                        <div class="h-32 lg:hidden" aria-hidden="true"></div>
                     </template>
                 </div>
             </div>

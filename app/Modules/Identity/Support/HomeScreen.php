@@ -3,15 +3,17 @@
 namespace App\Modules\Identity\Support;
 
 use App\Modules\Identity\Models\User;
+use App\Modules\Kds\Services\KdsService;
 
 /**
  * Role özel açılış ekranı (Personel-Yetki).
  *
  * Sıra:
  *  1. Kullanıcı tercihi (users.default_screen) — hâlâ İZİNLİYSE uygulanır.
- *  2. Otomatik: iş profiline göre en uygun ekran
- *     (mutfak → KDS, komi → komi, kasiyer → kasa, garson → sipariş,
- *      yönetici → panel genel bakış).
+ *  2. Otomatik: iş profiline göre en uygun ekran. Önce ATANMIŞ istasyon
+ *     (KDS §12 — barista istasyonu → Barista, mutfak istasyonu → KDS),
+ *     yoksa role/izinden türetilir (komi → komi, kasiyer → kasa,
+ *     garson → sipariş, yönetici → panel genel bakış).
  */
 class HomeScreen
 {
@@ -38,6 +40,19 @@ class HomeScreen
     }
 
     /**
+     * Kullanıcı "Otomatik" mi (açık, hâlâ izinli bir ekran tercihi YOK)?
+     * Dashboard'a doğrudan gelen dar-yetkili personeli kendi ekranına
+     * yönlendirmek için kullanılır — açık tercih varsa yönlendirme YAPILMAZ.
+     */
+    public static function isAutomatic(User $user): bool
+    {
+        $preferred = $user->default_screen;
+        $screens = (array) config('authz.screens', []);
+
+        return ! ($preferred !== null && isset($screens[$preferred]) && self::allowed($user, $screens[$preferred]));
+    }
+
+    /**
      * Kullanıcının SEÇEBİLECEĞİ ekranlar (tercih listesi için).
      *
      * @return array<int, array{key: string, label: string, path: string}>
@@ -60,9 +75,20 @@ class HomeScreen
     {
         $can = fn (string $key): bool => $user->hasPermission($key);
 
-        // Yönetici işaretleri: genel bakış en faydalısı
+        // Yönetici işaretleri: genel bakış en faydalısı (istasyon ataması olsa
+        // bile yönetimi kendi ekranına zorlamayız).
         if ($can('reports.view') || $can('staff.manage') || $can('settings.manage')) {
             return 'dashboard';
+        }
+
+        // Atanmış istasyon önce (KDS §12): kişi kendi istasyon ekranına düşer
+        // — barista istasyonu Barista'ya, mutfak/karışık istasyon KDS'ye.
+        if ($can('kds.view')) {
+            $stationScreen = self::stationScreenKey($user);
+
+            if ($stationScreen !== null) {
+                return $stationScreen;
+            }
         }
 
         // Mutfak personeli: yalnız KDS
@@ -94,6 +120,26 @@ class HomeScreen
         }
 
         return 'dashboard';
+    }
+
+    /**
+     * Atanmış istasyona göre KDS ekranı anahtarı (null = atama yok / türet).
+     * Atanan istasyonların HEPSİ barista ailesindeyse Barista ekranı, aksi
+     * halde (yemek ya da karışık) Mutfak ekranı. Boş atama → null.
+     */
+    private static function stationScreenKey(User $user): ?string
+    {
+        $stations = app(KdsService::class)->allowedStations($user);
+
+        if ($stations === null || $stations === []) {
+            return null;
+        }
+
+        $barista = (array) config('authz.barista_stations', []);
+
+        $onlyBarista = array_diff($stations, $barista) === [];
+
+        return $onlyBarista ? 'barista' : 'kds';
     }
 
     /** @param  array{permission?: string|null}  $screen */

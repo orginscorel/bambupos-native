@@ -46,7 +46,23 @@ Route::middleware('guest')->group(function (): void {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:web', 'tenant'])->prefix('panel')->group(function (): void {
-    Route::get('/', fn () => Inertia::render('Panel/Dashboard'))->name('panel.dashboard');
+    Route::get('/', function () {
+        $user = request()->user();
+
+        // Açık tercihi olmayan (Otomatik) dar-yetkili personel doğrudan
+        // dashboard'a gelirse kendi ekranına yönlenir; açık tercih EZİLMEZ,
+        // dashboard'a çözülenlerde döngü olmaması için hedef == '/panel' ise
+        // olduğu gibi gösterilir.
+        if (\App\Modules\Identity\Support\HomeScreen::isAutomatic($user)) {
+            $target = \App\Modules\Identity\Support\HomeScreen::resolve($user);
+
+            if ($target !== '/panel') {
+                return redirect($target);
+            }
+        }
+
+        return Inertia::render('Panel/Dashboard');
+    })->name('panel.dashboard');
     Route::get('/profil', fn () => Inertia::render('Panel/Profile'))->name('panel.profile');
 });
 

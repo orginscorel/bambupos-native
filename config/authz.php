@@ -199,10 +199,18 @@ return [
         'tables' => ['label' => 'Masalar', 'path' => '/panel/masalar', 'permission' => 'tables.view'],
         'cash' => ['label' => 'Kasa', 'path' => '/panel/kasa', 'permission' => 'payments.take'],
         'kds' => ['label' => 'Mutfak ekranı (KDS)', 'path' => '/panel/mutfak', 'permission' => 'kds.view'],
+        'barista' => ['label' => 'Barista ekranı', 'path' => '/panel/barista', 'permission' => 'kds.view'],
         'runner' => ['label' => 'Komi ekranı', 'path' => '/panel/komi', 'permission' => 'kds.deliver'],
         'catalog' => ['label' => 'Menü yönetimi', 'path' => '/panel/menu', 'permission' => 'catalog.view'],
         'staff' => ['label' => 'Personel', 'path' => '/panel/personel', 'permission' => 'staff.view'],
         'dashboard' => ['label' => 'Panel (genel bakış)', 'path' => '/panel', 'permission' => null],
     ],
+
+    /*
+     * İçecek/bar ailesi istasyon anahtarları (config/kds.php builtin_stations).
+     * Otomatik açılışta: kişinin atandığı istasyonların HEPSİ bu ailedeyse
+     * Barista ekranına, aksi halde (yemek/karışık) Mutfak ekranına düşer.
+     */
+    'barista_stations' => ['barista', 'coffee', 'bar'],
 
 ];

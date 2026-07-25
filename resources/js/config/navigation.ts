@@ -17,28 +17,38 @@ import type { NavItem } from '@/types/nav';
  *   kds      → /panel/mutfak       permission: kds.view
  *   reports  → /panel/raporlar     permission: reports.view
  */
+/*
+ * Sıralama = operasyon akışı: önce canlı vardiya ekranları (sipariş/masa/kasa/
+ * mutfak/barista/komi), sonra kurulum (menü/rezervasyon), sonra stok-finans
+ * (depo/borç/rapor), sonra yönetim (personel/vardiya/şube/kiosk/ayar), en sonda
+ * yardım (nasıl çalışır/sürüm). İKONLAR BİRBİRİNDEN FARKLI olmalı (her modül
+ * ayrı glif) — yinelenen ikon kullanma.
+ */
 export const defaultNavigation: NavItem[] = [
     { key: 'dashboard', label: 'Panel', icon: 'dashboard', href: '/panel', exact: true, mobile: true },
+    // --- Operasyon (canlı vardiya) ---
     { key: 'orders', label: 'Siparişler', icon: 'orders', href: '/panel/siparisler', permission: 'orders.view', mobile: true },
-    { key: 'catalog', label: 'Menü', icon: 'utensils', href: '/panel/menu', permission: 'catalog.view', mobile: true },
     { key: 'tables', label: 'Masalar', icon: 'qr-code', href: '/panel/masalar', permission: 'tables.view', mobile: true },
-    { key: 'reservations', label: 'Rezervasyonlar', icon: 'calendar', href: '/panel/rezervasyonlar', permission: 'reservations.view' },
     { key: 'cashier', label: 'Kasa', icon: 'cart', href: '/panel/kasa', permission: 'payments.take', mobile: true },
-    { key: 'receivables', label: 'Borçlar', icon: 'inbox', href: '/panel/borclar', permission: 'receivables.view' },
-    { key: 'inventory', label: 'Depo / Stok', icon: 'package', href: '/panel/stok', permission: 'stock.view' },
-    { key: 'kds', label: 'Mutfak', icon: 'chef-hat', href: '/panel/mutfak', permission: 'kds.view' },
+    { key: 'kds', label: 'Mutfak', icon: 'chef-hat', href: '/panel/mutfak', permission: 'kds.view', mobile: true },
     { key: 'barista', label: 'Barista', icon: 'coffee', href: '/panel/barista', permission: 'kds.view' },
-    { key: 'runner', label: 'Komi', icon: 'utensils', href: '/panel/komi', permission: 'kds.deliver' },
+    { key: 'runner', label: 'Komi', icon: 'bell', href: '/panel/komi', permission: 'kds.deliver' },
+    // --- Kurulum ---
+    { key: 'catalog', label: 'Menü', icon: 'utensils', href: '/panel/menu', permission: 'catalog.view' },
+    { key: 'reservations', label: 'Rezervasyonlar', icon: 'calendar', href: '/panel/rezervasyonlar', permission: 'reservations.view' },
+    // --- Stok & Finans ---
+    { key: 'inventory', label: 'Depo / Stok', icon: 'package', href: '/panel/stok', permission: 'stock.view' },
+    { key: 'receivables', label: 'Borçlar', icon: 'inbox', href: '/panel/borclar', permission: 'receivables.view' },
     { key: 'reports', label: 'Raporlar', icon: 'chart', href: '/panel/raporlar', permission: 'reports.view' },
-    { key: 'wiki', label: 'Nasıl Çalışır', icon: 'info', href: '/panel/nasil-calisir' },
+    // --- Yönetim ---
     { key: 'staff', label: 'Personel', icon: 'users', href: '/panel/personel', permission: 'staff.view' },
-    { key: 'shifts', label: 'Vardiya', icon: 'calendar', href: '/panel/vardiya', permission: 'staff.view' },
+    { key: 'shifts', label: 'Vardiya', icon: 'clock', href: '/panel/vardiya', permission: 'staff.view' },
     { key: 'branches', label: 'Şubeler', icon: 'store', href: '/panel/subeler', permission: 'tables.view' },
-    // 'Hesabım' sidebar'dan kaldırıldı (2026-07-23, kullanıcı talebi) — Profil
-    // sayfasına sağ üstteki kullanıcı avatarı menüsünden ulaşılır; /panel/profil
-    // rotası KALDI, yalnız bu sidebar kısayolu gitti.
+    { key: 'kiosk', label: 'Kiosk', icon: 'monitor', href: '/panel/kiosklar', permission: 'kiosk.view' },
+    // 'Hesabım' sidebar'dan kaldırıldı (2026-07-23) — Profil'e avatar menüsünden ulaşılır.
     { key: 'settings', label: 'Ayarlar', icon: 'settings', href: '/panel/ayarlar/e-posta', permission: 'settings.view' },
-    { key: 'kiosk', label: 'Kiosk', icon: 'store', href: '/panel/kiosklar', permission: 'kiosk.view' },
+    // --- Yardım ---
+    { key: 'wiki', label: 'Nasıl Çalışır', icon: 'info', href: '/panel/nasil-calisir' },
     // İzin gerektirmez: herkes sürüm notlarını görebilir (alt bilgi rozetleriyle de bağlantılı).
-    { key: 'changelog', label: 'Sürüm Notları', icon: 'info', href: '/panel/surum-notlari' },
+    { key: 'changelog', label: 'Sürüm Notları', icon: 'tag', href: '/panel/surum-notlari' },
 ];
