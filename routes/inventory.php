@@ -6,6 +6,7 @@ use App\Modules\Inventory\Http\Controllers\InventoryPageController;
 use App\Modules\Inventory\Http\Controllers\MovementController;
 use App\Modules\Inventory\Http\Controllers\PurchaseController;
 use App\Modules\Inventory\Http\Controllers\RecipeController;
+use App\Modules\Inventory\Http\Controllers\ReportController;
 use App\Modules\Inventory\Http\Controllers\StockItemController;
 use App\Modules\Inventory\Http\Controllers\SupplierController;
 use App\Modules\Inventory\Http\Controllers\WarehouseController;
@@ -31,6 +32,7 @@ Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
         Route::get('/tedarikciler', [InventoryPageController::class, 'suppliers'])->name('panel.inventory.suppliers');
         Route::get('/satin-alma', [InventoryPageController::class, 'purchasing'])->name('panel.inventory.purchasing');
         Route::get('/uyarilar', [InventoryPageController::class, 'alerts'])->name('panel.inventory.alerts');
+        Route::get('/rapor', [InventoryPageController::class, 'reports'])->name('panel.inventory.reports');
     });
 
     /* ---- JSON uçları ---- */
@@ -92,5 +94,9 @@ Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
 
         // Uyarılar (§17.5)
         Route::get('alerts', [AlertController::class, 'index'])->name('inventory.alerts.index');
+
+        // Raporlar (§17.7): dönem mutabakatı + gün sonu azalma
+        Route::get('reports/period', [ReportController::class, 'period'])->name('inventory.reports.period');
+        Route::get('reports/day-end', [ReportController::class, 'dayEnd'])->name('inventory.reports.day-end');
     });
 });

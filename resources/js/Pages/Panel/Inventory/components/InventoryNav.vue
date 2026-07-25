@@ -12,9 +12,10 @@ const tabs = [
     { key: 'movements', label: 'Hareket Defteri', href: '/panel/stok/hareketler' },
     { key: 'recipes', label: 'Reçeteler', href: '/panel/stok/receteler' },
     { key: 'counts', label: 'Sayım', href: '/panel/stok/sayim' },
-    { key: 'purchasing', label: 'Satın Alma', href: '/panel/stok/satin-alma' },
+    { key: 'purchasing', label: 'Mal Kabul / Satın Alma', href: '/panel/stok/satin-alma' },
     { key: 'suppliers', label: 'Tedarikçiler', href: '/panel/stok/tedarikciler' },
     { key: 'alerts', label: 'Uyarılar', href: '/panel/stok/uyarilar' },
+    { key: 'reports', label: 'Rapor', href: '/panel/stok/rapor' },
 ];
 </script>
 

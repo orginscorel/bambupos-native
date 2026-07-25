@@ -7,12 +7,16 @@ use App\Modules\Inventory\Enums\MovementType;
 use App\Modules\Inventory\Enums\PurchaseStatus;
 use App\Modules\Inventory\Enums\WarehouseType;
 use App\Modules\Inventory\Models\StockItem;
+use App\Modules\Inventory\Support\InventoryFeature;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
  * Stok panel ekranları (Inertia). Enum sözlükleri PHP'den prop gider
  * (tek kaynak); veri /api/v1/inventory uçlarından yüklenir.
+ *
+ * Feature-flag (§9): tüm ekranlar InventoryFeature kapısından geçer;
+ * kapalıysa 404 (ADR: kapalı=render edilmez).
  */
 class InventoryPageController extends Controller
 {
@@ -51,8 +55,15 @@ class InventoryPageController extends Controller
         return $this->page('Panel/Inventory/Alerts');
     }
 
+    public function reports(): Response
+    {
+        return $this->page('Panel/Inventory/Reports');
+    }
+
     private function page(string $component): Response
     {
+        abort_unless(InventoryFeature::enabled((int) (auth()->user()?->tenant_id ?? 0)), 404);
+
         $this->authorize('viewAny', StockItem::class);
 
         return Inertia::render($component, [

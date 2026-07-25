@@ -52,8 +52,18 @@ class InventoryServiceProvider extends ServiceProvider
 
         // Sipariş köprüsü (§17 madde 5).
         OrderItem::updated(function (OrderItem $item): void {
-            if ($item->wasChanged('status') && (string) $item->status === OrderItemStatus::Served->value) {
+            if (! $item->wasChanged('status')) {
+                return;
+            }
+
+            $status = (string) $item->status;
+
+            if ($status === OrderItemStatus::Served->value) {
                 app(ConsumptionService::class)->safeConsumeOrderItem($item);
+            } elseif ($status === OrderItemStatus::Cancelled->value) {
+                // İptal → iade (§17 madde 4): daha önce düşülmüş tüketim,
+                // kalemin cancel_reason'ıyla stoğa geri eklenir (idempotent).
+                app(ConsumptionService::class)->safeRevertOrderItem($item);
             }
         });
 

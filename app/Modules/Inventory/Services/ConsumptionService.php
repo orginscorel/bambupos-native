@@ -51,6 +51,16 @@ class ConsumptionService
     }
 
     /** Model olayından güvenli çağrı (asla fırlatmaz). */
+    public function safeRevertOrderItem(OrderItem $item): void
+    {
+        try {
+            $this->revertOrderItem($item);
+        } catch (\Throwable $e) {
+            report($e); // iade kaydı düşemedi; sipariş akışı ETKİLENMEZ
+        }
+    }
+
+    /** Model olayından güvenli çağrı (asla fırlatmaz). */
     public function safeConsumeOrder(Order $order): void
     {
         try {
@@ -151,6 +161,82 @@ class ConsumptionService
                     'ref_type' => 'order_item',
                     'ref_id' => $item->getKey(),
                     'description' => sprintf('Adisyon #%d — %s ×%d (reçete v%d)', $order->getKey(), $item->name, $item->qty, $recipe->version),
+                ]);
+            }
+
+            return $movements;
+        });
+    }
+
+    /**
+     * İPTAL → İADE (§17 madde 4): iptal edilen kalemin reçete tüketimi
+     * stoğa GERİ EKLENİR. Her iade satırı, kalemin `cancel_reason`'ını
+     * SEBEP olarak taşır (sebep zorunlu — Orders iptal akışı yazar; boşsa
+     * güvenli bir metin kullanılır ki iade sebepsiz kalmasın).
+     *
+     * İDEMPOTENT: bu kalem için zaten iade (ref_type=order_item_return)
+     * varsa tekrar eklenmez. Yalnız daha önce DÜŞÜLMÜŞ satırlar geri alınır
+     * (henüz tüketilmemiş kalemin iadesi anlamsızdır → boş döner).
+     *
+     * @return array<int, StockMovement> yazılan iade hareketleri
+     */
+    public function revertOrderItem(OrderItem $item): array
+    {
+        return DB::transaction(function () use ($item): array {
+            // Zaten iade edildiyse çık (çift tetik koruması).
+            $alreadyReturned = StockMovement::withoutTenancy()
+                ->where('tenant_id', $item->tenant_id)
+                ->where('ref_type', 'order_item_return')
+                ->where('ref_id', $item->getKey())
+                ->exists();
+
+            if ($alreadyReturned) {
+                return [];
+            }
+
+            // Bu kalemin tüketim satırları (reçete/ikram) — geri eklenecek.
+            $consumed = StockMovement::withoutTenancy()
+                ->where('tenant_id', $item->tenant_id)
+                ->where('ref_type', 'order_item')
+                ->where('ref_id', $item->getKey())
+                ->whereIn('type', [MovementType::RecipeConsumption->value, MovementType::CompConsumption->value])
+                ->get();
+
+            if ($consumed->isEmpty()) {
+                return []; // hiç düşülmemiş — iade edilecek bir şey yok
+            }
+
+            $reason = trim((string) ($item->cancel_reason ?? '')) !== ''
+                ? (string) $item->cancel_reason
+                : 'İptal/yanlış kalem — sebep belirtilmedi';
+
+            $movements = [];
+
+            foreach ($consumed as $line) {
+                $component = StockItem::withoutTenancy()
+                    ->where('tenant_id', $item->tenant_id)
+                    ->find($line->item_id);
+
+                $warehouse = Warehouse::withoutTenancy()
+                    ->where('tenant_id', $item->tenant_id)
+                    ->find($line->warehouse_id);
+
+                if ($component === null || $warehouse === null) {
+                    continue;
+                }
+
+                // Ters işaret: tüketim -X ise iade +X (stoğa geri girer).
+                $movements[] = $this->ledger->record([
+                    'type' => MovementType::ManualAdjust,
+                    'item' => $component,
+                    'warehouse' => $warehouse,
+                    'qty_milli' => -(int) $line->qty_milli,
+                    'tenant_id' => (int) $item->tenant_id,
+                    'branch_id' => $line->branch_id,
+                    'unit_cost_minor' => $line->unit_cost_minor !== null ? (int) $line->unit_cost_minor : (int) $component->avg_cost_minor,
+                    'ref_type' => 'order_item_return',
+                    'ref_id' => $item->getKey(),
+                    'description' => sprintf('Kalem iadesi — %s ×%d. Sebep: %s', $item->name, $item->qty, $reason),
                 ]);
             }
 
