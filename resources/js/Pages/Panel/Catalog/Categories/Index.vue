@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError, type FieldErrors } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
@@ -19,6 +20,12 @@ import { useDragSort } from '../components/useDragSort';
 import { toHm, type CategoryRow } from '../types';
 
 const { success, danger } = useToast();
+
+// Arayüz gizleme: catalog.* yönetim izni yoksa yalnız görüntüleme.
+const { can } = usePermissions();
+const canCreate = computed(() => can('catalog.create'));
+const canUpdate = computed(() => can('catalog.update'));
+const canDelete = computed(() => can('catalog.delete'));
 
 const loading = ref(true);
 const categories = ref<CategoryRow[]>([]);
@@ -174,7 +181,7 @@ const serviceHours = (c: CategoryRow): string =>
             <div class="flex flex-wrap items-center gap-2">
                 <p class="text-sm text-muted">Kategorileri sürükleyerek menü sırasını değiştirebilirsiniz.</p>
                 <div class="grow" />
-                <BaseButton @click="openCreate">
+                <BaseButton v-if="canCreate" @click="openCreate">
                     <AppIcon name="plus" :size="16" />
                     Yeni Kategori
                 </BaseButton>
@@ -190,7 +197,7 @@ const serviceHours = (c: CategoryRow): string =>
                 title="Henüz kategori yok"
                 description="Menünüzü düzenlemek için ilk kategoriyi oluşturun."
             >
-                <template #action>
+                <template v-if="canCreate" #action>
                     <BaseButton @click="openCreate">
                         <AppIcon name="plus" :size="16" />
                         Yeni Kategori
@@ -226,10 +233,10 @@ const serviceHours = (c: CategoryRow): string =>
                                 {{ category.products_count ?? 0 }} ürün<template v-if="category.description"> · {{ category.description }}</template>
                             </span>
                         </div>
-                        <BaseButton size="sm" variant="ghost" icon-only :label="`${category.name} düzenle`" @click="openEdit(category)">
+                        <BaseButton v-if="canUpdate" size="sm" variant="ghost" icon-only :label="`${category.name} düzenle`" @click="openEdit(category)">
                             <AppIcon name="pencil" :size="15" />
                         </BaseButton>
-                        <BaseButton size="sm" variant="ghost" icon-only :label="`${category.name} sil`" @click="deleteTarget = category">
+                        <BaseButton v-if="canDelete" size="sm" variant="ghost" icon-only :label="`${category.name} sil`" @click="deleteTarget = category">
                             <AppIcon name="trash" :size="15" />
                         </BaseButton>
                     </div>
@@ -249,10 +256,10 @@ const serviceHours = (c: CategoryRow): string =>
                                 </span>
                                 <span class="text-xs text-muted">{{ child.products_count ?? 0 }} ürün</span>
                             </div>
-                            <BaseButton size="sm" variant="ghost" icon-only :label="`${child.name} düzenle`" @click="openEdit(child)">
+                            <BaseButton v-if="canUpdate" size="sm" variant="ghost" icon-only :label="`${child.name} düzenle`" @click="openEdit(child)">
                                 <AppIcon name="pencil" :size="15" />
                             </BaseButton>
-                            <BaseButton size="sm" variant="ghost" icon-only :label="`${child.name} sil`" @click="deleteTarget = child">
+                            <BaseButton v-if="canDelete" size="sm" variant="ghost" icon-only :label="`${child.name} sil`" @click="deleteTarget = child">
                                 <AppIcon name="trash" :size="15" />
                             </BaseButton>
                         </li>

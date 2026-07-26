@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import PanelShell from '@/Components/panel/PanelShell.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
@@ -34,6 +35,17 @@ import {
 const page = usePage();
 const meta = metaFromProps(page.props as Record<string, unknown>);
 const { success, danger } = useToast();
+
+/* ================= İzinler (arayüz gizleme) =================
+ * Garson/mutfak/komi/barista masaları GÖRÜR (tables.view) ama
+ * oluşturamaz/düzenleyemez/silemez. Butonlar izne göre gizlenir;
+ * gerçek koruma backend'de (VenueTablePolicy + authorize). */
+const { can } = usePermissions();
+const canCreateTable = computed(() => can('tables.create'));
+const canUpdateTable = computed(() => can('tables.update'));
+const canDeleteTable = computed(() => can('tables.delete'));
+// Toplu seçim/işlem yalnız yönetim izni olana anlamlı (güncelle veya sil).
+const canBulk = computed(() => canUpdateTable.value || canDeleteTable.value);
 
 /* ================= Liste durumu ================= */
 const loading = ref(true);
@@ -473,7 +485,7 @@ function groupBusyCount(g: TableGroup): number {
                             <SearchInput v-model="filters.q" placeholder="Masa adı veya no…" />
                         </FormField>
                     </div>
-                    <div class="flex gap-2">
+                    <div v-if="canCreateTable" class="flex gap-2">
                         <BaseButton variant="secondary" @click="openBulkCreate">
                             <AppIcon name="plus" :size="16" />
                             Toplu oluştur
@@ -486,30 +498,32 @@ function groupBusyCount(g: TableGroup): number {
                 </div>
             </BaseCard>
 
-            <!-- Toplu işlem çubuğu -->
-            <BaseCard v-if="selected.size > 0">
+            <!-- Toplu işlem çubuğu (yalnız yönetim izni olana) -->
+            <BaseCard v-if="canBulk && selected.size > 0">
                 <div class="flex flex-wrap items-center gap-3">
                     <p class="text-sm font-medium text-body">{{ selected.size }} masa seçili</p>
-                    <div class="flex items-center gap-1.5">
+                    <div v-if="canUpdateTable" class="flex items-center gap-1.5">
                         <BaseSelect v-model="bulkStatus" :options="statusOptions" placeholder="Durum seç…" size="sm" />
                         <BaseButton size="sm" variant="secondary" :disabled="!bulkStatus" :loading="bulkBusy" @click="runBulk('set_status', { status: bulkStatus })">
                             Durumu ata
                         </BaseButton>
                     </div>
-                    <div class="flex items-center gap-1.5">
+                    <div v-if="canUpdateTable" class="flex items-center gap-1.5">
                         <BaseSelect v-model="bulkArea" :options="areaOptions.filter((o) => o.value !== 'none')" placeholder="Alan seç…" size="sm" />
                         <BaseButton size="sm" variant="secondary" :disabled="!bulkArea" :loading="bulkBusy" @click="runBulk('set_area', { area_id: Number(bulkArea) })">
                             Alana taşı
                         </BaseButton>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <BaseButton size="sm" variant="secondary" :loading="bulkBusy" @click="runBulk('activate')">Aktifleştir</BaseButton>
-                        <BaseButton size="sm" variant="secondary" :loading="bulkBusy" @click="runBulk('deactivate')">Pasifleştir</BaseButton>
-                        <BaseButton size="sm" variant="secondary" :loading="bulkBusy" @click="bulkRotateQr">
-                            <AppIcon name="qr-code" :size="14" />
-                            QR yenile
-                        </BaseButton>
-                        <BaseButton size="sm" variant="danger" :loading="bulkBusy" @click="bulkDeleteOpen = true">
+                        <template v-if="canUpdateTable">
+                            <BaseButton size="sm" variant="secondary" :loading="bulkBusy" @click="runBulk('activate')">Aktifleştir</BaseButton>
+                            <BaseButton size="sm" variant="secondary" :loading="bulkBusy" @click="runBulk('deactivate')">Pasifleştir</BaseButton>
+                            <BaseButton size="sm" variant="secondary" :loading="bulkBusy" @click="bulkRotateQr">
+                                <AppIcon name="qr-code" :size="14" />
+                                QR yenile
+                            </BaseButton>
+                        </template>
+                        <BaseButton v-if="canDeleteTable" size="sm" variant="danger" :loading="bulkBusy" @click="bulkDeleteOpen = true">
                             <AppIcon name="trash" :size="14" />
                             Sil
                         </BaseButton>
@@ -529,7 +543,7 @@ function groupBusyCount(g: TableGroup): number {
                     title="Masa bulunamadı"
                     description="Seçili filtrelerle eşleşen masa yok. Filtreleri temizleyin ya da yeni masa oluşturun."
                 >
-                    <template #action>
+                    <template v-if="canCreateTable" #action>
                         <div class="flex gap-2">
                             <BaseButton variant="secondary" @click="openBulkCreate">
                                 <AppIcon name="plus" :size="16" />
@@ -550,6 +564,7 @@ function groupBusyCount(g: TableGroup): number {
                     <!-- Grup başlığı: alan + kat/şube alt başlık + doluluk özeti -->
                     <div class="flex items-center gap-3">
                         <BaseCheckbox
+                            v-if="canBulk"
                             :model-value="groupAllSelected(g)"
                             label=""
                             :aria-label="`${g.area} alanındaki tüm masaları seç`"
@@ -578,8 +593,9 @@ function groupBusyCount(g: TableGroup): number {
                                 t.is_active ? '' : 'opacity-60',
                             ]"
                         >
-                            <!-- Seçim (köşe, sade) -->
+                            <!-- Seçim (köşe, sade) — yalnız yönetim izni olana -->
                             <BaseCheckbox
+                                v-if="canBulk"
                                 class="absolute end-1.5 top-1.5 min-h-0 py-0"
                                 :model-value="selected.has(t.id)"
                                 label=""
@@ -662,11 +678,11 @@ function groupBusyCount(g: TableGroup): number {
                                             <AppIcon name="dots-vertical" :size="18" />
                                         </button>
                                     </template>
-                                    <DropdownItem icon="pencil" @click="openEdit(t)">Düzenle</DropdownItem>
+                                    <DropdownItem v-if="canUpdateTable" icon="pencil" @click="openEdit(t)">Düzenle</DropdownItem>
                                     <DropdownItem icon="qr-code" @click="downloadQr(t, 'png')">QR indir (PNG)</DropdownItem>
                                     <DropdownItem icon="qr-code" @click="downloadQr(t, 'svg')">QR indir (SVG)</DropdownItem>
-                                    <DropdownItem icon="alert-triangle" @click="rotatingRow = t">QR kodunu yenile</DropdownItem>
-                                    <DropdownItem icon="trash" danger @click="deletingRow = t">Masayı sil</DropdownItem>
+                                    <DropdownItem v-if="canUpdateTable" icon="alert-triangle" @click="rotatingRow = t">QR kodunu yenile</DropdownItem>
+                                    <DropdownItem v-if="canDeleteTable" icon="trash" danger @click="deletingRow = t">Masayı sil</DropdownItem>
                                 </BaseDropdown>
                             </div>
                         </article>
@@ -676,7 +692,8 @@ function groupBusyCount(g: TableGroup): number {
                 <!-- Sayfalama + tümünü seç -->
                 <BaseCard>
                     <div class="flex flex-wrap items-center justify-between gap-3">
-                        <BaseCheckbox :model-value="allSelected" label="Sayfadakilerin tümünü seç" @update:model-value="toggleAll" />
+                        <BaseCheckbox v-if="canBulk" :model-value="allSelected" label="Sayfadakilerin tümünü seç" @update:model-value="toggleAll" />
+                        <span v-else />
                         <BasePagination v-model:page="currentPage" :last-page="lastPage" :total="total" />
                     </div>
                 </BaseCard>

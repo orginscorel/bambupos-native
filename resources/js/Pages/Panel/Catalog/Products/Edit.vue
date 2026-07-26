@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { api, ApiError, type FieldErrors } from '@/lib/http';
 import { formatCurrencyMinor } from '@/lib/format';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
@@ -34,6 +35,15 @@ const { success, danger } = useToast();
 
 const isNew = computed(() => props.productId === null);
 const pageTitle = computed(() => (isNew.value ? 'Yeni Ürün' : 'Ürün Düzenle'));
+
+/* ---- İzinler (arayüz gizleme) ----
+ * catalog.create yoksa yeni ürün kaydedilemez, catalog.update yoksa mevcut
+ * ürün kaydedilemez, catalog.delete yoksa silinemez, catalog.change_price
+ * yoksa fiyat alanları salt-okunur. Gerçek koruma backend policy'de. */
+const { can } = usePermissions();
+const canSave = computed(() => (isNew.value ? can('catalog.create') : can('catalog.update')));
+const canDelete = computed(() => can('catalog.delete'));
+const canChangePrice = computed(() => can('catalog.change_price'));
 
 /* ---- Sözlükler ---- */
 const categories = ref<CategoryRow[]>([]);
@@ -398,11 +408,12 @@ const spicinessOptions = [
                 <BaseBadge v-if="!isNew && !form.is_active" variant="neutral">Pasif</BaseBadge>
                 <BaseBadge v-if="!isNew && !form.is_available" variant="danger">Tükendi</BaseBadge>
                 <div class="grow" />
-                <BaseButton v-if="!isNew" variant="danger" size="sm" @click="deleteOpen = true">
+                <BaseButton v-if="!isNew && canDelete" variant="danger" size="sm" @click="deleteOpen = true">
                     <AppIcon name="trash" :size="15" />
                     Sil
                 </BaseButton>
-                <BaseButton :loading="saving" @click="save">Kaydet</BaseButton>
+                <BaseButton v-if="canSave" :loading="saving" @click="save">Kaydet</BaseButton>
+                <span v-else class="text-xs text-subtle">Salt görüntüleme</span>
             </div>
 
             <div v-if="loading" class="flex flex-col gap-3 rounded-md border border-default bg-surface p-5">
@@ -460,27 +471,31 @@ const spicinessOptions = [
                     <!-- ============ Fiyat & Varyant ============ -->
                     <template #price>
                         <div class="flex flex-col gap-5">
+                            <p v-if="!canChangePrice" class="flex items-center gap-1.5 rounded-md bg-inset px-3 py-2 text-xs text-muted">
+                                <AppIcon name="info" :size="14" />
+                                Fiyat/KDV alanlarını değiştirme yetkiniz yok; yalnız görüntüleyebilirsiniz.
+                            </p>
                             <div class="grid gap-4 sm:grid-cols-3">
                                 <FormField label="Satış fiyatı" required :error="err('price_minor')">
-                                    <PriceInput v-model="form.price_minor" />
+                                    <PriceInput v-model="form.price_minor" :disabled="!canChangePrice" />
                                 </FormField>
                                 <FormField label="İndirimli fiyat" hint="Boşsa indirim yok" :error="err('discounted_price_minor')">
-                                    <PriceInput v-model="form.discounted_price_minor" />
+                                    <PriceInput v-model="form.discounted_price_minor" :disabled="!canChangePrice" />
                                 </FormField>
                                 <FormField label="KDV oranı (%)" :error="err('tax_rate')">
-                                    <BaseInput v-model="form.tax_rate" inputmode="decimal" placeholder="10" />
+                                    <BaseInput v-model="form.tax_rate" inputmode="decimal" placeholder="10" :disabled="!canChangePrice" />
                                 </FormField>
                                 <FormField label="Maliyet" hint="Kâr raporları için" :error="err('cost_minor')">
-                                    <PriceInput v-model="form.cost_minor" />
+                                    <PriceInput v-model="form.cost_minor" :disabled="!canChangePrice" />
                                 </FormField>
                                 <FormField label="Paket servis fiyatı" hint="Boşsa satış fiyatı geçerli" :error="err('package_price_minor')">
-                                    <PriceInput v-model="form.package_price_minor" />
+                                    <PriceInput v-model="form.package_price_minor" :disabled="!canChangePrice" />
                                 </FormField>
                                 <FormField label="Kiosk fiyatı" hint="Boşsa satış fiyatı geçerli" :error="err('kiosk_price_minor')">
-                                    <PriceInput v-model="form.kiosk_price_minor" />
+                                    <PriceInput v-model="form.kiosk_price_minor" :disabled="!canChangePrice" />
                                 </FormField>
                                 <FormField label="QR menü fiyatı" hint="Boşsa satış fiyatı geçerli" :error="err('qr_price_minor')">
-                                    <PriceInput v-model="form.qr_price_minor" />
+                                    <PriceInput v-model="form.qr_price_minor" :disabled="!canChangePrice" />
                                 </FormField>
                             </div>
 

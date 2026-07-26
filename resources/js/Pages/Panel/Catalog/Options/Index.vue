@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError, type FieldErrors } from '@/lib/http';
 import { formatCurrencyMinor } from '@/lib/format';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
@@ -20,6 +21,12 @@ import PriceInput from '../components/PriceInput.vue';
 import type { OptionGroupRow, OptionRow } from '../types';
 
 const { success, danger } = useToast();
+
+// Arayüz gizleme: catalog.* yönetim izni yoksa yalnız görüntüleme.
+const { can } = usePermissions();
+const canCreate = computed(() => can('catalog.create'));
+const canUpdate = computed(() => can('catalog.update'));
+const canDelete = computed(() => can('catalog.delete'));
 
 const loading = ref(true);
 const groups = ref<OptionGroupRow[]>([]);
@@ -177,7 +184,7 @@ async function destroyGroup(): Promise<void> {
                     Seçenek grupları ürünlere bağlanır: soslar, ekstra malzemeler, süt tercihi gibi.
                 </p>
                 <div class="grow" />
-                <BaseButton @click="openCreate">
+                <BaseButton v-if="canCreate" @click="openCreate">
                     <AppIcon name="plus" :size="16" />
                     Yeni Grup
                 </BaseButton>
@@ -193,7 +200,7 @@ async function destroyGroup(): Promise<void> {
                 title="Henüz seçenek grubu yok"
                 description="Ör. 'Soslar' veya 'Süt Tercihi' grubu oluşturup ürünlere bağlayın."
             >
-                <template #action>
+                <template v-if="canCreate" #action>
                     <BaseButton @click="openCreate">
                         <AppIcon name="plus" :size="16" />
                         Yeni Grup
@@ -222,11 +229,11 @@ async function destroyGroup(): Promise<void> {
                                 <BaseBadge v-if="!group.is_active" variant="neutral">Pasif</BaseBadge>
                             </div>
                         </div>
-                        <div class="flex gap-1">
-                            <BaseButton size="sm" variant="ghost" icon-only :label="`${group.name} düzenle`" @click="openEdit(group)">
+                        <div v-if="canUpdate || canDelete" class="flex gap-1">
+                            <BaseButton v-if="canUpdate" size="sm" variant="ghost" icon-only :label="`${group.name} düzenle`" @click="openEdit(group)">
                                 <AppIcon name="pencil" :size="15" />
                             </BaseButton>
-                            <BaseButton size="sm" variant="ghost" icon-only :label="`${group.name} sil`" @click="deleteTarget = group">
+                            <BaseButton v-if="canDelete" size="sm" variant="ghost" icon-only :label="`${group.name} sil`" @click="deleteTarget = group">
                                 <AppIcon name="trash" :size="15" />
                             </BaseButton>
                         </div>

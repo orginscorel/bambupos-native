@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Venue;
 
+use App\Modules\Identity\Models\Permission;
+use App\Modules\Identity\Models\Role;
+use App\Modules\Identity\Models\User;
 use App\Modules\Tables\Models\Table;
 use App\Modules\Venue\Models\Area;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,6 +30,34 @@ class TableManagementTest extends TestCase
         $this->seedPermissions();
         $this->a = $this->makeTenantWithUser();
         $this->b = $this->makeTenantWithUser();
+    }
+
+    public function test_yalnizca_goruntuleyen_garson_masa_olusturamaz_ve_toplu_yapamaz(): void
+    {
+        // Garson: tables.view + catalog.view (yönetim izni YOK) → 403.
+        $role = Role::factory()->create(['tenant_id' => $this->a['tenant']->id]);
+        $role->permissions()->sync(
+            Permission::query()->whereIn('key', ['tables.view', 'catalog.view'])->pluck('id')->all(),
+        );
+        $garson = User::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'branch_id' => $this->a['branch']->id,
+        ]);
+        $garson->roles()->sync([$role->id]);
+
+        $this->actingAs($garson);
+
+        // Listeyi görebilir (tables.view)
+        $this->getJson('/api/v1/venue/tables')->assertOk();
+
+        // Ama yeni masa / toplu oluşturma / silme 403 (arayüzde de gizli)
+        $this->postJson('/api/v1/venue/tables', [
+            'branch_id' => $this->a['branch']->id, 'name' => 'Gizli Masa',
+        ])->assertForbidden();
+
+        $this->postJson('/api/v1/venue/tables/bulk', [
+            'branch_id' => $this->a['branch']->id, 'name_prefix' => 'Teras', 'start' => 1, 'end' => 5,
+        ])->assertForbidden();
     }
 
     public function test_masa_olusturma_qr_token_uretir_ve_numara_otomatik_artar(): void

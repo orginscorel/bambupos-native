@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError, type FieldErrors } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
@@ -16,6 +17,12 @@ import ConfirmModal from '../components/ConfirmModal.vue';
 import type { AllergenRow } from '../types';
 
 const { success, danger } = useToast();
+
+// Arayüz gizleme: catalog.* yönetim izni yoksa yalnız görüntüleme.
+const { can } = usePermissions();
+const canCreate = computed(() => can('catalog.create'));
+const canUpdate = computed(() => can('catalog.update'));
+const canDelete = computed(() => can('catalog.delete'));
 
 const loading = ref(true);
 const allergens = ref<AllergenRow[]>([]);
@@ -134,7 +141,7 @@ async function destroyAllergen(): Promise<void> {
                     işletmenize özel kayıt ekleyebilirsiniz.
                 </p>
                 <div class="grow" />
-                <BaseButton @click="openCreate">
+                <BaseButton v-if="canCreate" @click="openCreate">
                     <AppIcon name="plus" :size="16" />
                     Özel Kayıt Ekle
                 </BaseButton>
@@ -169,11 +176,11 @@ async function destroyAllergen(): Promise<void> {
                                 <p class="text-xs text-muted">{{ a.description }}</p>
                                 <p class="mt-0.5 text-xs text-subtle">{{ a.products_count ?? 0 }} üründe işaretli</p>
                             </div>
-                            <div v-if="!a.is_global" class="flex shrink-0 gap-1">
-                                <BaseButton size="sm" variant="ghost" icon-only :label="`${a.name} düzenle`" @click="openEdit(a)">
+                            <div v-if="!a.is_global && (canUpdate || canDelete)" class="flex shrink-0 gap-1">
+                                <BaseButton v-if="canUpdate" size="sm" variant="ghost" icon-only :label="`${a.name} düzenle`" @click="openEdit(a)">
                                     <AppIcon name="pencil" :size="14" />
                                 </BaseButton>
-                                <BaseButton size="sm" variant="ghost" icon-only :label="`${a.name} sil`" @click="deleteTarget = a">
+                                <BaseButton v-if="canDelete" size="sm" variant="ghost" icon-only :label="`${a.name} sil`" @click="deleteTarget = a">
                                     <AppIcon name="trash" :size="14" />
                                 </BaseButton>
                             </div>

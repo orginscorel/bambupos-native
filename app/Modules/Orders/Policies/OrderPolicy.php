@@ -33,4 +33,13 @@ class OrderPolicy extends TenantOwnedPolicy
     {
         return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.comp');
     }
+
+    /**
+     * Masa/adisyon birleştirme AYRI izindir (orders.merge_tables): yalnız
+     * Garson (+ yönetim). Mutfak/Barista/Komi/Kasiyer birleştiremez.
+     */
+    public function mergeTables(User $user, Order $order): bool
+    {
+        return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.merge_tables');
+    }
 }

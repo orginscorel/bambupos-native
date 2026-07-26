@@ -12,7 +12,7 @@ return [
 
     'modules' => [
         'catalog' => ['view', 'create', 'update', 'delete', 'change_price'],
-        'orders' => ['view', 'create', 'update', 'delete', 'cancel', 'refund', 'discount', 'comp'],
+        'orders' => ['view', 'create', 'update', 'delete', 'cancel', 'refund', 'discount', 'comp', 'merge_tables'],
         'payments' => ['take', 'refund'],
         'cash' => ['view', 'close'],
         'tables' => ['view', 'create', 'update', 'delete'],
@@ -65,6 +65,7 @@ return [
         'view_sensitive' => 'Hassas notları gör',
         'transfer' => 'Borca taşı',
         'collect' => 'Tahsilat al',
+        'merge_tables' => 'Masa/adisyon birleştir',
     ],
 
     // Yetki matrisi başlıkları (UI)
@@ -139,7 +140,7 @@ return [
             'description' => 'Operasyonun tamamı + raporlar; personel yönetimi sınırlı (rol/yetki tanımlayamaz).',
             'permissions' => [
                 'catalog.view', 'catalog.create', 'catalog.update', 'catalog.delete', 'catalog.change_price',
-                'orders.view', 'orders.create', 'orders.update', 'orders.cancel', 'orders.discount', 'orders.comp',
+                'orders.view', 'orders.create', 'orders.update', 'orders.cancel', 'orders.discount', 'orders.comp', 'orders.merge_tables',
                 'payments.take', 'cash.view', 'cash.close',
                 'tables.view', 'tables.create', 'tables.update', 'tables.delete',
                 'reservations.view', 'reservations.create', 'reservations.update',
@@ -159,10 +160,10 @@ return [
         ],
         'garson' => [
             'name' => 'Garson',
-            'description' => 'Sipariş alır ve günceller; nedenli ikram ve indirim uygulayabilir. Kasa, rapor ve personel kapalı.',
+            'description' => 'Sipariş alır ve günceller; nedenli ikram ve indirim uygulayabilir; masa/adisyon birleştirebilir. Kasa, rapor ve personel kapalı.',
             'permissions' => [
                 'catalog.view',
-                'orders.view', 'orders.create', 'orders.update', 'orders.discount', 'orders.comp',
+                'orders.view', 'orders.create', 'orders.update', 'orders.discount', 'orders.comp', 'orders.merge_tables',
                 'tables.view',
                 'reservations.view', 'reservations.create', 'reservations.update',
                 'customers.view',

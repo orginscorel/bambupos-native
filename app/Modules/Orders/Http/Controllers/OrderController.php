@@ -484,6 +484,8 @@ class OrderController extends Controller
 
     public function merge(Request $request, Order $order): JsonResponse
     {
+        // Birleştirme AYRI izin (orders.merge_tables): yalnız Garson + yönetim.
+        $this->authorize('mergeTables', $order);
         $this->authorize('update', $order);
 
         $data = $request->validate([
@@ -497,6 +499,7 @@ class OrderController extends Controller
             throw ValidationException::withMessages(['source_order_id' => ['Kaynak adisyon bulunamadı.']]);
         }
 
+        $this->authorize('mergeTables', $source);
         $this->authorize('update', $source);
 
         $this->orders->merge($order, $source, $request->user(), $data['expected_version'] ?? null);

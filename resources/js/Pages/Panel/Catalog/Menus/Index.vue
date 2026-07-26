@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError, type FieldErrors } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseDrawer from '@/Components/ui/BaseDrawer.vue';
@@ -17,6 +18,12 @@ import ConfirmModal from '../components/ConfirmModal.vue';
 import { CHANNEL_LABELS, DAY_LABELS, toHm, type CategoryRow, type MenuRow } from '../types';
 
 const { success, danger } = useToast();
+
+// Arayüz gizleme: catalog.* yönetim izni yoksa yalnız görüntüleme.
+const { can } = usePermissions();
+const canCreate = computed(() => can('catalog.create'));
+const canUpdate = computed(() => can('catalog.update'));
+const canDelete = computed(() => can('catalog.delete'));
 
 const loading = ref(true);
 const menus = ref<MenuRow[]>([]);
@@ -179,7 +186,7 @@ async function destroyMenu(): Promise<void> {
                     kategorilerin görüneceğini planlayın.
                 </p>
                 <div class="grow" />
-                <BaseButton @click="openCreate">
+                <BaseButton v-if="canCreate" @click="openCreate">
                     <AppIcon name="plus" :size="16" />
                     Yeni Menü
                 </BaseButton>
@@ -195,7 +202,7 @@ async function destroyMenu(): Promise<void> {
                 title="Henüz menü planı yok"
                 description="Ör. 07:00–12:00 arası geçerli bir 'Kahvaltı Menüsü' oluşturun."
             >
-                <template #action>
+                <template v-if="canCreate" #action>
                     <BaseButton @click="openCreate">
                         <AppIcon name="plus" :size="16" />
                         Yeni Menü
@@ -217,11 +224,11 @@ async function destroyMenu(): Promise<void> {
                             </h3>
                             <p v-if="menu.description" class="text-xs text-muted">{{ menu.description }}</p>
                         </div>
-                        <div class="flex gap-1">
-                            <BaseButton size="sm" variant="ghost" icon-only :label="`${menu.name} düzenle`" @click="openEdit(menu)">
+                        <div v-if="canUpdate || canDelete" class="flex gap-1">
+                            <BaseButton v-if="canUpdate" size="sm" variant="ghost" icon-only :label="`${menu.name} düzenle`" @click="openEdit(menu)">
                                 <AppIcon name="pencil" :size="15" />
                             </BaseButton>
-                            <BaseButton size="sm" variant="ghost" icon-only :label="`${menu.name} sil`" @click="deleteTarget = menu">
+                            <BaseButton v-if="canDelete" size="sm" variant="ghost" icon-only :label="`${menu.name} sil`" @click="deleteTarget = menu">
                                 <AppIcon name="trash" :size="15" />
                             </BaseButton>
                         </div>

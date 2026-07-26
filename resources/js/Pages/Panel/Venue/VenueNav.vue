@@ -17,9 +17,20 @@ const permissions = computed<string[]>(() => {
 const items = computed(() => {
     const list = [
         { href: '/panel/masalar', label: 'Masalar', icon: 'dashboard', exact: true },
-        { href: '/panel/masalar/alanlar', label: 'Alanlar ve Katlar', icon: 'home', exact: false },
-        { href: '/panel/masalar/qr', label: 'QR Yönetimi', icon: 'qr-code', exact: false },
     ];
+
+    // Masa yönetimi (oluştur/düzenle/sil) izni olmayan (ör. görüntüleyen
+    // garson) yalnız "Masalar" listesini görür; Alan/Kat + QR yönetim
+    // sekmeleri gizlenir.
+    const canManageTables = ['tables.create', 'tables.update', 'tables.delete']
+        .some((k) => permissions.value.includes(k));
+
+    if (canManageTables) {
+        list.push(
+            { href: '/panel/masalar/alanlar', label: 'Alanlar ve Katlar', icon: 'home', exact: false },
+            { href: '/panel/masalar/qr', label: 'QR Yönetimi', icon: 'qr-code', exact: false },
+        );
+    }
 
     if (permissions.value.includes('branches.view')) {
         list.push({ href: '/panel/subeler', label: 'Şubeler', icon: 'store', exact: false });

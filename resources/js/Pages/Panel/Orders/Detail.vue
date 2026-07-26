@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import PanelShell from '@/Components/panel/PanelShell.vue';
 import StaffPinDialog from '@/Components/panel/StaffPinDialog.vue';
 import { useTerminalPin } from '@/composables/useTerminalPin';
@@ -47,6 +48,9 @@ const { success, danger } = useToast();
 
 // §13 Faz B: terminal (sipariş-giriş/kasa) oturumda hassas eylemler PIN ister.
 const { isTerminal, collectPin } = useTerminalPin();
+
+// Arayüz gizleme (izne göre): masa/adisyon birleştirme yalnız Garson + yönetim.
+const { can } = usePermissions();
 
 /* ================= Sipariş + polling ================= */
 const order = ref<OrderDetail | null>(null);
@@ -708,7 +712,7 @@ const eventTypeLabels: Record<string, string> = {
                                 </button>
                             </template>
                             <DropdownItem v-if="order.is_open" icon="arrow-right" @click="openMove()">Adisyonu taşı</DropdownItem>
-                            <DropdownItem v-if="order.is_open" icon="inbox" @click="openMerge">Birleştir</DropdownItem>
+                            <DropdownItem v-if="order.is_open && can('orders.merge_tables')" icon="inbox" @click="openMerge">Birleştir</DropdownItem>
                             <DropdownItem v-if="order.is_open" icon="chart" @click="openSplit">Böl</DropdownItem>
                             <DropdownItem v-if="order.is_open" icon="pencil" @click="openDiscount">İndirim uygula</DropdownItem>
                             <DropdownItem v-if="order.is_open && order.remaining_minor > 0" icon="inbox" @click="openDebtTransfer">

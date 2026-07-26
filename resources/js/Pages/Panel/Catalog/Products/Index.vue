@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { formatCurrencyMinor } from '@/lib/format';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
@@ -158,14 +159,17 @@ const drag = useDragSort(
 
 const thumb = (p: ProductRow): string | null => p.images?.[0]?.url ?? null;
 
-/* ---- Satır içi aç/kapa (Personel-Yetki: switch dili) ----
- * Satışta (is_active) ve Mevcut (is_available) doğrudan listeden
- * değiştirilir; catalog.update izni yoksa switch kilitli çizilir. */
-const pageProps = usePage();
-const canUpdate = computed<boolean>(() => {
-    const auth = (pageProps.props as Record<string, unknown>).auth as { permissions?: string[] } | undefined;
-    return auth?.permissions?.includes('catalog.update') ?? false;
-});
+/* ---- İzinler (arayüz gizleme) ----
+ * Garson/mutfak/komi/barista menüyü GÖRÜR (catalog.view) ama ürün
+ * ekleyemez/düzenleyemez/silemez. Butonlar izne göre gizlenir; gerçek
+ * koruma backend policy/authorize'da. Satır içi aç/kapa switch'i de
+ * catalog.update yoksa kilitli çizilir. */
+const { can } = usePermissions();
+const canCreate = computed<boolean>(() => can('catalog.create'));
+const canUpdate = computed<boolean>(() => can('catalog.update'));
+const canDelete = computed<boolean>(() => can('catalog.delete'));
+// Toplu seçim/işlem yalnız yönetim izni olana anlamlı.
+const canBulk = computed<boolean>(() => canUpdate.value || canDelete.value);
 
 const switchBusyId = ref(0);
 
@@ -207,7 +211,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                     <BaseSelect v-model="status" :options="statusOptions" />
                 </div>
                 <div class="grow" />
-                <BaseButton href="/panel/menu/urunler/yeni">
+                <BaseButton v-if="canCreate" href="/panel/menu/urunler/yeni">
                     <AppIcon name="plus" :size="16" />
                     Yeni Ürün
                 </BaseButton>
@@ -227,22 +231,24 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                 </span>
             </p>
 
-            <!-- Toplu işlem çubuğu -->
+            <!-- Toplu işlem çubuğu (yalnız yönetim izni olana) -->
             <div
-                v-if="selected.size > 0"
+                v-if="canBulk && selected.size > 0"
                 class="flex flex-wrap items-center gap-2 rounded-md border border-default bg-surface-alt px-3 py-2"
             >
                 <span class="text-sm font-medium text-body">{{ selected.size }} ürün seçili</span>
-                <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('activate')">Satışa al</BaseButton>
-                <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('deactivate')">Pasifleştir</BaseButton>
-                <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('set_unavailable')">Tükendi işaretle</BaseButton>
-                <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('set_available')">Mevcut işaretle</BaseButton>
-                <span class="inline-flex items-center gap-1">
-                    <BaseSelect v-model="bulkCategoryId" size="sm" :options="categoryOptions.slice(1)" placeholder="Kategoriye taşı…" />
-                    <BaseButton size="sm" variant="secondary" :disabled="bulkBusy || !bulkCategoryId" @click="bulk('set_category')">Taşı</BaseButton>
-                </span>
+                <template v-if="canUpdate">
+                    <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('activate')">Satışa al</BaseButton>
+                    <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('deactivate')">Pasifleştir</BaseButton>
+                    <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('set_unavailable')">Tükendi işaretle</BaseButton>
+                    <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulk('set_available')">Mevcut işaretle</BaseButton>
+                    <span class="inline-flex items-center gap-1">
+                        <BaseSelect v-model="bulkCategoryId" size="sm" :options="categoryOptions.slice(1)" placeholder="Kategoriye taşı…" />
+                        <BaseButton size="sm" variant="secondary" :disabled="bulkBusy || !bulkCategoryId" @click="bulk('set_category')">Taşı</BaseButton>
+                    </span>
+                </template>
                 <div class="grow" />
-                <BaseButton size="sm" variant="danger" :disabled="bulkBusy" @click="bulkDeleteOpen = true">Sil</BaseButton>
+                <BaseButton v-if="canDelete" size="sm" variant="danger" :disabled="bulkBusy" @click="bulkDeleteOpen = true">Sil</BaseButton>
             </div>
 
             <!-- Tablo -->
@@ -253,6 +259,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                         <tr class="border-b border-default bg-surface-alt">
                             <th scope="col" class="w-10 px-3 py-2.5">
                                 <input
+                                    v-if="canBulk"
                                     type="checkbox"
                                     :checked="allChecked"
                                     aria-label="Tümünü seç"
@@ -288,6 +295,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                         >
                             <td class="px-3 py-2.5">
                                 <input
+                                    v-if="canBulk"
                                     type="checkbox"
                                     :checked="selected.has(p.id)"
                                     :aria-label="`${p.name} seç`"
@@ -364,6 +372,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                             <td class="px-3 py-2.5">
                                 <span class="flex justify-end gap-1">
                                     <BaseButton
+                                        v-if="canUpdate"
                                         size="sm"
                                         variant="ghost"
                                         icon-only
@@ -373,6 +382,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                                         <AppIcon name="pencil" :size="15" />
                                     </BaseButton>
                                     <BaseButton
+                                        v-if="canDelete"
                                         size="sm"
                                         variant="ghost"
                                         icon-only
@@ -381,6 +391,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                                     >
                                         <AppIcon name="trash" :size="15" />
                                     </BaseButton>
+                                    <span v-if="!canUpdate && !canDelete" class="text-xs text-subtle">—</span>
                                 </span>
                             </td>
                         </tr>
@@ -393,7 +404,7 @@ async function toggleField(p: ProductRow, field: 'is_active' | 'is_available', v
                                     title="Ürün bulunamadı"
                                     :description="q || categoryId || status ? 'Filtrelerle eşleşen ürün yok.' : 'Menünüze ilk ürünü ekleyin.'"
                                 >
-                                    <template #action>
+                                    <template v-if="canCreate" #action>
                                         <BaseButton href="/panel/menu/urunler/yeni">
                                             <AppIcon name="plus" :size="16" />
                                             Yeni Ürün
