@@ -68,7 +68,15 @@ class LoginController extends Controller
 
         RateLimiter::clear($key);
 
+        // Personel Portalı KALICI oturum: portal host'undan yapılan girişte
+        // uzun ömürlü "beni hatırla" zorlanır (idle-timeout yok; oturum yalnız
+        // pasiflik/parola-değişiminde düşer). Panel host'unda davranış DEĞİŞMEZ.
         $remember = (bool) ($data['remember'] ?? false);
+
+        if (\App\Modules\Portal\Support\Portal::forcesRemember()
+            && \App\Modules\Portal\Support\Portal::isPortalHost($request)) {
+            $remember = true;
+        }
 
         if ($user->hasTwoFactorEnabled()) {
             $request->session()->put('auth.2fa.user_id', $user->getKey());

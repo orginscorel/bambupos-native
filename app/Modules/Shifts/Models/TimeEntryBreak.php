@@ -6,12 +6,16 @@ use App\Modules\Tenancy\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** Mola başlangıç/bitiş çifti. */
+/** Mola başlangıç/bitiş çifti (tür: normal mola / tuvalet molası). */
 class TimeEntryBreak extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['time_entry_id', 'started_at', 'ended_at'];
+    public const KIND_BREAK = 'break';
+
+    public const KIND_TOILET = 'toilet';
+
+    protected $fillable = ['time_entry_id', 'kind', 'started_at', 'ended_at'];
 
     protected function casts(): array
     {
@@ -19,6 +23,17 @@ class TimeEntryBreak extends Model
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
         ];
+    }
+
+    /** Tuvalet molası mı? (aksi hâlde normal mola) */
+    public function isToilet(): bool
+    {
+        return $this->kind === self::KIND_TOILET;
+    }
+
+    public function kindLabel(): string
+    {
+        return $this->isToilet() ? 'Tuvalet molası' : 'Mola';
     }
 
     public function minutes(): int

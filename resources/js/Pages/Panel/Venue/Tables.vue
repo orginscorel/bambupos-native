@@ -380,6 +380,13 @@ function downloadQr(row: TableRow, format: 'png' | 'svg'): void {
     window.location.href = `/api/v1/venue/tables/${row.id}/qr-image?format=${format}&download=1`;
 }
 
+/* QR ÖNİZLEME (indirmeden görüntüle): aynı uç `?download=1` OLMADAN inline
+   görsel döner; oturum çerezi same-origin gittiğinden <img> ile gösterilir. */
+const previewingQr = ref<TableRow | null>(null);
+const previewQrSrc = computed(() =>
+    previewingQr.value ? `/api/v1/venue/tables/${previewingQr.value.id}/qr-image?format=png` : '',
+);
+
 /* ================= Görünüm: dolu/boş + kat/alan grupları ================= */
 type StatusVariant = TableRow['status_variant'];
 
@@ -679,6 +686,7 @@ function groupBusyCount(g: TableGroup): number {
                                         </button>
                                     </template>
                                     <DropdownItem v-if="canUpdateTable" icon="pencil" @click="openEdit(t)">Düzenle</DropdownItem>
+                                    <DropdownItem icon="search" @click="previewingQr = t">QR önizle</DropdownItem>
                                     <DropdownItem icon="qr-code" @click="downloadQr(t, 'png')">QR indir (PNG)</DropdownItem>
                                     <DropdownItem icon="qr-code" @click="downloadQr(t, 'svg')">QR indir (SVG)</DropdownItem>
                                     <DropdownItem v-if="canUpdateTable" icon="alert-triangle" @click="rotatingRow = t">QR kodunu yenile</DropdownItem>
@@ -778,6 +786,33 @@ function groupBusyCount(g: TableGroup): number {
         </BaseDrawer>
 
         <!-- Onay pencereleri -->
+        <!-- QR önizleme: indirmeden görüntüle -->
+        <BaseModal :open="previewingQr !== null" :title="`QR önizleme — ${previewingQr?.name ?? ''}`" size="sm" @close="previewingQr = null">
+            <div class="flex flex-col items-center gap-3">
+                <img
+                    v-if="previewQrSrc"
+                    :src="previewQrSrc"
+                    :alt="`${previewingQr?.name} QR kodu`"
+                    class="h-56 w-56 rounded-lg border border-default bg-white p-2"
+                    loading="lazy"
+                />
+                <p class="text-center text-xs text-muted">
+                    Müşteri bu kodu okutunca masanın menüsü açılır. Yazdırmak için indirin.
+                </p>
+            </div>
+            <template #footer>
+                <BaseButton variant="secondary" @click="previewingQr = null">Kapat</BaseButton>
+                <BaseButton variant="ghost" @click="previewingQr && downloadQr(previewingQr, 'png')">
+                    <AppIcon name="qr-code" :size="15" />
+                    PNG indir
+                </BaseButton>
+                <BaseButton variant="ghost" @click="previewingQr && downloadQr(previewingQr, 'svg')">
+                    <AppIcon name="qr-code" :size="15" />
+                    SVG indir
+                </BaseButton>
+            </template>
+        </BaseModal>
+
         <BaseModal :open="rotatingRow !== null" title="QR kodunu yenile" size="sm" @close="rotatingRow = null">
             <p class="text-sm text-muted">
                 <strong>{{ rotatingRow?.name }}</strong> masasının QR kodu yenilenecek; masadaki basılı eski kod

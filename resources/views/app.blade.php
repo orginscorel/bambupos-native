@@ -25,6 +25,17 @@
                 }
             })();
         </script>
+        {{-- Personel Portalı (host-farkındalıklı): yalnız portal host'unda
+             kurulabilir PWA manifest + mobil meta. Panel host'unda HİÇ
+             render edilmez → panel head'i BYTE-AYNI kalır. --}}
+        @if (request()->getHost() === config('portal.host'))
+            <link rel="manifest" href="/portal.webmanifest" />
+            <meta name="theme-color" content="#f97316" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+            <meta name="apple-mobile-web-app-title" content="Personel" />
+        @endif
         @vite(['resources/css/app.css', 'resources/js/app.ts'])
         @inertiaHead
     </head>

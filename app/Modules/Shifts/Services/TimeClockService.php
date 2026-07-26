@@ -131,7 +131,12 @@ class TimeClockService
         });
     }
 
-    public function breakStart(User $user): TimeEntryBreak
+    /**
+     * Mola başlat. Tür: 'break' (normal) veya 'toilet' (tuvalet molası) —
+     * süre/hesap makinesi türden bağımsızdır (finalize yalnız toplam dakikayı
+     * kullanır), tür yalnız raporlama + bildirim içindir.
+     */
+    public function breakStart(User $user, string $kind = TimeEntryBreak::KIND_BREAK): TimeEntryBreak
     {
         $entry = $this->openEntryFor($user);
 
@@ -143,7 +148,9 @@ class TimeClockService
             throw ValidationException::withMessages(['action' => ['Zaten açık bir molanız var.']]);
         }
 
-        return $entry->breaks()->create(['started_at' => now()]);
+        $kind = $kind === TimeEntryBreak::KIND_TOILET ? TimeEntryBreak::KIND_TOILET : TimeEntryBreak::KIND_BREAK;
+
+        return $entry->breaks()->create(['kind' => $kind, 'started_at' => now()]);
     }
 
     public function breakEnd(User $user): TimeEntryBreak

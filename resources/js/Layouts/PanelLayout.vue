@@ -304,25 +304,12 @@ const isActive = (item: NavItem) =>
                 Terminal · {{ terminalStationLabel }}
             </span>
 
-            <!-- Şube değiştirici yeri (Tenancy modülü dolduracak) — terminalde gizli -->
+            <!-- Şube değiştirici yeri: PanelShell doldurur (yönetici + çok-şube +
+                 >1 şubede görünür). Tek şube / kilitli personel / terminalde HİÇ
+                 gösterilmez — fallback yer-tutucu YOK (aksi halde tek şubede
+                 "Şube listesi buraya gelecek" görünüyordu). -->
             <div v-if="!isTerminal" class="min-w-0">
-                <slot name="branch-switcher">
-                    <BaseDropdown align="left" menu-label="Şube seçimi">
-                        <template #trigger="{ toggle, ariaAttrs }">
-                            <button
-                                type="button"
-                                v-bind="ariaAttrs"
-                                class="flex h-10 max-w-52 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-body transition-colors duration-(--dur-fast) hover:bg-inset"
-                                @click="toggle"
-                            >
-                                <AppIcon name="store" :size="17" class="text-muted" />
-                                <span class="truncate">Şube</span>
-                                <AppIcon name="chevron-down" :size="14" class="text-subtle" />
-                            </button>
-                        </template>
-                        <DropdownItem icon="store">Şube listesi buraya gelecek</DropdownItem>
-                    </BaseDropdown>
-                </slot>
+                <slot name="branch-switcher" />
             </div>
 
             <h1 v-if="title" class="hidden truncate text-sm font-semibold text-body sm:block">{{ title }}</h1>

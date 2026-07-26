@@ -91,10 +91,19 @@ return Application::configure(basePath: dirname(__DIR__))
             // abonelik + kişi-bazlı bildirim tercihleri. Middleware dosyanın
             // içinde (web + auth + tenant); public uç yoktur.
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/notify.php');
+
+            // Personel Portalı (Faz 1): host-farkındalıklı mobil self-servis
+            // (mesai/mola/profil/rapor). Rotalar dosyanın içinde config('portal.host')
+            // alan adına bağlıdır (Route::domain) → yalnız portal host'unda
+            // eşleşir; panel + qrmenu.* host DAVRANIŞI DEĞİŞMEZ.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/portal.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            // Portal host'unda kök (`/`) isteğini portal ana ekranına (/mesaim)
+            // taşır; panel host + diğer yollar için no-op (host-farkındalık).
+            \App\Modules\Portal\Http\Middleware\HandlePortalHost::class,
             // Pasife alınan personelin AÇIK oturumu da düşer (Personel-Yetki).
             \App\Modules\Identity\Http\Middleware\EnsureUserIsActive::class,
             // §13 Terminal kilitli mod: is_terminal kullanıcı yalnız kendi

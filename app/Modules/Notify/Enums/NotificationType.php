@@ -45,6 +45,9 @@ enum NotificationType: string
     /** Masadan servis çağrısı (garson çağır / su / hesap) → o şubenin garsonları + yönetici. */
     case ServiceCall = 'service_call';
 
+    /** Personel mola/tuvalet başlattı ya da bitirdi → yönetici + o an mesaide olanlar. */
+    case StaffBreak = 'staff_break';
+
     public function label(): string
     {
         return match ($this) {
@@ -56,6 +59,7 @@ enum NotificationType: string
             self::ReservationUpcoming => 'Yaklaşan rezervasyon',
             self::ReservationNoShow => 'Rezervasyon gelmedi (no-show)',
             self::ServiceCall => 'Servis çağrısı',
+            self::StaffBreak => 'Personel molası',
         };
     }
 
@@ -71,6 +75,7 @@ enum NotificationType: string
             self::ReservationUpcoming => 'Onaylı bir rezervasyonun saati yaklaştığında.',
             self::ReservationNoShow => 'Rezervasyon sahibi gelmediğinde.',
             self::ServiceCall => 'Bir masa QR menüden garson/su/hesap çağırdığında.',
+            self::StaffBreak => 'Bir personel molaya/tuvalete çıktığında veya döndüğünde.',
         };
     }
 
@@ -83,6 +88,7 @@ enum NotificationType: string
             self::LowStock => 'stock',
             self::ReservationUpcoming, self::ReservationNoShow => 'reservations',
             self::ServiceCall => 'service',
+            self::StaffBreak => 'staff',
         };
     }
 
@@ -94,6 +100,7 @@ enum NotificationType: string
             'stock' => 'Stok',
             'reservations' => 'Rezervasyonlar',
             'service' => 'Servis çağrıları',
+            'staff' => 'Personel',
             default => $category,
         };
     }
@@ -124,6 +131,10 @@ enum NotificationType: string
             // Garson = masaya bakan personel (sipariş açıp güncelleyen). Kasiyer
             // (yalnız orders.view) çağrı almaz; yönetici includeManagers ile dahil.
             self::ServiceCall => ['orders.create'],
+            // Personel molası izne göre HEDEFLENMEZ: alıcılar yönetici
+            // (includeManagers) + o an mesaide olan diğer personel (emitter'ın
+            // extra_user_ids'i ile) → hangi izne sahip olduklarından bağımsız.
+            self::StaffBreak => [],
         };
     }
 
@@ -155,6 +166,7 @@ enum NotificationType: string
             self::LowStock => 'package',
             self::ReservationUpcoming, self::ReservationNoShow => 'calendar',
             self::ServiceCall => 'bell',
+            self::StaffBreak => 'clock',
         };
     }
 

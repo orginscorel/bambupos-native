@@ -33,7 +33,7 @@ class NotificationDispatcher
      * @param  array{
      *   tenant_id:int, branch_id?:int|null, title:string, body?:?string,
      *   data?:array<string,mixed>, dedup_key?:?string, lane?:?string,
-     *   extra_user_ids?:array<int,int>
+     *   extra_user_ids?:array<int,int>, exclude_user_ids?:array<int,int>
      * }  $context
      * @return int  yazılan (in-app) bildirim sayısı
      */
@@ -72,6 +72,15 @@ class NotificationDispatcher
             'lane' => $context['lane'] ?? null,
             'extra_user_ids' => $context['extra_user_ids'] ?? [],
         ]);
+
+        // Olay sahibini (ör. molaya çıkan personelin kendisi) alıcı havuzundan
+        // çıkar — includeManagers ile geri sızabileceğinden burada kesin süzülür.
+        $excludeIds = array_map('intval', (array) ($context['exclude_user_ids'] ?? []));
+        if ($excludeIds !== []) {
+            $recipients = $recipients->reject(
+                fn ($user) => in_array((int) $user->getKey(), $excludeIds, true)
+            )->values();
+        }
 
         if ($recipients->isEmpty()) {
             return 0;

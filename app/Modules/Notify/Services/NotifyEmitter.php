@@ -2,6 +2,7 @@
 
 namespace App\Modules\Notify\Services;
 
+use App\Modules\Identity\Models\User;
 use App\Modules\Inventory\Models\StockLevel;
 use App\Modules\Kds\Models\ItemPickup;
 use App\Modules\Kds\Services\StationRegistry;
@@ -9,6 +10,8 @@ use App\Modules\Notify\Enums\NotificationType;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\OrderItem;
 use App\Modules\Reservations\Models\Reservation;
+use App\Modules\Shifts\Models\TimeEntry;
+use App\Modules\Shifts\Models\TimeEntryBreak;
 
 /**
  * §8 Domain → Bildirim köprüsü. Model olay dinleyicileri (NotifyServiceProvider)
@@ -220,6 +223,67 @@ class NotifyEmitter
             ]);
         } catch (\Throwable) {
             // yut — public servis-çağrı akışı bozulmaz
+        }
+    }
+
+    /**
+     * Personel molası/tuvalet molası başladı/bitti → YÖNETİCİ + o an mesaide
+     * olan DİĞER personel (kendisi hariç). Şube-izole (BranchContext yerine
+     * olay verisinden: personelin şubesi). "Mesaide" = açık time_entry.
+     *
+     * @param  'start'|'end'  $action
+     */
+    public function staffBreak(User $user, TimeEntryBreak $break, string $action): void
+    {
+        try {
+            if ($user->tenant_id === null) {
+                return;
+            }
+
+            $tenantId = (int) $user->tenant_id;
+            $branchId = $user->branch_id !== null ? (int) $user->branch_id : null;
+            $isToilet = $break->isToilet();
+            $name = $user->name ?: 'Bir personel';
+
+            $verb = match (true) {
+                $action === 'start' && $isToilet => 'tuvalete çıktı',
+                $action === 'start' => 'molaya çıktı',
+                $isToilet => 'tuvaletten döndü',
+                default => 'moladan döndü',
+            };
+
+            // O an mesaide olan (açık kaydı bulunan) DİĞER personel — aynı şube.
+            $onShiftIds = TimeEntry::query()
+                ->where('tenant_id', $tenantId)
+                ->where('status', TimeEntry::STATUS_OPEN)
+                ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->reject(fn (int $id) => $id === (int) $user->getKey())
+                ->values()
+                ->all();
+
+            $this->dispatcher->notify(NotificationType::StaffBreak, [
+                'tenant_id' => $tenantId,
+                'branch_id' => $branchId,
+                'title' => 'Personel molası',
+                'body' => $name.' '.$verb,
+                'data' => [
+                    'user_id' => (int) $user->getKey(),
+                    'kind' => $break->kind,
+                    'action' => $action,
+                    'url' => '/panel/mesai',
+                ],
+                // Yönetici includeManagers ile; mesaidekiler extra_user_ids ile.
+                'extra_user_ids' => $onShiftIds,
+                // Olayın sahibi (molaya çıkan) kendine bildirim ALMAZ.
+                'exclude_user_ids' => [(int) $user->getKey()],
+                // Aynı personel+eylem kısa pencerede tek bildirim (çift-tık koruması).
+                'dedup_key' => 'staff_break:'.$user->getKey().':'.$break->kind.':'.$action,
+            ]);
+        } catch (\Throwable) {
+            // yut — mesai/mola akışı bozulmaz
         }
     }
 
