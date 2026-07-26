@@ -12,6 +12,7 @@ use App\Modules\Payments\Models\Payment;
 use App\Modules\Payments\Providers\ProviderRegistry;
 use App\Modules\Payments\Services\PaymentService;
 use App\Modules\Payments\Support\PaymentPresenter;
+use App\Modules\Terminal\Services\TerminalPinGate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,10 @@ use Illuminate\Validation\Rule;
 /**
  * Kasiyer ödeme API'si. Tüm sorgular tenant-scope'lu; mutasyonlar
  * PaymentService'te (transaction + kilit + sürüm + idempotency).
+ *
+ * §13 Faz B: is_terminal (kasa) oturumda para eylemleri (ödeme al / void /
+ * iade) PIN ister → eylem PIN sahibi personele atfedilir (TerminalPinGate).
+ * Normal oturumda PIN İSTENMEZ (policy + oturum kullanıcısı — mevcut davranış).
  */
 class PaymentController extends Controller
 {
@@ -26,6 +31,7 @@ class PaymentController extends Controller
         private readonly PaymentService $payments,
         private readonly IdempotencyStore $idempotency,
         private readonly ProviderRegistry $providers,
+        private readonly TerminalPinGate $pinGate,
     ) {
     }
 
@@ -83,10 +89,12 @@ class PaymentController extends Controller
     /** Ödeme al (anında ya da terminal başlatma). Idempotency-Key desteklenir. */
     public function store(Request $request, Order $order): JsonResponse
     {
-        $this->authorize('take', Payment::class);
+        // Terminal (kasa) oturumda: PIN → personel; normal oturumda: policy.
+        $actor = $this->pinGate->actor($request, 'payments.take', 'payment.take',
+            fn () => $this->authorize('take', Payment::class));
 
         // Kiracı eşitliği (katman 2 — scope'tan bağımsız yeniden doğrulama).
-        abort_unless((int) $order->tenant_id === (int) $request->user()->tenant_id, 404);
+        abort_unless((int) $order->tenant_id === (int) $actor->tenant_id, 404);
 
         $data = $request->validate([
             'method' => ['required', Rule::enum(PaymentMethod::class)],
@@ -105,8 +113,8 @@ class PaymentController extends Controller
             (int) $order->tenant_id,
             $request->header('Idempotency-Key'),
             'payments.store',
-            function () use ($order, $data, $request): array {
-                $result = $this->payments->pay($order, $data, $request->user(), $data['expected_version'] ?? null);
+            function () use ($order, $data, $actor): array {
+                $result = $this->payments->pay($order, $data, $actor, $data['expected_version'] ?? null);
 
                 return [[
                     'payment' => PaymentPresenter::payment($result['payment']),
@@ -142,14 +150,17 @@ class PaymentController extends Controller
     /** Ödeme iptali (void) — ayrı izin (payments.refund). */
     public function void(Request $request, Payment $payment): JsonResponse
     {
-        $this->authorize('void', $payment);
+        $actor = $this->pinGate->actor($request, 'payments.refund', 'payment.void',
+            fn () => $this->authorize('void', $payment));
+
+        abort_unless((int) $payment->tenant_id === (int) $actor->tenant_id, 404);
 
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:255'],
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $voided = $this->payments->void($payment, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        $voided = $this->payments->void($payment, $data['reason'], $actor, $data['expected_version'] ?? null);
 
         return response()->json([
             'payment' => PaymentPresenter::payment($voided),
@@ -160,7 +171,10 @@ class PaymentController extends Controller
     /** Kısmi/tam iade — ayrı izin (payments.refund). */
     public function refund(Request $request, Payment $payment): JsonResponse
     {
-        $this->authorize('refund', $payment);
+        $actor = $this->pinGate->actor($request, 'payments.refund', 'payment.refund',
+            fn () => $this->authorize('refund', $payment));
+
+        abort_unless((int) $payment->tenant_id === (int) $actor->tenant_id, 404);
 
         $data = $request->validate([
             'amount_minor' => ['required', 'integer', 'min:1'],
@@ -168,7 +182,7 @@ class PaymentController extends Controller
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $refund = $this->payments->refund($payment, (int) $data['amount_minor'], $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        $refund = $this->payments->refund($payment, (int) $data['amount_minor'], $data['reason'], $actor, $data['expected_version'] ?? null);
 
         return response()->json([
             'refund' => PaymentPresenter::payment($refund),

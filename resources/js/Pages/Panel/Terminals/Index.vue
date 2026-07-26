@@ -23,7 +23,7 @@ import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
 
-type Station = 'kitchen' | 'barista' | 'komi';
+type Station = 'kitchen' | 'barista' | 'komi' | 'kasa' | 'order_entry';
 
 interface DeviceDto {
     id: number;
@@ -240,10 +240,12 @@ async function deleteConfirmed(): Promise<void> {
 
             <div class="flex items-center justify-between gap-3">
                 <p class="text-sm text-muted">
-                    Mutfak / Barista / Komi için cihaza-bağlı, tam-ekran, KİLİTLİ terminaller.
-                    Her cihaz yalnız kendi istasyon ekranını gösterir (personel tüm paneli görmez)
-                    ve yalnız kendi adresiyle (opak token) çalışır; token yenilenince eski adres
-                    anında geçersiz olur.
+                    Mutfak / Barista / Komi (mutfak ekranları, para görmez) ve Kasa / Sipariş Girişi
+                    (para görebilir) için cihaza-bağlı, tam-ekran, KİLİTLİ terminaller. Her cihaz
+                    yalnız kendi istasyon ekranını gösterir (personel tüm paneli görmez) ve yalnız
+                    kendi adresiyle (opak token) çalışır; token yenilenince eski adres anında
+                    geçersiz olur. Kasa/Sipariş terminalinde hassas işlemler (ödeme, iptal, iade,
+                    ikram) personel PIN'i ister ve o kişiye kaydedilir.
                 </p>
                 <BaseButton @click="openCreate">
                     <AppIcon name="plus" :size="16" />
@@ -323,7 +325,7 @@ async function deleteConfirmed(): Promise<void> {
                 <FormField
                     label="İstasyon"
                     :error="formErrors.station"
-                    hint="Cihaz yalnız bu istasyon ekranına kilitlenir: Mutfak/Barista hazırlık kuyruğunu, Komi tüm hazır kalemleri görür. Hiçbiri fiyat/ciro görmez."
+                    hint="Cihaz yalnız bu istasyon ekranına kilitlenir. Mutfak/Barista hazırlık kuyruğunu, Komi hazır kalemleri görür (para görmez). Kasa ödeme ekranını, Sipariş Girişi adisyonları açar (para görebilir; hassas işlemler personel PIN'i ister)."
                 >
                     <BaseSelect v-model="form.station" :options="stationOptions" />
                 </FormField>

@@ -4,6 +4,8 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
 import PanelShell from '@/Components/panel/PanelShell.vue';
+import StaffPinDialog from '@/Components/panel/StaffPinDialog.vue';
+import { useTerminalPin } from '@/composables/useTerminalPin';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
@@ -42,6 +44,9 @@ const page = usePage();
 const meta = metaFromProps(page.props as Record<string, unknown>);
 const orderId = Number((page.props as Record<string, unknown>).orderId);
 const { success, danger } = useToast();
+
+// §13 Faz B: terminal (sipariş-giriş/kasa) oturumda hassas eylemler PIN ister.
+const { isTerminal, collectPin } = useTerminalPin();
 
 /* ================= Sipariş + polling ================= */
 const order = ref<OrderDetail | null>(null);
@@ -258,8 +263,27 @@ async function submitReason(): Promise<void> {
         danger('Neden zorunlu', 'En az 3 karakterlik bir neden girin.');
         return;
     }
+    const reason = reasonText.value.trim();
     const v = order.value?.version;
-    const body = { reason: reasonText.value.trim(), expected_version: v };
+
+    // §13 Faz B: terminal oturumda PIN gerekir (iptal/ikram/iade → personele
+    // atfedilir). Neden modalı üstüne PIN modalı binmesin diye geçici kapat;
+    // iptal/başarısızlıkta geri aç (neden kaybolmasın).
+    let pinFields: Record<string, unknown> = {};
+    if (isTerminal.value) {
+        reasonModal.value = null;
+        anyModalOpen.value = false;
+        const collected = await collectPin();
+        if (collected === null) {
+            reasonModal.value = ctx;
+            reasonText.value = reason;
+            anyModalOpen.value = true;
+            return;
+        }
+        pinFields = collected;
+    }
+
+    const body = { reason, expected_version: v, ...pinFields };
     const ok =
         ctx.kind === 'item_cancel' ? await runOp(`/api/v1/orders/${orderId}/items/${ctx.item!.id}/cancel`, body, 'Kalem iptal edildi')
         : ctx.kind === 'item_comp' ? await runOp(`/api/v1/orders/${orderId}/items/${ctx.item!.id}/comp`, body, 'İkram edildi')
@@ -268,6 +292,11 @@ async function submitReason(): Promise<void> {
     if (ok) {
         reasonModal.value = null;
         anyModalOpen.value = false;
+    } else if (isTerminal.value) {
+        // PIN reddi vb. → neden modalını geri aç, tekrar denensin.
+        reasonModal.value = ctx;
+        reasonText.value = reason;
+        anyModalOpen.value = true;
     }
 }
 
@@ -304,14 +333,33 @@ async function submitPay(): Promise<void> {
         danger('Tutar geçersiz', 'Pozitif bir tutar girin.');
         return;
     }
+
+    // §13 Faz B: terminal oturumda ödeme alma PIN ister (işlem PIN sahibine).
+    let pinFields: Record<string, unknown> = {};
+    if (isTerminal.value) {
+        payModal.value = false;
+        anyModalOpen.value = false;
+        const collected = await collectPin();
+        if (collected === null) {
+            payModal.value = true;
+            anyModalOpen.value = true;
+            return;
+        }
+        pinFields = collected;
+    }
+
     const ok = await runOp(`/api/v1/orders/${orderId}/pay`, {
         amount_minor: amount,
         method: payMethod.value,
         expected_version: order.value?.version,
+        ...pinFields,
     }, 'Ödeme kaydedildi');
     if (ok) {
         payModal.value = false;
         anyModalOpen.value = false;
+    } else if (isTerminal.value) {
+        payModal.value = true;
+        anyModalOpen.value = true;
     }
 }
 
@@ -1099,5 +1147,8 @@ const eventTypeLabels: Record<string, string> = {
                 <BaseButton :loading="opBusy" :disabled="splitMode === 'items' && splitItems.size === 0" @click="submitSplit">Böl</BaseButton>
             </template>
         </BaseModal>
+
+        <!-- §13 Faz B: terminal (sipariş-giriş/kasa) hassas eylem PIN modalı -->
+        <StaffPinDialog />
     </PanelShell>
 </template>

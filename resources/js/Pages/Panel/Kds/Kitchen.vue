@@ -13,7 +13,9 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
 import KdsItemImage from './KdsItemImage.vue';
 import KdsNavDrawer from './KdsNavDrawer.vue';
+import KdsTicket from './KdsTicket.vue';
 import StationManager from './StationManager.vue';
+import { useReceiptPrint, formatReceiptTime, type ReceiptData } from './useReceiptPrint';
 import {
     createKdsSound,
     createPollingFeed,
@@ -55,9 +57,12 @@ const { success, danger, warning } = useToast();
 const auth = page.props.auth as {
     branches?: { id: number; name: string }[];
     activeBranchId?: number | null;
+    tenant?: { name?: string } | null;
 } | null;
 const branches = auth?.branches ?? [];
 const branchId = ref<number>(auth?.activeBranchId ?? branches[0]?.id ?? 0);
+const businessName = auth?.tenant?.name ?? '';
+const branchName = computed(() => branches.find((b) => b.id === branchId.value)?.name ?? '');
 
 /* ---- İstasyon süzgeci ---- */
 const initialStation = (page.props.initialStation as string) || '';
@@ -99,6 +104,110 @@ let feed: KdsFeed | null = null;
 const sound = createKdsSound('kds_kitchen_sound');
 const soundOn = ref(sound.enabled());
 
+/* ---- İstasyon fişi (§13 FAZ C-1: oto-yazdır + önizleme, PARA GÖRMEZ) ----
+ * Fiş bu ekranın KENDİ kulvarına/istasyonuna ait kalemleri taşır (backend
+ * kuyruğu zaten §12 kalem-düzeyinde süzer — card.items yalnız bu ekranın
+ * kalemleridir). Fiyat/tutar YOKTUR. */
+const receipt = useReceiptPrint();
+
+// Fişin büyük yönlendirme etiketi: seçili istasyon adı, yoksa kulvar
+// (Barista / Mutfak). "Tümü" görünümünde kulvar adı kullanılır.
+const ticketStationLabel = computed(() => {
+    if (station.value) {
+        return meta.stations.find((x) => x.key === station.value)?.name ?? station.value;
+    }
+    return lane === 'barista' ? 'Barista' : 'Mutfak';
+});
+
+function buildCardTicket(card: KdsOrderCard): ReceiptData {
+    return {
+        business: businessName,
+        branch: branchName.value,
+        station: ticketStationLabel.value,
+        orderNo: card.id,
+        destination: card.table_name ?? card.customer_name ?? `Sipariş #${card.id}`,
+        serviceType: card.service_type_label ?? card.channel_label,
+        areaWaiter: [card.area_name, card.waiter].filter(Boolean).join(' · ') || null,
+        time: formatReceiptTime(card.placed_at),
+        note: card.note,
+        lines: card.items.map((i) => ({
+            qty: i.qty,
+            name: i.name,
+            variant: i.variant_name,
+            options: i.options,
+            note: i.note,
+        })),
+        kind: 'station',
+    };
+}
+
+/* ---- Oto-fiş: yeni sipariş kuyruğa girince BİR KEZ otomatik yazdır ----
+ * Aç/kapa localStorage 'bhx-kds-autoprint' (varsayılan AÇIK). Yinelenmeyi
+ * engellemek için yazdırılan (kulvar+sipariş) anahtarları 'bhx-kds-printed'
+ * localStorage'ında tutulur. */
+const AUTOPRINT_KEY = 'bhx-kds-autoprint';
+const PRINTED_KEY = 'bhx-kds-printed';
+const autoPrint = ref(readAutoPrint());
+
+function readAutoPrint(): boolean {
+    try {
+        return localStorage.getItem(AUTOPRINT_KEY) !== 'off';
+    } catch {
+        return true;
+    }
+}
+function toggleAutoPrint(): void {
+    autoPrint.value = !autoPrint.value;
+    try {
+        localStorage.setItem(AUTOPRINT_KEY, autoPrint.value ? 'on' : 'off');
+    } catch {
+        /* gizli mod — bu oturumda hatırlanmaz */
+    }
+}
+
+function loadPrinted(): Set<string> {
+    try {
+        return new Set(JSON.parse(localStorage.getItem(PRINTED_KEY) ?? '[]') as string[]);
+    } catch {
+        return new Set();
+    }
+}
+const printedSet = loadPrinted();
+function printedKey(orderId: number): string {
+    // Ekran kulvarı + sipariş: aynı kulvarda çip değişse de yeniden basmaz.
+    return `${lane || 'kitchen'}:${branchId.value}:${orderId}`;
+}
+function savePrinted(): void {
+    try {
+        // sınırsız büyümeyi engelle — son ~800 kayıt yeter.
+        localStorage.setItem(PRINTED_KEY, JSON.stringify(Array.from(printedSet).slice(-800)));
+    } catch {
+        /* yok say */
+    }
+}
+
+/** Yeni gelen siparişleri (bir kez) otomatik yazdırır. */
+function autoPrintFresh(fresh: Set<number>): void {
+    if (!autoPrint.value || fresh.size === 0) return;
+    let changed = false;
+    for (const o of orders.value) {
+        if (!fresh.has(o.id) || o.items.length === 0) continue;
+        const key = printedKey(o.id);
+        if (printedSet.has(key)) continue;
+        printedSet.add(key);
+        changed = true;
+        receipt.print(buildCardTicket(o));
+    }
+    if (changed) savePrinted();
+}
+
+/* ---- Fiş önizleme (manuel) ---- */
+const previewCard = ref<KdsOrderCard | null>(null);
+const previewData = computed(() => (previewCard.value ? buildCardTicket(previewCard.value) : null));
+function printPreview(): void {
+    if (previewData.value) receipt.print(previewData.value);
+}
+
 function queueUrl(): string {
     const p = new URLSearchParams({ mode: 'kitchen', branch_id: String(branchId.value) });
     if (station.value) p.set('station', station.value);
@@ -130,6 +239,9 @@ function applyPayload(payload: KitchenPayload, silent = false): void {
         newOrderIds.value = fresh;
         sound.beep(2);
         setTimeout(() => (newOrderIds.value = new Set()), 12000);
+        // Oto-fiş: yeni sipariş bu istasyona düşünce bir kez otomatik yazdır.
+        // (İlk tam yüklemede silent=true → toplu yazdırma OLMAZ.)
+        autoPrintFresh(fresh);
     }
 }
 
@@ -425,6 +537,17 @@ const pageTitle = computed(() => {
                     variant="ghost"
                     size="lg"
                     icon-only
+                    :label="autoPrint ? 'Oto-fiş: açık (yeni sipariş otomatik yazdırılır)' : 'Oto-fiş: kapalı'"
+                    :class="autoPrint ? 'text-primary' : 'text-subtle'"
+                    @click="toggleAutoPrint"
+                >
+                    <KdsIcon name="printer" :size="20" />
+                </BaseButton>
+
+                <BaseButton
+                    variant="ghost"
+                    size="lg"
+                    icon-only
                     :label="soundOn ? 'Yeni sipariş sesi: açık' : 'Yeni sipariş sesi: kapalı'"
                     :class="soundOn ? '' : 'text-subtle'"
                     @click="toggleSound"
@@ -516,13 +639,24 @@ const pageTitle = computed(() => {
                                 {{ card.channel_label }}<template v-if="card.area_name"> · {{ card.area_name }}</template><template v-if="card.waiter"> · {{ card.waiter }}</template>
                             </p>
                         </div>
-                        <span
-                            class="inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-lg font-semibold tabular-nums"
-                            :class="waitChipClass(cardSla(card))"
-                            title="Sipariş verileli geçen süre"
-                        >
-                            {{ slaText(waitMinutes(card.placed_at)) }}<template v-if="cardSla(card) === 'late'">&nbsp;· gecikti</template>
-                        </span>
+                        <div class="flex shrink-0 flex-col items-end gap-1.5">
+                            <span
+                                class="inline-flex items-center rounded-md border px-3 py-1.5 text-lg font-semibold tabular-nums"
+                                :class="waitChipClass(cardSla(card))"
+                                title="Sipariş verileli geçen süre"
+                            >
+                                {{ slaText(waitMinutes(card.placed_at)) }}<template v-if="cardSla(card) === 'late'">&nbsp;· gecikti</template>
+                            </span>
+                            <BaseButton
+                                variant="ghost"
+                                size="sm"
+                                icon-only
+                                label="Fiş önizle ve yazdır"
+                                @click="previewCard = card"
+                            >
+                                <KdsIcon name="printer" :size="16" />
+                            </BaseButton>
+                        </div>
                     </div>
 
                     <!-- Sipariş notu -->
@@ -649,6 +783,18 @@ const pageTitle = computed(() => {
         <template #footer>
             <BaseButton variant="secondary" @click="transferTarget = null">Vazgeç</BaseButton>
             <BaseButton :disabled="!transferStation || busy" @click="doTransfer">Transfer et</BaseButton>
+        </template>
+    </BaseModal>
+
+    <!-- ================= Fiş önizleme + yazdır ================= -->
+    <BaseModal :open="previewCard !== null" title="İstasyon fişi önizleme" size="sm" @close="previewCard = null">
+        <KdsTicket v-if="previewData" :data="previewData" />
+        <template #footer>
+            <BaseButton variant="secondary" @click="previewCard = null">Kapat</BaseButton>
+            <BaseButton @click="printPreview">
+                <KdsIcon name="printer" :size="16" />
+                Yazdır
+            </BaseButton>
         </template>
     </BaseModal>
 

@@ -42,12 +42,22 @@ class EnsureTerminalLocked
         }
 
         $screen = TerminalStation::screenFor($user->terminal_station);
+        $screenPath = ltrim($screen, '/');
+        $path = $request->path();
 
-        // Zaten kendi ekranındaysa geç; değilse kendi ekranına yönlendir.
-        if ($request->path() === ltrim($screen, '/')) {
+        // Zaten kendi ekranındaysa geç.
+        if ($path === $screenPath) {
             return $next($request);
         }
 
+        // Sipariş-giriş terminali adisyon detayına gidebilmeli
+        // (/panel/siparisler/{id}); KDS/kasa ekranları TEK sayfadır.
+        if (TerminalStation::allowsSubpaths($user->terminal_station)
+            && str_starts_with($path, $screenPath.'/')) {
+            return $next($request);
+        }
+
+        // Aksi: kendi ekranına yönlendir.
         return redirect()->to($screen);
     }
 }

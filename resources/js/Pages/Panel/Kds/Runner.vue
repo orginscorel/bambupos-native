@@ -11,6 +11,9 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
 import KdsItemImage from './KdsItemImage.vue';
 import KdsNavDrawer from './KdsNavDrawer.vue';
+import KdsTicket from './KdsTicket.vue';
+import BaseModal from '@/Components/ui/BaseModal.vue';
+import { useReceiptPrint, formatReceiptTime, type ReceiptData } from './useReceiptPrint';
 import {
     createKdsSound,
     createPollingFeed,
@@ -44,9 +47,37 @@ const { success, danger, warning } = useToast();
 const auth = page.props.auth as {
     branches?: { id: number; name: string }[];
     activeBranchId?: number | null;
+    tenant?: { name?: string } | null;
 } | null;
 const branches = auth?.branches ?? [];
 const branchId = ref<number>(auth?.activeBranchId ?? branches[0]?.id ?? 0);
+const businessName = auth?.tenant?.name ?? '';
+const branchName = computed(() => branches.find((b) => b.id === branchId.value)?.name ?? '');
+
+/* ---- Teslim fişi (§13 FAZ C-1: komi masaya götürürken, PARA GÖRMEZ) ---- */
+const receipt = useReceiptPrint();
+
+function buildDeliveryTicket(item: RunnerItem): ReceiptData {
+    return {
+        business: businessName,
+        branch: branchName.value,
+        station: 'Teslim',
+        orderNo: item.order_id,
+        destination: item.table_name ?? item.channel_label,
+        serviceType: item.channel_label,
+        areaWaiter: [item.area_name, item.waiter].filter(Boolean).join(' · ') || null,
+        time: formatReceiptTime(item.updated_at),
+        note: item.order_note,
+        lines: [{ qty: item.qty, name: item.name, variant: item.variant_name, options: item.options, note: item.note }],
+        kind: 'delivery',
+    };
+}
+
+const previewItem = ref<RunnerItem | null>(null);
+const previewData = computed(() => (previewItem.value ? buildDeliveryTicket(previewItem.value) : null));
+function printPreview(): void {
+    if (previewData.value) receipt.print(previewData.value);
+}
 
 const loading = ref(true);
 const items = ref<RunnerItem[]>([]);
@@ -373,6 +404,15 @@ function selectBranch(id: string): void {
 
                         <!-- İki adım: Teslim aldım → Masaya götürdüm -->
                         <div class="flex shrink-0 flex-wrap items-center gap-2">
+                            <BaseButton
+                                variant="ghost"
+                                size="lg"
+                                icon-only
+                                label="Teslim fişini önizle ve yazdır"
+                                @click="previewItem = item"
+                            >
+                                <KdsIcon name="printer" :size="18" />
+                            </BaseButton>
                             <BaseButton v-if="!item.picked_up_at" size="lg" :disabled="busy" @click="pickup(item)">
                                 Teslim aldım
                             </BaseButton>
@@ -421,6 +461,18 @@ function selectBranch(id: string): void {
             </span>
         </footer>
     </div>
+
+    <!-- ================= Teslim fişi önizleme + yazdır ================= -->
+    <BaseModal :open="previewItem !== null" title="Teslim fişi önizleme" size="sm" @close="previewItem = null">
+        <KdsTicket v-if="previewData" :data="previewData" />
+        <template #footer>
+            <BaseButton variant="secondary" @click="previewItem = null">Kapat</BaseButton>
+            <BaseButton @click="printPreview">
+                <KdsIcon name="printer" :size="16" />
+                Yazdır
+            </BaseButton>
+        </template>
+    </BaseModal>
 
     <!-- ================= Nav çekmecesi (soldan overlay) ================= -->
     <KdsNavDrawer v-if="!isTerminal" :open="showNav" @close="showNav = false" />

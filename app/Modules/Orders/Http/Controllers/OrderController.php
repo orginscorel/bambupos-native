@@ -29,6 +29,7 @@ class OrderController extends Controller
     public function __construct(
         private readonly OrderService $orders,
         private readonly IdempotencyStore $idempotency,
+        private readonly \App\Modules\Terminal\Services\TerminalPinGate $pinGate,
     ) {
     }
 
@@ -262,7 +263,9 @@ class OrderController extends Controller
 
     public function cancelItem(Request $request, Order $order, OrderItem $item): JsonResponse
     {
-        $this->authorize('cancel', $order);
+        // Terminal oturumda PIN → personel (iptal O'na atfedilir); normal: policy.
+        $actor = $this->pinGate->actor($request, 'orders.cancel', 'order.item_cancel',
+            fn () => $this->authorize('cancel', $order));
         $this->assertItemBelongs($order, $item);
 
         $data = $request->validate([
@@ -270,14 +273,16 @@ class OrderController extends Controller
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $this->orders->cancelItem($order, $item, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        $this->orders->cancelItem($order, $item, $data['reason'], $actor, $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
 
     public function compItem(Request $request, Order $order, OrderItem $item): JsonResponse
     {
-        $this->authorize('comp', $order);
+        // Terminal oturumda PIN → personel (ikram O'na atfedilir); normal: policy.
+        $actor = $this->pinGate->actor($request, 'orders.comp', 'order.item_comp',
+            fn () => $this->authorize('comp', $order));
         $this->assertItemBelongs($order, $item);
 
         $data = $request->validate([
@@ -285,7 +290,7 @@ class OrderController extends Controller
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $this->orders->compItem($order, $item, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        $this->orders->compItem($order, $item, $data['reason'], $actor, $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
@@ -391,7 +396,10 @@ class OrderController extends Controller
      */
     public function pay(Request $request, Order $order): JsonResponse
     {
-        $this->authorize('update', $order);
+        // Ödeme alma para eylemidir → terminal oturumda PIN (payments.take).
+        // Normal oturumda mevcut davranış (orders.update ile hızlı ödeme).
+        $actor = $this->pinGate->actor($request, 'payments.take', 'order.pay',
+            fn () => $this->authorize('update', $order));
 
         $data = $request->validate([
             'amount_minor' => ['required', 'integer', 'min:1'],
@@ -405,21 +413,23 @@ class OrderController extends Controller
                 : \App\Modules\Payments\Enums\PaymentMethod::Cash->value,
             'amount_minor' => (int) $data['amount_minor'],
             'provider' => $data['method'] === 'card' ? 'card_present' : null,
-        ], $request->user(), $data['expected_version'] ?? null);
+        ], $actor, $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
 
     public function cancel(Request $request, Order $order): JsonResponse
     {
-        $this->authorize('cancel', $order);
+        // Terminal oturumda PIN → personel (iptal O'na atfedilir); normal: policy.
+        $actor = $this->pinGate->actor($request, 'orders.cancel', 'order.cancel',
+            fn () => $this->authorize('cancel', $order));
 
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:255'],
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $this->orders->cancel($order, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+        $this->orders->cancel($order, $data['reason'], $actor, $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
@@ -431,7 +441,10 @@ class OrderController extends Controller
      */
     public function refund(Request $request, Order $order): JsonResponse
     {
-        $this->authorize('refund', $order);
+        // İade para çıkışı doğurur → terminal oturumda PIN (orders.refund);
+        // normal oturumda mevcut davranış (policy + oturum kullanıcısı).
+        $actor = $this->pinGate->actor($request, 'orders.refund', 'order.refund',
+            fn () => $this->authorize('refund', $order));
 
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:255'],
@@ -445,9 +458,9 @@ class OrderController extends Controller
 
         if ($hasPayments) {
             app(\App\Modules\Payments\Services\PaymentService::class)
-                ->refundOrderFully($order, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+                ->refundOrderFully($order, $data['reason'], $actor, $data['expected_version'] ?? null);
         } else {
-            $this->orders->refund($order, $data['reason'], $request->user(), $data['expected_version'] ?? null);
+            $this->orders->refund($order, $data['reason'], $actor, $data['expected_version'] ?? null);
         }
 
         return response()->json(['order' => $this->freshDetail($order)]);

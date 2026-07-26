@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import { api } from '@/lib/http';
 import type { NavItem } from '@/types/nav';
 import { defaultNavigation } from '@/config/navigation';
 import { useTheme } from '@/composables/useTheme';
@@ -25,6 +26,41 @@ const props = withDefaults(
 
 const page = usePage();
 const { theme, toggleTheme } = useTheme();
+
+/* ===== §13 Terminal KİLİTLİ MOD (kasa / sipariş-giriş / KDS cihazları) =====
+ * is_terminal oturumda kenar çubuğu tamamen KAPALI + KİLİTLİ (toggle yok),
+ * mobil alt-nav/çekmece gizli, başka sayfaya gidilemez. Üst barda "Terminal ·
+ * {istasyon}" kilit rozeti + küçük "Personel değiştir / Çıkış" düğmesi
+ * (impersonation DEĞİL → POST /terminal/logout ile terminal oturumu kapanır). */
+const isTerminal = computed(() =>
+    Boolean((page.props.auth as { is_terminal?: boolean } | null)?.is_terminal),
+);
+
+const terminalStationLabel = computed(() => {
+    const key = (page.props.auth as { terminal_station?: string | null } | null)?.terminal_station ?? '';
+    const map: Record<string, string> = {
+        kasa: 'Kasa',
+        order_entry: 'Sipariş Girişi',
+        kitchen: 'Mutfak',
+        barista: 'Barista',
+        komi: 'Komi',
+    };
+    return map[key] ?? key;
+});
+
+const terminalLoggingOut = ref(false);
+
+async function terminalLogout(): Promise<void> {
+    if (terminalLoggingOut.value) return;
+    terminalLoggingOut.value = true;
+    try {
+        // Terminal oturumunu kapatır (cihazda personel değişimi); redirect → /giris.
+        await api('/terminal/logout', { method: 'POST' });
+    } catch {
+        /* oturum zaten düşmüş olabilir; her durumda giriş ekranına dön */
+    }
+    window.location.href = '/giris';
+}
 
 /** Rol bazlı süzgeç: auth.permissions sayfa prop'u (Çekirdek-Kimlik sağlayacak).
  *  Prop yoksa (henüz auth yok) tüm öğeler görünür. */
@@ -129,7 +165,8 @@ onMounted(() => {
     // İmmersive sayfalar (Siparişler/Kasa) HER girişte KAPALI başlar (kullanıcı
     // talebi): tercih HATIRLANMAZ → sayfaya tekrar girince sidebar oto-kapanır,
     // açmak manueldir. Yalnız normal sayfalarda daraltma tercihi geri yüklenir.
-    if (!props.immersive) {
+    // Terminal kilitli modda kenar çubuğu HER ZAMAN kapalı — tercih okunmaz.
+    if (!props.immersive && !isTerminal.value) {
         try {
             const storedCollapse = localStorage.getItem(collapsePrefKey.value);
             if (storedCollapse !== null) collapsed.value = storedCollapse === '1';
@@ -179,7 +216,9 @@ const isActive = (item: NavItem) =>
         </a>
 
         <!-- ===== Sol menü (masaüstü) ===== -->
+        <!-- §13 Terminal kilitli modda kenar çubuğu HİÇ render edilmez. -->
         <aside
+            v-if="!isTerminal"
             class="fixed inset-y-0 left-0 z-(--z-sticky) hidden w-60 flex-col border-r border-default bg-surface transition-transform duration-(--dur-normal) lg:flex"
             :class="collapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'"
             :inert="collapsed || undefined"
@@ -227,11 +266,13 @@ const isActive = (item: NavItem) =>
         <!-- ===== Üst çubuk ===== -->
         <header
             class="sticky top-0 z-(--z-sticky) flex h-14 items-center gap-2 border-b border-default bg-surface px-3 transition-[margin] duration-(--dur-normal) sm:px-4"
-            :class="collapsed ? 'lg:ml-0' : 'lg:ml-60'"
+            :class="isTerminal || collapsed ? 'lg:ml-0' : 'lg:ml-60'"
         >
             <!-- Kenar çubuğu aç/kapa (masaüstü). Kapalıyken içerik tam genişlik
-                 olur; bu düğme sol üstte KALICI kalır ve çubuğu geri getirir. -->
+                 olur; bu düğme sol üstte KALICI kalır ve çubuğu geri getirir.
+                 Terminal kilitli modda TOGGLE YOK (nav kilitli). -->
             <button
+                v-if="!isTerminal"
                 type="button"
                 class="hidden size-10 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body lg:flex"
                 :aria-label="collapsed ? 'Menüyü aç' : 'Menüyü kapat'"
@@ -241,8 +282,18 @@ const isActive = (item: NavItem) =>
                 <AppIcon :name="collapsed ? 'menu' : 'x'" :size="18" />
             </button>
 
-            <!-- Şube değiştirici yeri (Tenancy modülü dolduracak) -->
-            <div class="min-w-0">
+            <!-- §13 Terminal kilit rozeti (kasa / sipariş-giriş / KDS cihazı) -->
+            <span
+                v-if="isTerminal"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-default bg-inset px-2.5 py-1 text-xs font-semibold text-muted"
+                title="Bu cihaz istasyon terminaline kilitlidir"
+            >
+                <AppIcon name="tablet" :size="13" />
+                Terminal · {{ terminalStationLabel }}
+            </span>
+
+            <!-- Şube değiştirici yeri (Tenancy modülü dolduracak) — terminalde gizli -->
+            <div v-if="!isTerminal" class="min-w-0">
                 <slot name="branch-switcher">
                     <BaseDropdown align="left" menu-label="Şube seçimi">
                         <template #trigger="{ toggle, ariaAttrs }">
@@ -288,59 +339,78 @@ const isActive = (item: NavItem) =>
                 <AppIcon :name="theme === 'dark' ? 'sun' : 'moon'" :size="18" />
             </button>
 
-            <!-- Bildirim zili yeri (Notify modülü dolduracak) -->
-            <slot name="notifications">
-                <button
-                    type="button"
-                    class="relative flex size-10 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
-                    :aria-label="notificationCount ? `Bildirimler (${notificationCount} yeni)` : 'Bildirimler'"
-                >
-                    <AppIcon name="bell" :size="18" />
-                    <span
-                        v-if="notificationCount"
-                        class="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-4 font-bold text-on-status"
-                        aria-hidden="true"
+            <!-- Bildirim zili yeri (Notify modülü dolduracak) — terminalde gizli -->
+            <template v-if="!isTerminal">
+                <slot name="notifications">
+                    <button
+                        type="button"
+                        class="relative flex size-10 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
+                        :aria-label="notificationCount ? `Bildirimler (${notificationCount} yeni)` : 'Bildirimler'"
                     >
-                        {{ notificationCount > 99 ? '99+' : notificationCount }}
-                    </span>
-                </button>
-            </slot>
-
-            <!-- Kullanıcı menüsü yeri (Identity modülü dolduracak) -->
-            <slot name="user-menu">
-                <BaseDropdown menu-label="Kullanıcı menüsü">
-                    <template #trigger="{ toggle, ariaAttrs }">
-                        <button
-                            type="button"
-                            v-bind="ariaAttrs"
-                            class="flex size-10 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
-                            aria-label="Kullanıcı menüsü"
-                            @click="toggle"
+                        <AppIcon name="bell" :size="18" />
+                        <span
+                            v-if="notificationCount"
+                            class="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-4 font-bold text-on-status"
+                            aria-hidden="true"
                         >
-                            <span class="flex size-8 items-center justify-center rounded-full bg-inset">
-                                <AppIcon name="user" :size="16" />
-                            </span>
-                        </button>
-                    </template>
-                    <DropdownItem icon="user">Profil</DropdownItem>
-                    <DropdownItem icon="settings">Hesap ayarları</DropdownItem>
-                    <DropdownItem icon="logout" danger>Çıkış yap</DropdownItem>
-                </BaseDropdown>
-            </slot>
+                            {{ notificationCount > 99 ? '99+' : notificationCount }}
+                        </span>
+                    </button>
+                </slot>
+            </template>
+
+            <!-- Kullanıcı menüsü yeri (Identity modülü dolduracak) — terminalde gizli -->
+            <template v-if="!isTerminal">
+                <slot name="user-menu">
+                    <BaseDropdown menu-label="Kullanıcı menüsü">
+                        <template #trigger="{ toggle, ariaAttrs }">
+                            <button
+                                type="button"
+                                v-bind="ariaAttrs"
+                                class="flex size-10 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
+                                aria-label="Kullanıcı menüsü"
+                                @click="toggle"
+                            >
+                                <span class="flex size-8 items-center justify-center rounded-full bg-inset">
+                                    <AppIcon name="user" :size="16" />
+                                </span>
+                            </button>
+                        </template>
+                        <DropdownItem icon="user">Profil</DropdownItem>
+                        <DropdownItem icon="settings">Hesap ayarları</DropdownItem>
+                        <DropdownItem icon="logout" danger>Çıkış yap</DropdownItem>
+                    </BaseDropdown>
+                </slot>
+            </template>
+
+            <!-- §13 Terminal: kullanıcı menüsü YOK; küçük "Personel değiştir /
+                 Çıkış" düğmesi (terminal oturumunu kapatır — impersonation değil). -->
+            <button
+                v-if="isTerminal"
+                type="button"
+                class="flex h-10 shrink-0 items-center gap-2 rounded-md border border-default px-3 text-sm font-medium text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body disabled:opacity-60"
+                :disabled="terminalLoggingOut"
+                aria-label="Personel değiştir veya çıkış"
+                @click="terminalLogout"
+            >
+                <AppIcon name="logout" :size="16" />
+                <span class="hidden sm:inline">Personel değiştir / Çıkış</span>
+            </button>
         </header>
 
         <!-- ===== İçerik ===== -->
         <main
             id="icerik"
             class="p-4 pb-24 transition-[margin] duration-(--dur-normal) sm:p-6 lg:pb-6"
-            :class="collapsed ? 'lg:ml-0' : 'lg:ml-60'"
+            :class="[isTerminal || collapsed ? 'lg:ml-0' : 'lg:ml-60', isTerminal ? 'pb-6' : '']"
             tabindex="-1"
         >
             <slot />
         </main>
 
-        <!-- ===== Alt navigasyon (mobil) ===== -->
+        <!-- ===== Alt navigasyon (mobil) ===== — terminalde gizli (nav kilitli) -->
         <nav
+            v-if="!isTerminal"
             class="fixed inset-x-0 bottom-0 z-(--z-sticky) border-t border-default bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
             aria-label="Ana menü (mobil)"
         >
@@ -370,8 +440,8 @@ const isActive = (item: NavItem) =>
             </ul>
         </nav>
 
-        <!-- Mobil tam menü çekmecesi -->
-        <BaseDrawer :open="mobileNavOpen" title="Menü" @close="mobileNavOpen = false">
+        <!-- Mobil tam menü çekmecesi — terminalde render edilmez (nav kilitli) -->
+        <BaseDrawer v-if="!isTerminal" :open="mobileNavOpen" title="Menü" @close="mobileNavOpen = false">
             <ul class="flex flex-col gap-0.5">
                 <li v-for="item in navItems" :key="item.key">
                     <Link

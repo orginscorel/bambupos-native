@@ -77,6 +77,8 @@ export interface KdsOrderCard {
     channel_label: string;
     channel_icon: string;
     channel_variant: VariantMeta['variant'];
+    /** Servis tipi (Masada/Gel-al/Paket) — backend'de zaten var, fişte gösterilir (PARA DEĞİL). */
+    service_type_label?: string | null;
     status: string;
     status_label: string;
     status_icon: string;

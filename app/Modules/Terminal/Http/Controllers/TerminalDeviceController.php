@@ -10,6 +10,7 @@ use App\Modules\Terminal\Support\TerminalStation;
 use App\Modules\Tenancy\Models\Branch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Terminal cihaz yönetimi (panel API'si, §13 Faz A).
@@ -59,7 +60,7 @@ class TerminalDeviceController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'branch_id' => ['required', 'integer'],
-            'station' => ['required', 'string', 'in:kitchen,barista,komi'],
+            'station' => ['required', 'string', Rule::in(TerminalStation::keys())],
         ]);
 
         $branch = Branch::query()->find((int) $data['branch_id']);
@@ -93,7 +94,7 @@ class TerminalDeviceController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:100'],
             'branch_id' => ['sometimes', 'required', 'integer'],
-            'station' => ['sometimes', 'required', 'string', 'in:kitchen,barista,komi'],
+            'station' => ['sometimes', 'required', 'string', Rule::in(TerminalStation::keys())],
         ]);
 
         if (array_key_exists('branch_id', $data)) {

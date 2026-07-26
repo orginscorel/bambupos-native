@@ -31,6 +31,10 @@ export interface AuthProps {
     activeBranchId: number | null;
     /** Kullanıcının seçebileceği açılış ekranları (izinli olanlar) */
     screenOptions?: { key: string; label: string; path: string }[];
+    /** §13 Terminal kilitli mod: bu oturum bir istasyon cihazı mı? */
+    is_terminal?: boolean;
+    /** Terminal istasyon anahtarı (kasa/order_entry/kitchen/barista/komi) */
+    terminal_station?: string | null;
 }
 
 /** usePage().props içinden güvenli okuma. */

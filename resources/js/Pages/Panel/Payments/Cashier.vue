@@ -4,6 +4,8 @@ import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
 import PanelShell from '@/Components/panel/PanelShell.vue';
+import StaffPinDialog from '@/Components/panel/StaffPinDialog.vue';
+import { useTerminalPin } from '@/composables/useTerminalPin';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
@@ -45,6 +47,9 @@ const canEditItems = perms.includes('orders.update');
 const canCompItems = perms.includes('orders.comp');
 const canReviewItems = canEditItems || canCompItems || perms.includes('orders.view');
 const { success, danger } = useToast();
+
+// §13 Faz B: terminal (kasa) oturumda hassas para eylemleri PIN ister.
+const { collectPin } = useTerminalPin();
 
 /* ================= Sol: bekleyen adisyonlar (5 sn polling) ================= */
 const loading = ref(true);
@@ -265,15 +270,25 @@ function askComp(item: OrderItemRow): void {
 async function doComp(): Promise<void> {
     if (!compTarget.value || !detail.value || itemBusy.value !== null) return;
     const item = compTarget.value;
+    const reason = compReason.value;
+    const orderId = detail.value.id;
+    const version = detail.value.version;
+
+    // İkram modalını kapat → terminal PIN modalı üst üste binmesin.
+    compTarget.value = null;
+    modalOpen = false;
+
+    // Terminal (kasa) oturumda PIN gerekir; iptal edilirse eylem yapılmaz.
+    const pinFields = await collectPin();
+    if (pinFields === null) return;
+
     itemBusy.value = item.id;
     try {
-        await api(`/api/v1/orders/${detail.value.id}/items/${item.id}/comp`, {
+        await api(`/api/v1/orders/${orderId}/items/${item.id}/comp`, {
             method: 'POST',
-            body: { reason: compReason.value, expected_version: detail.value.version },
+            body: { reason, expected_version: version, ...pinFields },
         });
         success('İkram işlendi', `${item.name} ücretsiz`);
-        compTarget.value = null;
-        modalOpen = false;
         await afterItemChange();
     } catch (e) {
         danger('İşlenemedi', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen hata.');
@@ -359,6 +374,11 @@ async function pay(): Promise<void> {
         return;
     }
 
+    // §13 Faz B: terminal (kasa) oturumda ödeme alma PIN ister; işlem PIN
+    // sahibine atfedilir. İptal edilirse tahsilat yapılmaz.
+    const pinFields = await collectPin();
+    if (pinFields === null) return;
+
     paying.value = true;
     try {
         const res = await apiIdempotent<{
@@ -374,6 +394,7 @@ async function pay(): Promise<void> {
             round: roundCash.value,
             cash_register_id: activeRegister.value?.id ?? null,
             expected_version: selected.value.version,
+            ...pinFields,
         }, newIdempotencyKey());
 
         if (res.payment.status === 'succeeded') {
@@ -1068,5 +1089,8 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                 </div>
             </div>
         </BaseModal>
+
+        <!-- §13 Faz B: terminal (kasa) hassas eylem PIN modalı -->
+        <StaffPinDialog />
     </PanelShell>
 </template>
