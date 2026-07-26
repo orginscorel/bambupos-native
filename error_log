@@ -285,3 +285,10 @@ Stack trace:
 #2 /home/qrmenu/apps/qrmenu/artisan(10): require('/home/qrmenu/ap...')
 #3 {main}
   thrown in /home/qrmenu/apps/qrmenu/vendor/composer/platform_check.php on line 22
+[26-Jul-2026 14:03:54 UTC] PHP Fatal error:  Uncaught RuntimeException: Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0". You are running 8.2.32. in /home/qrmenu/apps/qrmenu/vendor/composer/platform_check.php:22
+Stack trace:
+#0 /home/qrmenu/apps/qrmenu/vendor/composer/autoload_real.php(25): require()
+#1 /home/qrmenu/apps/qrmenu/vendor/autoload.php(22): ComposerAutoloaderInit36793882908b6cbdd344b5a4840231db::getLoader()
+#2 /home/qrmenu/apps/qrmenu/artisan(10): require('/home/qrmenu/ap...')
+#3 {main}
+  thrown in /home/qrmenu/apps/qrmenu/vendor/composer/platform_check.php on line 22

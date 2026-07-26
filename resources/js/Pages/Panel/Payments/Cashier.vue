@@ -16,6 +16,13 @@ import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
+import PaymentReceipt from './PaymentReceipt.vue';
+import {
+    usePaymentReceiptPrint,
+    formatReceiptTime,
+    type PaymentReceiptData,
+    type PaymentReceiptLine,
+} from './usePaymentReceiptPrint';
 import {
     apiIdempotent,
     fetchOrderDetail,
@@ -194,6 +201,104 @@ const vatBreakdownReliable = computed(
 /** Oran-tabanlı KDV formatı (ör. "%10"). */
 function ratePct(rate: number): string {
     return `%${Number.isInteger(rate) ? rate : rate.toFixed(1)}`;
+}
+
+/* ================= §13 Faz C-2: Kasa/müşteri fişi ================= */
+/**
+ * Hesap Fişi (ön-hesap, ödeme öncesi) + Ödeme/Adisyon Fişi (kapanış). Faz C-1
+ * KDS fişiyle AYNI yazdırma deseni (yalıtılmış iframe + window.print, tüm
+ * cihaz uyumu) ama PARALI — kasa PARA görür. Fiş kaynağı adisyon detay
+ * payload'ı (detail/selected/payments); backend'e dokunulmaz.
+ */
+const receiptPrint = usePaymentReceiptPrint();
+const previewReceipt = ref<PaymentReceiptData | null>(null);
+
+/** İşletme/şube adı — paylaşılan auth prop'undan (KDS ile aynı kaynak). */
+const receiptAuth = page.props.auth as {
+    branches?: { id: number; name: string }[];
+    activeBranchId?: number | null;
+    tenant?: { name?: string } | null;
+} | null;
+const businessName = receiptAuth?.tenant?.name ?? '';
+const branchName = computed(() => {
+    const list = receiptAuth?.branches ?? [];
+    const active = receiptAuth?.activeBranchId ?? null;
+    return (list.find((b) => b.id === active) ?? list[0])?.name ?? '';
+});
+
+/** Başarılı ödemelerin fişe uygun özeti (yöntem + tutar + para üstü). */
+const succeededPayments = computed(() =>
+    payments.value.filter((p) => p.kind === 'payment' && p.status === 'succeeded'),
+);
+const changeTotalMinor = computed(() => succeededPayments.value.reduce((s, p) => s + (p.change_minor ?? 0), 0));
+
+/** Adisyon detay/özet payload'ından fiş verisi kurar (fiyatlı). */
+function buildReceipt(kind: 'bill' | 'payment'): PaymentReceiptData | null {
+    if (!selected.value) return null;
+    const o = selected.value;
+
+    const lines: PaymentReceiptLine[] = visibleItems.value.map((it) => {
+        const opts = it.options.map((op) => op.option_name);
+        return {
+            qty: it.qty,
+            name: it.name,
+            variant: it.variant_name,
+            options: opts,
+            note: it.note,
+            isComp: it.is_comp,
+            lineTotalMinor: it.is_comp ? 0 : it.line_total_minor,
+            unitPriceMinor: it.unit_price_minor + it.options_price_minor,
+        };
+    });
+
+    return {
+        business: businessName,
+        branch: branchName.value,
+        kind,
+        orderNo: o.id,
+        destination: orderTitle(o),
+        serviceType: o.channel_label,
+        guestCount: guestCount.value,
+        time: formatReceiptTime(o.created_at),
+        lines,
+        itemsTotalMinor: o.items_total_minor,
+        compTotalMinor: compTotalMinor.value,
+        discountMinor: o.discount_minor,
+        serviceChargeMinor: o.service_charge_minor,
+        roundingMinor: o.rounding_minor,
+        totalMinor: o.total_minor,
+        vatTotalMinor: vatTotalMinor.value,
+        vatByRate: vatBreakdownReliable.value ? vatByRate.value : undefined,
+        paidMinor: o.paid_minor,
+        remainingMinor: o.remaining_minor,
+        changeTotalMinor: changeTotalMinor.value,
+        payments: succeededPayments.value.map((p) => ({
+            methodLabel: p.method_label,
+            amountMinor: p.amount_minor,
+            changeMinor: p.change_minor ?? 0,
+        })),
+    };
+}
+
+/** Önizleme modalını aç (hesap veya ödeme fişi). */
+function openReceiptPreview(kind: 'bill' | 'payment'): void {
+    const data = buildReceipt(kind);
+    if (!data) return;
+    previewReceipt.value = data;
+    modalOpen = true;
+}
+function closeReceiptPreview(): void {
+    previewReceipt.value = null;
+    modalOpen = false;
+}
+/** Doğrudan yazdır (önizlemesiz kısa yol). */
+function printReceipt(kind: 'bill' | 'payment'): void {
+    const data = buildReceipt(kind);
+    if (data) receiptPrint.print(data);
+}
+/** Önizlemedeki fişi yazdır. */
+function printPreview(): void {
+    if (previewReceipt.value) receiptPrint.print(previewReceipt.value);
 }
 
 /* ---- Kalem düzenleme (ödeme öncesi hata düzeltme) ---- */
@@ -466,6 +571,7 @@ function closeModals(): void {
     serviceChargeOpen.value = false;
     compTarget.value = null;
     removeItemTarget.value = null;
+    previewReceipt.value = null;
     modalOpen = false;
 }
 
@@ -687,6 +793,51 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                             </div>
                         </div>
 
+                        <!-- Fiş yazdırma çubuğu: Hesap fişi (ön-hesap) her zaman;
+                             Ödeme/adisyon fişi (kapanış) ödeme alındıysa. Her ikisi
+                             önizleme + tarayıcı yazdırma (tüm cihaz uyumlu, Faz C-1 deseni). -->
+                        <div class="flex flex-wrap items-center gap-2 rounded-lg border border-default bg-raised p-3">
+                            <AppIcon name="tag" :size="18" class="text-subtle" />
+                            <span class="me-1 text-sm text-muted">Fiş yazdır:</span>
+                            <div class="flex items-center overflow-hidden rounded-md border border-strong">
+                                <button
+                                    type="button"
+                                    class="flex h-9 items-center gap-1.5 px-3 text-sm font-medium text-body transition hover:bg-inset"
+                                    @click="printReceipt('bill')"
+                                >
+                                    <AppIcon name="tag" :size="15" /> Hesap yazdır
+                                </button>
+                                <button
+                                    type="button"
+                                    class="flex h-9 w-9 items-center justify-center border-s border-strong text-subtle transition hover:bg-inset"
+                                    aria-label="Hesap fişi önizle"
+                                    title="Önizle"
+                                    @click="openReceiptPreview('bill')"
+                                >
+                                    <AppIcon name="search" :size="15" />
+                                </button>
+                            </div>
+                            <div v-if="selected.paid_minor > 0" class="flex items-center overflow-hidden rounded-md border border-strong">
+                                <button
+                                    type="button"
+                                    class="flex h-9 items-center gap-1.5 px-3 text-sm font-medium text-body transition hover:bg-inset"
+                                    @click="printReceipt('payment')"
+                                >
+                                    <AppIcon name="check-circle" :size="15" /> Fiş yazdır
+                                </button>
+                                <button
+                                    type="button"
+                                    class="flex h-9 w-9 items-center justify-center border-s border-strong text-subtle transition hover:bg-inset"
+                                    aria-label="Ödeme fişi önizle"
+                                    title="Önizle"
+                                    @click="openReceiptPreview('payment')"
+                                >
+                                    <AppIcon name="search" :size="15" />
+                                </button>
+                            </div>
+                            <span class="ms-auto hidden text-xs text-muted sm:inline">Cihazın varsayılan yazıcısı (58/80mm/A4)</span>
+                        </div>
+
                         <!-- Ödeme tamamlandı bandı -->
                         <div v-if="selected.remaining_minor === 0" class="flex flex-wrap items-center gap-3 rounded-lg border border-success-border bg-success-soft p-4">
                             <AppIcon name="check-circle" :size="22" class="text-success" />
@@ -694,6 +845,9 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                                 <p class="font-semibold text-success">Adisyon tamamen ödendi</p>
                                 <p class="text-sm text-muted">Toplam {{ money(selected.total_minor) }} ₺ tahsil edildi. Fiş verip adisyonu kapatabilirsiniz.</p>
                             </div>
+                            <BaseButton variant="secondary" size="sm" class="ms-auto" @click="printReceipt('payment')">
+                                <AppIcon name="tag" :size="15" /> Fiş yazdır
+                            </BaseButton>
                         </div>
 
                         <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
@@ -1086,6 +1240,28 @@ function orderTitle(o: { table_name: string | null; customer_name: string | null
                         <BaseButton variant="secondary" @click="closeModals">Vazgeç</BaseButton>
                         <BaseButton :loading="actionBusy" :disabled="!scValue" @click="applyServiceCharge(false)">Uygula</BaseButton>
                     </div>
+                </div>
+            </div>
+        </BaseModal>
+
+        <!-- §13 Faz C-2: fiş önizleme (hesap/ödeme) — yazdırmayla tek kaynak -->
+        <BaseModal
+            :open="previewReceipt !== null"
+            :title="previewReceipt?.kind === 'bill' ? 'Hesap fişi önizleme' : 'Ödeme fişi önizleme'"
+            @close="closeReceiptPreview"
+        >
+            <div class="flex flex-col gap-4">
+                <div class="max-h-[60vh] overflow-y-auto rounded-lg bg-inset p-4">
+                    <PaymentReceipt v-if="previewReceipt" :data="previewReceipt" />
+                </div>
+                <p class="text-xs text-muted">
+                    Yazdır'a basınca fiş cihazınızın varsayılan yazıcısına (termal 58/80mm, A4 veya “PDF'e kaydet”) gönderilir.
+                </p>
+                <div class="flex justify-end gap-2">
+                    <BaseButton variant="secondary" @click="closeReceiptPreview">Kapat</BaseButton>
+                    <BaseButton @click="printPreview">
+                        <AppIcon name="tag" :size="15" /> Yazdır
+                    </BaseButton>
                 </div>
             </div>
         </BaseModal>
