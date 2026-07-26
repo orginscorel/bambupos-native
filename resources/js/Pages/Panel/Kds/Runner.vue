@@ -257,6 +257,19 @@ const terminalStationLabel = computed(() => {
     return key;
 });
 
+/* §13 Terminal oturumunu kapat (yöneticiye dönüş): POST /terminal/logout → /giris. */
+const terminalLoggingOut = ref(false);
+async function terminalLogout(): Promise<void> {
+    if (terminalLoggingOut.value) return;
+    terminalLoggingOut.value = true;
+    try {
+        await api('/terminal/logout', { method: 'POST' });
+    } catch {
+        /* oturum düşmüş olabilir; her durumda giriş ekranına dön */
+    }
+    window.location.href = '/giris';
+}
+
 const branchOptions = computed(() => branches.map((b) => ({ value: String(b.id), label: b.name })));
 function selectBranch(id: string): void {
     branchId.value = Number(id);
@@ -289,6 +302,17 @@ function selectBranch(id: string): void {
                 <AppIcon name="tablet" :size="13" />
                 Terminal · {{ terminalStationLabel }}
             </span>
+            <BaseButton
+                v-if="isTerminal"
+                variant="ghost"
+                size="sm"
+                :loading="terminalLoggingOut"
+                label="Terminal oturumunu kapat (yöneticiye dön)"
+                @click="terminalLogout"
+            >
+                <AppIcon name="logout" :size="15" />
+                Çıkış
+            </BaseButton>
 
             <h1 class="text-lg font-semibold">Komi Ekranı</h1>
 

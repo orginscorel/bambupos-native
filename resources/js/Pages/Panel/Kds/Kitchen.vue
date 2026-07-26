@@ -448,6 +448,20 @@ const terminalStationLabel = computed(() => {
     return key;
 });
 
+/* §13 Terminal oturumunu kapat (cihazda personel değişimi / yöneticiye dönüş):
+   POST /terminal/logout → /giris; oradan yönetici olarak yeniden girilir. */
+const terminalLoggingOut = ref(false);
+async function terminalLogout(): Promise<void> {
+    if (terminalLoggingOut.value) return;
+    terminalLoggingOut.value = true;
+    try {
+        await api('/terminal/logout', { method: 'POST' });
+    } catch {
+        /* oturum düşmüş olabilir; her durumda giriş ekranına dön */
+    }
+    window.location.href = '/giris';
+}
+
 function pendingItems(card: KdsOrderCard): KdsItem[] {
     return card.items.filter((i) => i.status !== 'ready');
 }
@@ -494,6 +508,17 @@ const pageTitle = computed(() => {
                 <AppIcon name="tablet" :size="13" />
                 Terminal · {{ terminalStationLabel }}
             </span>
+            <BaseButton
+                v-if="isTerminal"
+                variant="ghost"
+                size="sm"
+                :loading="terminalLoggingOut"
+                label="Terminal oturumunu kapat (yöneticiye dön)"
+                @click="terminalLogout"
+            >
+                <AppIcon name="logout" :size="15" />
+                Çıkış
+            </BaseButton>
 
             <h1 class="text-lg font-semibold">{{ pageTitle }}</h1>
 
