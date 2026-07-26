@@ -42,6 +42,9 @@ enum NotificationType: string
     /** Rezervasyon no-show (gelmedi) → garson/host + yönetici. */
     case ReservationNoShow = 'reservation_no_show';
 
+    /** Masadan servis çağrısı (garson çağır / su / hesap) → o şubenin garsonları + yönetici. */
+    case ServiceCall = 'service_call';
+
     public function label(): string
     {
         return match ($this) {
@@ -52,6 +55,7 @@ enum NotificationType: string
             self::LowStock => 'Düşük stok uyarısı',
             self::ReservationUpcoming => 'Yaklaşan rezervasyon',
             self::ReservationNoShow => 'Rezervasyon gelmedi (no-show)',
+            self::ServiceCall => 'Servis çağrısı',
         };
     }
 
@@ -66,6 +70,7 @@ enum NotificationType: string
             self::LowStock => 'Bir stok kalemi kritik eşiğin altına indiğinde.',
             self::ReservationUpcoming => 'Onaylı bir rezervasyonun saati yaklaştığında.',
             self::ReservationNoShow => 'Rezervasyon sahibi gelmediğinde.',
+            self::ServiceCall => 'Bir masa QR menüden garson/su/hesap çağırdığında.',
         };
     }
 
@@ -77,6 +82,7 @@ enum NotificationType: string
             self::ItemReady, self::DeliverySlaBreach => 'kitchen',
             self::LowStock => 'stock',
             self::ReservationUpcoming, self::ReservationNoShow => 'reservations',
+            self::ServiceCall => 'service',
         };
     }
 
@@ -87,6 +93,7 @@ enum NotificationType: string
             'kitchen' => 'Mutfak & Teslim',
             'stock' => 'Stok',
             'reservations' => 'Rezervasyonlar',
+            'service' => 'Servis çağrıları',
             default => $category,
         };
     }
@@ -114,6 +121,9 @@ enum NotificationType: string
             self::OrderServed => ['orders.view'],
             self::LowStock => ['stock.view', 'stock.adjust'],
             self::ReservationUpcoming, self::ReservationNoShow => ['reservations.view', 'reservations.manage'],
+            // Garson = masaya bakan personel (sipariş açıp güncelleyen). Kasiyer
+            // (yalnız orders.view) çağrı almaz; yönetici includeManagers ile dahil.
+            self::ServiceCall => ['orders.create'],
         };
     }
 
@@ -123,6 +133,7 @@ enum NotificationType: string
         // panoyu izler (gürültü olmasın). SLA/stok/rezervasyon: yönetici de alır.
         return match ($this) {
             self::OrderPlaced, self::ItemReady, self::OrderServed => false,
+            // Servis çağrısı: garsona gider + yönetici de görür (masa bekliyor).
             default => true,
         };
     }
@@ -143,6 +154,7 @@ enum NotificationType: string
             self::OrderServed => 'check',
             self::LowStock => 'package',
             self::ReservationUpcoming, self::ReservationNoShow => 'calendar',
+            self::ServiceCall => 'bell',
         };
     }
 

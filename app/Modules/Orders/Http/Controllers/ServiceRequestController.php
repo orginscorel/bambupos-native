@@ -36,6 +36,7 @@ class ServiceRequestController extends Controller
         private readonly QrTokenResolver $resolver,
         private readonly OrderService $orders,
         private readonly \App\Modules\Tenancy\TenantContext $context,
+        private readonly \App\Modules\Notify\Services\NotifyEmitter $notify,
     ) {
     }
 
@@ -68,6 +69,15 @@ class ServiceRequestController extends Controller
         }
 
         $table = $resolution->table;
+
+        // §9 feature-flag: işletme "Garson/su/hesap çağır"ı kapattıysa uç ÇALIŞMAZ
+        // (ADR: kapalı=yok). Menüde buton zaten server-render ile gizlenir; bu, uç
+        // düzeyi kesin kapıdır. Kimlik token'dan çözülen kiracıdır (istekten gelmez).
+        if (! \App\Modules\Settings\Support\Features::enabled((int) $table->tenant_id, 'service_calls')) {
+            return response()->json([
+                'message' => 'Bu işletmede masadan servis çağrısı alınmıyor. Lütfen personele seslenin.',
+            ], 403);
+        }
 
         // Yazma bağlamı: token'dan çözülen kiracı (ADR-008/ADR-004) —
         // OrderService tenant-scope'lu sorgular kullanır (fail-closed).
@@ -106,6 +116,11 @@ class ServiceRequestController extends Controller
         $sr->save();
 
         $this->reflectToTable($table, $data['kind']);
+
+        // §8 Bildirim: o şubenin garsonları + yönetici (in-app zil + push).
+        // Best-effort — NotifyEmitter yutar, public akış bozulmaz.
+        $sr->setRelation('table', $table);
+        $this->notify->serviceRequested($sr);
 
         return response()->json(['request' => $this->presentPublic($sr), 'deduplicated' => false], 201);
     }

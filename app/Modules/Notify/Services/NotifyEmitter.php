@@ -188,6 +188,41 @@ class NotifyEmitter
             'Rezervasyon gelmedi (no-show)', 'resv_ns');
     }
 
+    /**
+     * Masadan servis çağrısı (garson çağır / su iste / hesap iste) → o şubenin
+     * garsonları + yönetici. Public QR ucundan (ServiceRequestController) çağrılır;
+     * oturumsuz bağlamda çalışır (alıcılar tenant_id/branch_id'den çözülür).
+     */
+    public function serviceRequested(\App\Modules\Orders\Models\ServiceRequest $sr): void
+    {
+        try {
+            if ($sr->tenant_id === null) {
+                return;
+            }
+
+            $table = $sr->table;
+            $where = $table !== null ? ($table->name ?: ('Masa '.$table->number)) : 'Bir masa';
+
+            $this->dispatcher->notify(NotificationType::ServiceCall, [
+                'tenant_id' => (int) $sr->tenant_id,
+                'branch_id' => $sr->branch_id !== null ? (int) $sr->branch_id : null,
+                'title' => 'Servis çağrısı · '.$where,
+                'body' => $where.': '.$sr->kindLabel(),
+                'data' => [
+                    'service_request_id' => (int) $sr->getKey(),
+                    'table_id' => $sr->table_id !== null ? (int) $sr->table_id : null,
+                    'kind' => $sr->kind,
+                    'url' => '/panel/siparisler',
+                ],
+                // Aynı masa+tür kısa pencerede tek bildirim (istek düzeyi 2 dk dedup
+                // ile uyumlu; alıcı başına kısa-pencere dedup burada da uygulanır).
+                'dedup_key' => 'service_call:'.$sr->table_id.':'.$sr->kind,
+            ]);
+        } catch (\Throwable) {
+            // yut — public servis-çağrı akışı bozulmaz
+        }
+    }
+
     private function reservationNotify(Reservation $reservation, NotificationType $type, string $title, string $keyPrefix): void
     {
         try {

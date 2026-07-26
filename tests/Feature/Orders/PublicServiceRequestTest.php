@@ -93,6 +93,18 @@ class PublicServiceRequestTest extends TestCase
             ->assertStatus(429);
     }
 
+    public function test_ozellik_kapaliysa_403_ve_talep_olusmaz(): void
+    {
+        $table = $this->makeTable($this->a);
+
+        \App\Modules\Settings\Support\Features::set((int) $this->a['tenant']->id, 'service_calls', false);
+
+        $this->postJson('/api/v1/public/service-requests', ['token' => $table->qr_token, 'kind' => 'waiter'])
+            ->assertStatus(403);
+
+        $this->assertSame(0, ServiceRequest::withoutTenancy()->where('table_id', $table->id)->count());
+    }
+
     public function test_gecersiz_token_ve_tur_reddedilir(): void
     {
         $table = $this->makeTable($this->a);
