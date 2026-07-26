@@ -3,6 +3,7 @@
 namespace App\Modules\Kds\Models;
 
 use App\Modules\Identity\Models\User;
+use App\Modules\Orders\Models\OrderItem;
 use App\Modules\Tenancy\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,5 +31,10 @@ class ItemPickup extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function orderItem(): BelongsTo
+    {
+        return $this->belongsTo(OrderItem::class);
     }
 }

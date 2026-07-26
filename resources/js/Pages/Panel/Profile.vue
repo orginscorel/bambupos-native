@@ -15,10 +15,12 @@ import BaseInput from '@/Components/ui/BaseInput.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
+import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
 import BaseTabs from '@/Components/ui/BaseTabs.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import FormField from '@/Components/ui/FormField.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
+import { usePush } from '@/composables/usePush';
 
 const page = usePage();
 const auth = computed(() => authFromPage(page.props as Record<string, unknown>));
@@ -31,6 +33,7 @@ const activeTab = ref('profile');
 const tabs = [
     { key: 'profile', label: 'Profil', icon: 'user' },
     { key: 'security', label: 'Güvenlik', icon: 'settings' },
+    { key: 'notifications', label: 'Bildirimler', icon: 'bell' },
     { key: 'sessions', label: 'Oturumlar', icon: 'dashboard' },
 ];
 
@@ -320,10 +323,88 @@ async function logoutOtherDevices(): Promise<void> {
     }
 }
 
+/* ================= Bildirimler (§8): kişi tercihleri + web push ================= */
+interface PrefType {
+    key: string;
+    label: string;
+    description: string;
+    category: string;
+    category_label: string;
+    in_app: boolean;
+    push: boolean;
+}
+
+const prefsLoading = ref(true);
+const prefTypes = ref<PrefType[]>([]);
+const savingPrefs = ref(false);
+
+// Kategoriye göre gruplu gösterim (Siparişler / Mutfak & Teslim / ...).
+const prefGroups = computed<{ label: string; types: PrefType[] }[]>(() => {
+    const map = new Map<string, { label: string; types: PrefType[] }>();
+    for (const t of prefTypes.value) {
+        if (!map.has(t.category)) {
+            map.set(t.category, { label: t.category_label, types: [] });
+        }
+        map.get(t.category)!.types.push(t);
+    }
+    return Array.from(map.values());
+});
+
+async function loadPrefs(): Promise<void> {
+    prefsLoading.value = true;
+    try {
+        const res = await api<{ types: PrefType[] }>('/api/v1/notifications/preferences');
+        prefTypes.value = res.types;
+    } catch {
+        /* sessiz — boş liste kalır */
+    } finally {
+        prefsLoading.value = false;
+    }
+}
+
+async function savePref(type: PrefType, channel: 'in_app' | 'push', value: boolean): Promise<void> {
+    const previous = type[channel];
+    type[channel] = value;
+    savingPrefs.value = true;
+    try {
+        await api('/api/v1/notifications/preferences', {
+            method: 'PUT',
+            body: { preferences: [{ type: type.key, in_app: type.in_app, push: type.push }] },
+        });
+    } catch (e) {
+        type[channel] = previous; // geri al
+        danger('Kaydedilemedi', e instanceof ApiError ? e.displayMessage : 'Lütfen tekrar deneyin.');
+    } finally {
+        savingPrefs.value = false;
+    }
+}
+
+/* Web push aç/kapa (bu cihaz için). */
+const push = usePush();
+
+async function togglePush(value: boolean): Promise<void> {
+    if (value) {
+        const ok = await push.enable();
+        if (ok) {
+            success('Push açıldı', 'Bu cihazda masaüstü/mobil bildirim alacaksınız.');
+        } else if (push.permission.value === 'denied') {
+            danger('İzin reddedildi', 'Tarayıcı ayarlarından bildirim iznini açmanız gerekir.');
+        } else if (push.permission.value === 'unsupported') {
+            danger('Desteklenmiyor', 'Bu tarayıcı web push desteklemiyor (iOS: ana ekrana ekleyin).');
+        } else {
+            danger('Push açılamadı', 'Lütfen tekrar deneyin.');
+        }
+    } else {
+        await push.disable();
+        success('Push kapatıldı', 'Bu cihazda artık push bildirim almayacaksınız.');
+    }
+}
+
 onMounted(() => {
     twoFactorEnabled.value = user.value?.two_factor_enabled ?? false;
     hasPin.value = user.value?.has_pin ?? false;
     void loadSessions();
+    void loadPrefs();
 });
 </script>
 
@@ -553,6 +634,101 @@ onMounted(() => {
             </template>
 
             <!-- ================= Oturumlar ================= -->
+            <!-- ================= Bildirimler (§8) ================= -->
+            <template #notifications>
+                <div class="flex flex-col divide-y divide-(--ui-border)">
+                    <!-- Web push (bu cihaz) -->
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 first:pt-0 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Masaüstü / mobil push</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Bu cihazda (tarayıcı) push bildirim alın. Panel kapalıyken de sipariş, hazır ve uyarı
+                                bildirimleri masaüstünüze düşer.
+                            </p>
+                        </div>
+                        <div class="min-w-0">
+                            <BaseCard flush>
+                                <div class="flex items-start justify-between gap-4 p-5 sm:p-6">
+                                    <div class="min-w-0 flex flex-col gap-0.5">
+                                        <span class="text-[15px] font-semibold text-body">Bu cihazda push bildirimleri</span>
+                                        <span class="text-sm leading-relaxed text-muted">
+                                            <template v-if="push.permission.value === 'unsupported'">
+                                                Bu tarayıcı push desteklemiyor. iOS'ta uygulamayı ana ekrana ekleyin.
+                                            </template>
+                                            <template v-else-if="push.permission.value === 'denied'">
+                                                Bildirim izni reddedilmiş — tarayıcı ayarlarından açmanız gerekir.
+                                            </template>
+                                            <template v-else-if="push.subscribed.value">Bu cihazda açık.</template>
+                                            <template v-else>Kapalı — açmak için izin vermeniz istenir.</template>
+                                        </span>
+                                    </div>
+                                    <BaseSwitch
+                                        :model-value="push.subscribed.value"
+                                        :busy="push.busy.value"
+                                        :disabled="push.permission.value === 'unsupported' || push.permission.value === 'denied'"
+                                        aria-label="Bu cihazda push bildirimlerini aç/kapat"
+                                        @update:model-value="togglePush($event)"
+                                    />
+                                </div>
+                            </BaseCard>
+                        </div>
+                    </section>
+
+                    <!-- Olay tipi tercihleri (kalem kalem) -->
+                    <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-8 md:grid-cols-[260px_1fr]">
+                        <div class="flex flex-col gap-1.5">
+                            <h2 class="text-base font-semibold text-body">Neyi bildirelim?</h2>
+                            <p class="text-sm leading-relaxed text-muted">
+                                Her olay için panel-içi zil ve push'u ayrı ayrı açıp kapatın. Yalnız rolünüzle ilgili
+                                olaylar size ulaşır.
+                            </p>
+                        </div>
+                        <div class="min-w-0 flex flex-col gap-5">
+                            <div v-if="prefsLoading" class="flex flex-col gap-3">
+                                <BaseSkeleton v-for="n in 3" :key="n" variant="rect" size-class="h-16 w-full" />
+                            </div>
+
+                            <EmptyState
+                                v-else-if="prefTypes.length === 0"
+                                icon="bell"
+                                title="Ayarlanacak bildirim yok"
+                                description="Rolünüze uygun bildirim tipi bulunmuyor."
+                            />
+
+                            <BaseCard v-for="group in prefGroups" v-else :key="group.label" flush>
+                                <div class="border-b border-default px-4 py-2.5 sm:px-5">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-subtle">{{ group.label }}</span>
+                                </div>
+                                <ul class="divide-y divide-(--ui-border)">
+                                    <li v-for="type in group.types" :key="type.key" class="flex flex-col gap-3 px-4 py-4 sm:px-5">
+                                        <div class="min-w-0 flex flex-col gap-0.5">
+                                            <span class="text-[15px] font-semibold text-body">{{ type.label }}</span>
+                                            <span class="text-sm leading-relaxed text-muted">{{ type.description }}</span>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-x-8 gap-y-2">
+                                            <BaseSwitch
+                                                :model-value="type.in_app"
+                                                label="Panel zili"
+                                                label-position="left"
+                                                :aria-label="`${type.label} — panel zili`"
+                                                @update:model-value="savePref(type, 'in_app', $event)"
+                                            />
+                                            <BaseSwitch
+                                                :model-value="type.push"
+                                                label="Push"
+                                                label-position="left"
+                                                :aria-label="`${type.label} — push`"
+                                                @update:model-value="savePref(type, 'push', $event)"
+                                            />
+                                        </div>
+                                    </li>
+                                </ul>
+                            </BaseCard>
+                        </div>
+                    </section>
+                </div>
+            </template>
+
             <template #sessions>
                 <section class="grid grid-cols-1 gap-x-12 gap-y-4 md:grid-cols-[260px_1fr]">
                     <div class="flex flex-col gap-1.5">

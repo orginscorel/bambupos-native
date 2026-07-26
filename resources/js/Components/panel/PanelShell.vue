@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { authFromPage, type BranchOption } from '@/types/auth';
 import { useTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
+import { useNotifications, type NotificationItem } from '@/composables/useNotifications';
+import { formatRelative } from '@/lib/format';
 import type { NavItem } from '@/types/nav';
 import { defaultNavigation } from '@/config/navigation';
 import PanelLayout from '@/Layouts/PanelLayout.vue';
@@ -31,6 +33,16 @@ const auth = computed(() => authFromPage(page.props as Record<string, unknown>))
 
 const { theme, toggleTheme } = useTheme();
 const { success, danger } = useToast();
+
+/* ---- Bildirim zili (§8): okunmamış sayısı + liste + okundu işaretleme ---- */
+const { items: notifications, unreadCount, markRead, markAllRead } = useNotifications();
+
+async function openNotification(item: NotificationItem): Promise<void> {
+    await markRead(item.id);
+    if (item.url) {
+        router.visit(item.url);
+    }
+}
 
 /* ---- Menü: TEK KAYNAK → @/config/navigation ----
  *
@@ -190,26 +202,72 @@ const nativeVersionLabel = computed(() =>
             </BaseDropdown>
         </template>
 
-        <!-- Bildirimler: gerçek durum — henüz bildirim yok -->
+        <!-- Bildirimler: panel-içi zil (§8) — okunmamış sayısı + liste -->
         <template #notifications>
             <BaseDropdown menu-label="Bildirimler">
                 <template #trigger="{ toggle, ariaAttrs }">
                     <button
                         type="button"
                         v-bind="ariaAttrs"
-                        class="flex size-10 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
-                        aria-label="Bildirimler"
+                        class="relative flex size-10 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
+                        :aria-label="unreadCount > 0 ? `Bildirimler (${unreadCount} okunmamış)` : 'Bildirimler'"
                         @click="toggle"
                     >
                         <AppIcon name="bell" :size="18" />
+                        <span
+                            v-if="unreadCount > 0"
+                            class="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold leading-4 text-white"
+                        >
+                            {{ unreadCount > 99 ? '99+' : unreadCount }}
+                        </span>
                     </button>
                 </template>
-                <div class="w-64" @click.stop>
-                    <EmptyState
-                        icon="bell"
-                        title="Yeni bildirim yok"
-                        description="Sipariş ve sistem bildirimleri burada görünecek."
-                    />
+                <div class="flex max-h-[70vh] w-80 flex-col" @click.stop>
+                    <div class="flex items-center justify-between border-b border-default px-3 py-2">
+                        <span class="text-sm font-semibold text-body">Bildirimler</span>
+                        <button
+                            v-if="unreadCount > 0"
+                            type="button"
+                            class="text-xs font-medium text-primary hover:underline"
+                            @click="markAllRead"
+                        >
+                            Tümünü okundu işaretle
+                        </button>
+                    </div>
+
+                    <div v-if="notifications.length === 0" class="p-2">
+                        <EmptyState
+                            icon="bell"
+                            title="Yeni bildirim yok"
+                            description="Sipariş ve sistem bildirimleri burada görünecek."
+                        />
+                    </div>
+
+                    <ul v-else class="overflow-y-auto">
+                        <li v-for="item in notifications" :key="item.id">
+                            <button
+                                type="button"
+                                class="flex w-full items-start gap-2.5 border-b border-default px-3 py-2.5 text-left transition-colors duration-(--dur-fast) hover:bg-inset"
+                                :class="!item.read ? 'bg-primary-soft/40' : ''"
+                                @click="openNotification(item)"
+                            >
+                                <span
+                                    class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full"
+                                    :class="!item.read ? 'bg-primary-soft text-primary' : 'bg-inset text-muted'"
+                                >
+                                    <AppIcon :name="item.icon" :size="15" />
+                                </span>
+                                <span class="flex min-w-0 grow flex-col">
+                                    <span class="truncate text-[13px] font-semibold text-body">{{ item.title }}</span>
+                                    <span v-if="item.body" class="line-clamp-2 text-xs text-muted">{{ item.body }}</span>
+                                    <span v-if="item.created_at" class="mt-0.5 text-[11px] text-subtle">
+                                        {{ formatRelative(item.created_at) }}
+                                    </span>
+                                </span>
+                                <span v-if="!item.read" class="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                            </button>
+                        </li>
+                    </ul>
                 </div>
             </BaseDropdown>
         </template>

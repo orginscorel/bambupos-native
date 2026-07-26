@@ -86,6 +86,11 @@ return Application::configure(basePath: dirname(__DIR__))
             // dosyanın içinde: /terminal/{token} token'la oto-giriş (kimlik =
             // opak cihaz token'ı, ADR-008 deseni).
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/terminal.php');
+
+            // Notify domaini (§8): panel-içi bildirim zili + web push (VAPID)
+            // abonelik + kişi-bazlı bildirim tercihleri. Middleware dosyanın
+            // içinde (web + auth + tenant); public uç yoktur.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/notify.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

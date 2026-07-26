@@ -32,5 +32,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- §8 Notify: testte gerçek web-push HTTP çağrısı YAPILMAZ (dış ağ yok). -->
+        <env name="NOTIFY_PUSH_ENABLED" value="false"/>
     </php>
 </phpunit>

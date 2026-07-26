@@ -19,3 +19,6 @@ Schedule::command('reservations:sync-tables')->everyMinute()->withoutOverlapping
 
 // Yaklaşan onaylı rezervasyonlara e-posta hatırlatması (SMTP paneli üzerinden).
 Schedule::command('reservations:send-reminders')->everyFiveMinutes()->withoutOverlapping();
+
+// §8/§11 Bildirim: komi teslim SLA ihlali + yaklaşan rezervasyon taraması.
+Schedule::command('notify:check-sla')->everyMinute()->withoutOverlapping();
