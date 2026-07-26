@@ -34,10 +34,16 @@ const stations = computed<string[] | null>(() => {
     const auth = (page.props as Record<string, unknown>).auth as { stations?: string[] } | undefined;
     return auth?.stations ?? null;
 });
+/** §9 Eklentiler/feature-flag: açık opsiyonel özellikler (PanelLayout ile aynı). */
+const features = computed<Record<string, boolean> | null>(() => {
+    const auth = (page.props as Record<string, unknown>).auth as { features?: Record<string, boolean> } | undefined;
+    return auth?.features ?? null;
+});
 
 const navItems = computed<NavItem[]>(() => {
     const perms = permissions.value;
     const userStations = stations.value;
+    const feats = features.value;
 
     return defaultNavigation.filter((i) => {
         // 1) İzin süzgeci (perms yoksa hiç süzme)
@@ -54,6 +60,9 @@ const navItems = computed<NavItem[]>(() => {
         ) {
             return false;
         }
+
+        // 3) §9 Feature-flag: kapalı opsiyonel özelliğin öğesi gizlenir.
+        if (i.feature && feats && feats[i.feature] === false) return false;
 
         return true;
     });

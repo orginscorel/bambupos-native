@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             InventorySeeder::class, // stok/depo demo verisi (CatalogSeeder'dan SONRA: reçeteler ürünlere bağlanır)
             ShiftsSeeder::class, // vardiya/mesai demo verisi (DemoTenantSeeder'dan SONRA: roller + şube hazır)
             DemoOrdersSeeder::class, // §12 karışık açık adisyon (Mutfak+Barista) — CatalogSeeder'dan SONRA, idempotent
+            FeatureSeeder::class, // §9 Eklentiler: demo kiracıda tüm opsiyonel özellikler açık (DemoTenantSeeder'dan SONRA)
         ]);
     }
 }

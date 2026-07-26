@@ -20,7 +20,8 @@ class ReservationFeature
 {
     public static function enabled(?int $tenantId = null): bool
     {
-        // Yer tutucu: özellik altyapısı gelene kadar rezervasyon her kiracıda açık.
-        return true;
+        // §9 feature-flag deposuna bağlı: kapalıysa panel+public rezervasyon
+        // rotaları 404, menü linki gizlenir (ADR: kapalı=yok).
+        return \App\Modules\Settings\Support\Features::enabled($tenantId, 'reservations');
     }
 }

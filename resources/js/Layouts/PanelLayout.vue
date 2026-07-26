@@ -77,10 +77,18 @@ const stations = computed<string[] | null>(() => {
     return auth?.stations ?? null;
 });
 
+/** §9 Eklentiler/feature-flag: bu kiracıda açık OPSİYONEL özellikler {key:bool}.
+ *  Prop yoksa (auth yok) null → feature süzmesi yapılmaz (eski davranış). */
+const features = computed<Record<string, boolean> | null>(() => {
+    const auth = (page.props as Record<string, unknown>).auth as { features?: Record<string, boolean> } | undefined;
+    return auth?.features ?? null;
+});
+
 const navItems = computed<NavItem[]>(() => {
     const items = props.nav ?? defaultNavigation;
     const perms = permissions.value;
     const userStations = stations.value;
+    const feats = features.value;
 
     return items.filter((i) => {
         // 1) İzin süzgeci (perms yoksa hiç süzme — eski davranış korunur)
@@ -93,6 +101,10 @@ const navItems = computed<NavItem[]>(() => {
             && !i.stations.some((s) => userStations.includes(s))) {
             return false;
         }
+
+        // 3) §9 Feature-flag: öğe opsiyonel özelliğe bağlıysa VE o özellik bu
+        // kiracıda KAPALIYSA gizle (ADR: kapalı=yok). feats yoksa süzme.
+        if (i.feature && feats && feats[i.feature] === false) return false;
 
         return true;
     });

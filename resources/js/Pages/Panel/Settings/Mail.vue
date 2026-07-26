@@ -69,6 +69,7 @@ const { success, danger } = useToast();
 const settingsTabs = [
     { href: '/panel/ayarlar/e-posta', label: 'E-posta' },
     { href: '/panel/ayarlar/isletme', label: 'İşletme / Marka' },
+    { href: '/panel/ayarlar/eklentiler', label: 'Eklentiler' },
 ];
 const isActiveTab = (href: string) => page.url.startsWith(href);
 

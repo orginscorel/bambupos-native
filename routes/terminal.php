@@ -34,6 +34,11 @@ Route::middleware('web')->group(function (): void {
 Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
 
     Route::get('/panel/terminaller', function () {
+        // §9 feature-flag: kapalıysa terminaller hiç yok (ADR: kapalı=404).
+        abort_unless(\App\Modules\Settings\Support\Features::enabled(
+            (int) request()->user()?->tenant_id, 'terminals'
+        ), 404);
+
         abort_unless(request()->user()->hasPermission('terminals.view')
             || request()->user()->hasPermission('terminals.manage'), 403);
 

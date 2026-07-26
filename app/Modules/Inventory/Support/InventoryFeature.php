@@ -21,7 +21,8 @@ class InventoryFeature
 {
     public static function enabled(?int $tenantId = null): bool
     {
-        // Yer tutucu: özellik altyapısı gelene kadar stok her kiracıda açık.
-        return true;
+        // §9 feature-flag deposuna bağlı: kapalıysa panel stok ekranları 404,
+        // menü linki gizli, sipariş↔stok köprüsü sessiz durur (ADR: kapalı=yok).
+        return \App\Modules\Settings\Support\Features::enabled($tenantId, 'inventory');
     }
 }

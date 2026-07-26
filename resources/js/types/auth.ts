@@ -26,6 +26,9 @@ export interface BranchOption {
 export interface AuthProps {
     user: AuthUser;
     permissions: string[];
+    /** §9 Eklentiler/feature-flag: bu kiracıda açık OPSİYONEL özellikler
+     *  {key:bool}. Nav süzgeci kapalı öğeyi gizler (ADR: kapalı=yok). */
+    features?: Record<string, boolean>;
     tenant: { name: string; slug: string } | null;
     branches: BranchOption[];
     activeBranchId: number | null;

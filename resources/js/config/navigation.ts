@@ -35,17 +35,17 @@ export const defaultNavigation: NavItem[] = [
     { key: 'runner', label: 'Komi', icon: 'bell', href: '/panel/komi', permission: 'kds.deliver' },
     // --- Kurulum ---
     { key: 'catalog', label: 'Menü', icon: 'utensils', href: '/panel/menu', permission: 'catalog.view' },
-    { key: 'reservations', label: 'Rezervasyonlar', icon: 'calendar', href: '/panel/rezervasyonlar', permission: 'reservations.view' },
+    { key: 'reservations', label: 'Rezervasyonlar', icon: 'calendar', href: '/panel/rezervasyonlar', permission: 'reservations.view', feature: 'reservations' },
     // --- Stok & Finans ---
-    { key: 'inventory', label: 'Depo / Stok', icon: 'package', href: '/panel/stok', permission: 'stock.view' },
-    { key: 'receivables', label: 'Borçlar', icon: 'inbox', href: '/panel/borclar', permission: 'receivables.view' },
+    { key: 'inventory', label: 'Depo / Stok', icon: 'package', href: '/panel/stok', permission: 'stock.view', feature: 'inventory' },
+    { key: 'receivables', label: 'Borçlar', icon: 'inbox', href: '/panel/borclar', permission: 'receivables.view', feature: 'receivables' },
     { key: 'reports', label: 'Raporlar', icon: 'chart', href: '/panel/raporlar', permission: 'reports.view' },
     // --- Yönetim ---
     { key: 'staff', label: 'Personel', icon: 'users', href: '/panel/personel', permission: 'staff.view' },
-    { key: 'shifts', label: 'Vardiya', icon: 'clock', href: '/panel/vardiya', permission: 'staff.view' },
+    { key: 'shifts', label: 'Vardiya', icon: 'clock', href: '/panel/vardiya', permission: 'staff.view', feature: 'shifts' },
     { key: 'branches', label: 'Şubeler', icon: 'store', href: '/panel/subeler', permission: 'tables.view' },
-    { key: 'kiosk', label: 'Kiosk', icon: 'monitor', href: '/panel/kiosklar', permission: 'kiosk.view' },
-    { key: 'terminals', label: 'Terminaller', icon: 'tablet', href: '/panel/terminaller', permission: 'terminals.manage' },
+    { key: 'kiosk', label: 'Kiosk', icon: 'monitor', href: '/panel/kiosklar', permission: 'kiosk.view', feature: 'kiosk' },
+    { key: 'terminals', label: 'Terminaller', icon: 'tablet', href: '/panel/terminaller', permission: 'terminals.manage', feature: 'terminals' },
     // 'Hesabım' sidebar'dan kaldırıldı (2026-07-23) — Profil'e avatar menüsünden ulaşılır.
     { key: 'settings', label: 'Ayarlar', icon: 'settings', href: '/panel/ayarlar/e-posta', permission: 'settings.view' },
     // --- Yardım ---

@@ -583,7 +583,9 @@ class OrderController extends Controller
             return null;
         }
 
-        if (! \App\Modules\Reservations\Support\ReservationFeature::enabled((int) $data['branch_id'])) {
+        // §9: tenant bazlı bayrak — kimlik oturum kullanıcısının kiracısıdır
+        // (data['branch_id'] şube id'si; tenant değil).
+        if (! \App\Modules\Reservations\Support\ReservationFeature::enabled((int) auth()->user()?->tenant_id)) {
             return null;
         }
 
@@ -642,7 +644,8 @@ class OrderController extends Controller
      */
     private function progressReservationForWalkIn(Order $order, ?User $actor): void
     {
-        if (! \App\Modules\Reservations\Support\ReservationFeature::enabled((int) $order->branch_id)) {
+        // §9: tenant bazlı bayrak (order->branch_id şube id'si; tenant değil).
+        if (! \App\Modules\Reservations\Support\ReservationFeature::enabled((int) ($actor?->tenant_id ?? auth()->user()?->tenant_id))) {
             return;
         }
 

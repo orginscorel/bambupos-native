@@ -8,6 +8,12 @@
 
 @section('title', $tenantName.' — '.__('menu.title_suffix'))
 
+{{-- §9 feature-flag: "QR menüden sipariş" kapalıysa gövdeye `m-no-order`
+     sınıfı basılır → sepet/ekle kontrolleri CSS ile gizlenir (JS ile üretilen
+     ürün-detay footer'ı dahil). Backend zaten sipariş POST'unu 403 ile
+     reddeder; bu yalnız görünürlük. Çıktı token'a deterministik → cache korunur. --}}
+@section('body_class', ($menuFeatures['qr_ordering'] ?? true) ? '' : 'm-no-order')
+
 @section('content')
     <header class="m-header">
         {{-- Ortalanmış kimlik bloğu: kafenin logosu (Ayarlar > İşletme / Marka)
@@ -29,7 +35,9 @@
                 </p>
             @endif
         </div>
-        {{-- Servis istekleri: aynı public API'ye bağlanır; uç yoksa dürüst mesaj (sahte başarı yok) --}}
+        {{-- Servis istekleri: aynı public API'ye bağlanır; uç yoksa dürüst mesaj (sahte başarı yok).
+             §9 feature-flag: "Garson/su/hesap çağır" kapalıysa blok HİÇ render edilmez (ADR: kapalı=yok). --}}
+        @if ($menuFeatures['service_calls'] ?? true)
         <div class="m-services" role="group" aria-label="Servis istekleri">
             <button type="button" class="m-services__btn" data-service="waiter">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -44,6 +52,7 @@
                 {{ __('menu.request_water') }}
             </button>
         </div>
+        @endif
     </header>
 
     @if ($categories !== [])

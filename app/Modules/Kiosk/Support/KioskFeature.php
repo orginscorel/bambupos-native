@@ -18,7 +18,8 @@ class KioskFeature
 {
     public static function enabled(?int $tenantId = null): bool
     {
-        // Yer tutucu: özellik altyapısı gelene kadar kiosk her kiracıda açık.
-        return true;
+        // §9 feature-flag deposuna bağlı: yönetici "Eklentiler"den kapatırsa
+        // kiosk public ekranı 404, panel linki gizlenir (ADR: kapalı=yok).
+        return \App\Modules\Settings\Support\Features::enabled($tenantId, 'kiosk');
     }
 }

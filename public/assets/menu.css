@@ -560,3 +560,13 @@ body.m-lock { overflow: hidden; }
 
 /* ---------- alt bilgi ---------- */
 .m-footer { padding: 28px 0 12px; text-align: center; font-size: 12px; color: var(--m-text-muted); }
+
+/* ---------- §9 feature-flag: QR'dan sipariş kapalı (m-no-order) ----------
+   İşletme "QR menüden sipariş"i kapattığında menü SALT-GÖRÜNÜR olur: ürün
+   ekle butonu, sepet çubuğu ve ürün-detay footer'ındaki miktar/ekle
+   kontrolleri gizlenir (footer JS ile üretilse de gövde sınıfı ata olduğu
+   için yakalanır). Backend POST /public/orders zaten 403 döner; bu yalnız
+   görünürlük katmanıdır (ADR: kapalı=render edilmez). */
+.m-no-order [data-add],
+.m-no-order .m-cartbar,
+.m-no-order [data-detail-foot] { display: none !important; }

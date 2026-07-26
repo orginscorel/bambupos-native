@@ -15,6 +15,11 @@ export interface NavItem {
      *  en az birine atanmış kullanıcıya görünür. Atanmamış/yönetici (auth.stations
      *  boş) → kısıt yok, hepsini görür. Boşsa istasyon süzgeci uygulanmaz. */
     stations?: string[];
+    /** §9 Eklentiler/feature-flag: öğe yalnız bu OPSİYONEL özellik AÇIKKEN
+     *  görünür (ör. "kiosk", "reservations", "inventory"). auth.features[feature]
+     *  === false ise öğe gizlenir (ADR: kapalı=yok). Boşsa (çekirdek modül)
+     *  feature süzgeci uygulanmaz. */
+    feature?: string;
     /** Rozet sayısı (ör. bekleyen sipariş) */
     badge?: number;
     /** Mobil alt navigasyonda gösterilsin mi (en fazla 4 öğe önerilir) */

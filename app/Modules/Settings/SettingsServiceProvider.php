@@ -23,6 +23,11 @@ class SettingsServiceProvider extends ServiceProvider
     {
         $this->app->singleton(MailConfigurator::class);
 
+        // Feature-flag servisi (§9): istek-başına memo → `scoped`. Nav süzgeci,
+        // rota gate'leri ve auth paylaşımı tek sorguyla çözülür; testler arası
+        // bayat durum riski yok (Redis yok).
+        $this->app->scoped(\App\Modules\Settings\Services\FeatureService::class);
+
         // Mail yöneticisini, gönderim anında DB ayarını uygulayan
         // türevle değiştir. Ayar satırı yoksa davranış .env ile birebirdir.
         $this->app->extend(

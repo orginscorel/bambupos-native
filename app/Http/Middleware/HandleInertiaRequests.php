@@ -119,6 +119,10 @@ class HandleInertiaRequests extends Middleware
                     ->pluck('name'),
             ],
             'permissions' => $user->permissionKeys(),
+            // §9 Eklentiler/feature-flag: bu kiracıda hangi OPSİYONEL özellikler
+            // açık? {key:bool}. Sidebar/KDS çekmecesi süzgeci kapalı öğeyi gizler
+            // (ADR: kapalı=render edilmez). Çekirdek özellikler bu listede YOK.
+            'features' => \App\Modules\Settings\Support\Features::all((int) $user->tenant_id),
             // §12 İstasyon-kapsamlı görünürlük: kullanıcının görebileceği istasyon
             // AİLELERİ (kitchen/barista). [] = kısıt yok (yönetici/çok-istasyonlu →
             // hepsini görür). Sidebar Mutfak/Barista menüsünü buna göre süzer.

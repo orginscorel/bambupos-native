@@ -18,7 +18,8 @@ class ShiftsFeature
 {
     public static function enabled(?int $tenantId = null): bool
     {
-        // Yer tutucu: özellik altyapısı gelene kadar vardiya her kiracıda açık.
-        return true;
+        // §9 feature-flag deposuna bağlı: kapalıysa vardiya/mesai panel rotaları
+        // 404, menü linki gizlenir (ADR: kapalı=yok).
+        return \App\Modules\Settings\Support\Features::enabled($tenantId, 'shifts');
     }
 }

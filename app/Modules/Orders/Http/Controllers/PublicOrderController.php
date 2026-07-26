@@ -76,6 +76,15 @@ class PublicOrderController extends Controller
 
         $table = $resolution->table;
 
+        // §9 feature-flag: işletme "QR menüden sipariş"i kapattıysa menü yalnız
+        // görüntülenir, sipariş ALINMAZ (ADR: kapalı=yok). Kimlik token'dan
+        // çözülen kiracıdır (istekten asla gelmez).
+        if (! \App\Modules\Settings\Support\Features::enabled((int) $table->tenant_id, 'qr_ordering')) {
+            return response()->json([
+                'message' => 'Bu işletmede QR menüden sipariş alınmıyor. Lütfen personelden yardım isteyin.',
+            ], 403);
+        }
+
         // Yazma bağlamı: token'dan çözülen kiracı (ADR-008/ADR-004).
         $this->context->setTenant((int) $table->tenant_id);
 
