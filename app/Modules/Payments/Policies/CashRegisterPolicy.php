@@ -26,8 +26,16 @@ class CashRegisterPolicy
         return ($register === null || $this->owned($user, $register)) && $user->hasPermission('cash.close');
     }
 
+    /** ŞUBE KAPSAMI: kasa YALNIZ geçerli şubede görüntülenip yönetilebilir. */
     private function owned(User $user, CashRegister $register): bool
     {
-        return $user->tenant_id !== null && (int) $register->tenant_id === (int) $user->tenant_id;
+        if ($user->tenant_id === null || (int) $register->tenant_id !== (int) $user->tenant_id) {
+            return false;
+        }
+
+        $branchId = $register->getAttribute('branch_id');
+
+        return $branchId === null
+            || (int) $branchId === (int) app(\App\Modules\Tenancy\BranchContext::class)->currentBranchId();
     }
 }

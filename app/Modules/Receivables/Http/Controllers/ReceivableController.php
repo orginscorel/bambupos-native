@@ -18,6 +18,8 @@ use Illuminate\Validation\ValidationException;
  */
 class ReceivableController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(private readonly ReceivableService $receivables)
     {
     }
@@ -26,9 +28,13 @@ class ReceivableController extends Controller
     {
         $this->authorize('viewAny', Receivable::class);
 
-        $query = Receivable::query()->withCount(['orders as open_debt_orders_count' => function ($q): void {
-            $q->where('status', 'debt_transferred');
-        }]);
+        // ŞUBE KAPSAMI: geçerli şubenin carileri + kiracı-geneli (şubesiz) cariler.
+        $branchId = $this->currentBranchId();
+        $query = Receivable::query()
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+            ->withCount(['orders as open_debt_orders_count' => function ($q): void {
+                $q->where('status', 'debt_transferred');
+            }]);
 
         if ($request->filled('q')) {
             $needle = '%'.str_replace(['%', '_'], ['\\%', '\\_'], (string) $request->query('q')).'%';

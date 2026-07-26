@@ -21,6 +21,8 @@ use Illuminate\Http\Request;
  */
 class ScheduleController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(private readonly ShiftPlanner $planner)
     {
     }
@@ -47,9 +49,14 @@ class ScheduleController extends Controller
 
         $settings = ShiftSetting::current();
 
+        // ŞUBE KAPSAMI: planlama YALNIZ geçerli şubede — dropdown tek şube.
+        $branches = Branch::query()->where('is_active', true)
+            ->where('id', $this->currentBranchId())
+            ->orderBy('name')->get(['id', 'name']);
+
         return response()->json([
             'staff' => $staff,
-            'branches' => Branch::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'branches' => $branches,
             'positions' => $positions,
             'default_break_min' => $settings->default_break_min,
             'can' => [
@@ -71,10 +78,11 @@ class ScheduleController extends Controller
         $user = $request->user();
         $canViewAll = $user->hasPermission('staff.view') || $user->hasPermission('staff.manage');
 
+        // ŞUBE KAPSAMI: takvim DAİMA geçerli şube (istek branch_id yok sayılır).
         $result = $this->planner->schedule(
             CarbonImmutable::parse($data['from']),
             CarbonImmutable::parse($data['to']),
-            isset($data['branch_id']) ? (int) $data['branch_id'] : null,
+            $this->currentBranchId(),
             $canViewAll ? null : (int) $user->id,
         );
 
@@ -97,6 +105,9 @@ class ScheduleController extends Controller
             'allow_overlap' => ['nullable', 'boolean'],
         ]);
 
+        // ŞUBE KAPSAMI: vardiya DAİMA geçerli şubede oluşturulur.
+        $data['branch_id'] = $this->currentBranchId();
+
         // Kiracı doğrulaması: personel ve şube bağlamdaki kiracıya ait olmalı.
         abort_unless(User::ofCurrentTenant()->whereKey($data['user_id'])->exists(), 404);
         abort_unless(Branch::query()->whereKey($data['branch_id'])->exists(), 404);
@@ -112,6 +123,8 @@ class ScheduleController extends Controller
     public function update(Request $request, Shift $shift): JsonResponse
     {
         abort_unless($request->user()->hasPermission('staff.manage'), 403);
+        // ŞUBE KAPSAMI: başka şubenin vardiyası düzenlenemez.
+        abort_unless((int) $shift->branch_id === (int) $this->currentBranchId(), 403);
 
         $data = $request->validate([
             'branch_id' => ['sometimes', 'integer'],
@@ -129,6 +142,8 @@ class ScheduleController extends Controller
         }
 
         if (isset($data['branch_id'])) {
+            // Başka şubeye taşınamaz — geçerli şubede kalır.
+            $data['branch_id'] = $this->currentBranchId();
             abort_unless(Branch::query()->whereKey($data['branch_id'])->exists(), 404);
         }
 
@@ -140,6 +155,8 @@ class ScheduleController extends Controller
     public function destroy(Request $request, Shift $shift): JsonResponse
     {
         abort_unless($request->user()->hasPermission('staff.manage'), 403);
+        // ŞUBE KAPSAMI: başka şubenin vardiyası silinemez.
+        abort_unless((int) $shift->branch_id === (int) $this->currentBranchId(), 403);
 
         // İsteğe bağlı: tekrar serisinin gelecekteki tümünü sil.
         if ($request->boolean('with_series') && $shift->repeat_group !== null) {

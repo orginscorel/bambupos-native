@@ -41,6 +41,16 @@ class DemoTenantSeeder extends Seeder
             $branch->tenant_id = $tenant->id;
             $branch->save();
 
+            // ŞUBE KAPSAMI: iki-şube senaryosunu (izolasyon + değiştirici)
+            // elle test edebilmek için ikinci demo şube.
+            $branch2 = new Branch([
+                'name' => 'İkinci Şube',
+                'code' => 'SUBE2',
+                'is_active' => true,
+            ]);
+            $branch2->tenant_id = $tenant->id;
+            $branch2->save();
+
             // Rol setleri TEK KAYNAKTAN: config/authz.php 'templates'
             // (Personel-Yetki — "default olarak lazım olabilecekler" açık).
             $allPermissionIds = Permission::query()->pluck('id', 'key');

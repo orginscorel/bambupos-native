@@ -20,15 +20,15 @@ use Illuminate\Validation\ValidationException;
  */
 class VenueTableController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Table::class);
 
-        $query = Table::query()->with(['area:id,name,floor_id', 'area.floor:id,name', 'branch:id,name']);
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin masaları.
+        $query = Table::query()->with(['area:id,name,floor_id', 'area.floor:id,name', 'branch:id,name'])
+            ->where('branch_id', $this->currentBranchId());
 
         if ($request->filled('area_id')) {
             $request->query('area_id') === 'none'
@@ -68,7 +68,8 @@ class VenueTableController extends Controller
         $this->authorize('create', Table::class);
 
         $data = $request->validate([
-            'branch_id' => ['required', 'integer'],
+            // Şube bağlamdan gelir (ScopesToBranch); istekteki değer yok sayılır.
+            'branch_id' => ['sometimes', 'nullable', 'integer'],
             'area_id' => ['nullable', 'integer'],
             'name' => ['required', 'string', 'max:100'],
             'number' => ['nullable', 'integer', 'min:1', 'max:999999'],
@@ -79,6 +80,8 @@ class VenueTableController extends Controller
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
+        // ŞUBE KAPSAMI: masa DAİMA geçerli şubede oluşturulur.
+        $data['branch_id'] = $this->currentBranchId();
         $branch = $this->resolveBranch((int) $data['branch_id']);
         $areaId = $this->resolveAreaId($data['area_id'] ?? null, (int) $branch->id);
 
@@ -110,7 +113,8 @@ class VenueTableController extends Controller
         $this->authorize('create', Table::class);
 
         $data = $request->validate([
-            'branch_id' => ['required', 'integer'],
+            // Şube bağlamdan gelir (ScopesToBranch); istekteki değer yok sayılır.
+            'branch_id' => ['sometimes', 'nullable', 'integer'],
             'area_id' => ['nullable', 'integer'],
             'name_prefix' => ['required', 'string', 'max:80'],
             'start' => ['required', 'integer', 'min:1', 'max:999999'],
@@ -124,6 +128,8 @@ class VenueTableController extends Controller
             throw ValidationException::withMessages(['end' => ['Tek seferde en fazla 200 masa oluşturulabilir.']]);
         }
 
+        // ŞUBE KAPSAMI: toplu masa DAİMA geçerli şubede oluşturulur.
+        $data['branch_id'] = $this->currentBranchId();
         $branch = $this->resolveBranch((int) $data['branch_id']);
         $areaId = $this->resolveAreaId($data['area_id'] ?? null, (int) $branch->id);
 

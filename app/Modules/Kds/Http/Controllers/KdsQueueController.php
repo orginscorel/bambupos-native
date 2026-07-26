@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class KdsQueueController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(private readonly KdsService $kds)
     {
     }
@@ -27,7 +29,9 @@ class KdsQueueController extends Controller
         $mode = (string) $request->query('mode', 'kitchen');
         $this->authorizeMode($request, $mode);
 
-        $branchId = (int) $request->query('branch_id', 0);
+        // ŞUBE KAPSAMI: mutfak/komi yalnız GEÇERLİ şubenin kuyruğunu görür.
+        // Terminal/personel kendi şubesine kilitli (istek branch_id yok sayılır).
+        $branchId = $this->currentBranchId() ?? 0;
         $lane = $this->laneOf($request);
 
         $payload = $mode === 'runner'
@@ -46,7 +50,7 @@ class KdsQueueController extends Controller
         $mode = (string) $request->query('mode', 'kitchen');
         $this->authorizeMode($request, $mode);
 
-        $branchId = (int) $request->query('branch_id', 0);
+        $branchId = $this->currentBranchId() ?? 0;
         $cursor = (int) $request->query('cursor', 0);
 
         $latest = $this->kds->cursor($branchId);

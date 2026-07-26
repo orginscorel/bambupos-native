@@ -152,6 +152,11 @@ class ServiceRequestController extends Controller
     public function done(Request $request, ServiceRequest $serviceRequest): JsonResponse
     {
         $this->authorize('viewAny', Order::class); // orders.view yeterli (operasyonel kapatma)
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin talebi kapatılabilir.
+        abort_unless(
+            (int) $serviceRequest->branch_id === (int) app(\App\Modules\Tenancy\BranchContext::class)->currentBranchId(),
+            403
+        );
 
         if ($serviceRequest->status !== 'done') {
             $serviceRequest->status = 'done';

@@ -13,13 +13,18 @@ use Illuminate\Validation\Rule;
 /** Depo yönetimi (§17.1). */
 class WarehouseController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function index(): JsonResponse
     {
         $this->authorize('viewAny', Warehouse::class);
 
+        // ŞUBE KAPSAMI: geçerli şubenin depoları + kiracı-geneli (şubesiz) depolar.
+        $branchId = $this->currentBranchId();
         $warehouses = Warehouse::query()
             ->with('branch:id,name')
             ->withCount('levels')
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
             ->orderBy('name')
             ->get();
 

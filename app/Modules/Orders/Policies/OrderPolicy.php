@@ -14,24 +14,43 @@ class OrderPolicy extends TenantOwnedPolicy
 {
     protected string $module = 'orders';
 
+    /**
+     * ŞUBE KAPSAMI: adisyon görüntüleme/mutasyon YALNIZ geçerli şubede.
+     * view+update (addItem/pay/setStatus/... hepsi update'ten geçer) burada
+     * şubeyle sınırlanınca tüm adisyon işlemleri çapraz-şubeye kapanır.
+     */
+    public function view(User $user, \Illuminate\Database\Eloquent\Model $order): bool
+    {
+        return parent::view($user, $order) && $this->inCurrentBranch($order);
+    }
+
+    public function update(User $user, \Illuminate\Database\Eloquent\Model $order): bool
+    {
+        return parent::update($user, $order) && $this->inCurrentBranch($order);
+    }
+
     public function cancel(User $user, Order $order): bool
     {
-        return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.cancel');
+        return $this->ownedByUserTenant($user, $order) && $this->inCurrentBranch($order)
+            && $user->hasPermission('orders.cancel');
     }
 
     public function refund(User $user, Order $order): bool
     {
-        return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.refund');
+        return $this->ownedByUserTenant($user, $order) && $this->inCurrentBranch($order)
+            && $user->hasPermission('orders.refund');
     }
 
     public function discount(User $user, Order $order): bool
     {
-        return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.discount');
+        return $this->ownedByUserTenant($user, $order) && $this->inCurrentBranch($order)
+            && $user->hasPermission('orders.discount');
     }
 
     public function comp(User $user, Order $order): bool
     {
-        return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.comp');
+        return $this->ownedByUserTenant($user, $order) && $this->inCurrentBranch($order)
+            && $user->hasPermission('orders.comp');
     }
 
     /**
@@ -40,6 +59,7 @@ class OrderPolicy extends TenantOwnedPolicy
      */
     public function mergeTables(User $user, Order $order): bool
     {
-        return $this->ownedByUserTenant($user, $order) && $user->hasPermission('orders.merge_tables');
+        return $this->ownedByUserTenant($user, $order) && $this->inCurrentBranch($order)
+            && $user->hasPermission('orders.merge_tables');
     }
 }

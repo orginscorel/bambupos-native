@@ -45,6 +45,9 @@ const nav: NavItem[] = defaultNavigation;
 
 /* ---- Şube değiştirici ---- */
 const branches = computed<BranchOption[]>(() => auth.value?.branches ?? []);
+// ŞUBE KAPSAMI: switcher yalnız yönetici + çok-şube açık + >1 şubede görünür.
+// Kilitli personel/terminal/tek-şube modunda gizli (backend canSwitchBranch).
+const canSwitchBranch = computed<boolean>(() => auth.value?.canSwitchBranch === true);
 const activeBranchId = ref<number | null>(null);
 const currentBranch = computed<BranchOption | null>(() => {
     const id = activeBranchId.value ?? auth.value?.activeBranchId ?? null;
@@ -160,7 +163,7 @@ const nativeVersionLabel = computed(() =>
 
         <!-- Şube değiştirici: kiracının aktif şubeleri -->
         <template #branch-switcher>
-            <BaseDropdown v-if="branches.length > 0" align="left" menu-label="Şube seçimi">
+            <BaseDropdown v-if="canSwitchBranch && branches.length > 1" align="left" menu-label="Şube seçimi">
                 <template #trigger="{ toggle, ariaAttrs }">
                     <button
                         type="button"

@@ -110,34 +110,24 @@ final class ReportFilters
         return new self($tenantId, $branchId, $timezone, $from, $to);
     }
 
-    /** @return array{0: ?int, 1: string} [branchId, timezone] */
+    /**
+     * ŞUBE KAPSAMI: TÜM raporlar tek GEÇERLİ şubeyle süzülür — "tümü/all" YOK.
+     * Personel kendi şubesine, yönetici aktif seçili şubesine kilitli
+     * (BranchContext). İstekten gelen branch_id yok sayılır → çapraz-şube
+     * ciro/tahsilat/ürün/personel raporu ASLA karışmaz.
+     *
+     * @return array{0: ?int, 1: string} [branchId, timezone]
+     */
     private static function resolveBranch(Request $request, int $tenantId): array
     {
-        $branches = Branch::query()
-            ->withoutGlobalScopes()
-            ->where('tenant_id', $tenantId)
-            ->where('is_active', true)
-            ->get(['id', 'timezone']);
+        $branchContext = app(\App\Modules\Tenancy\BranchContext::class);
 
-        $raw = (string) $request->query('branch_id', '');
-
-        if ($raw === 'all') {
-            return [null, (string) ($branches->first()->timezone ?? config('app.timezone'))];
-        }
-
-        $requested = $raw === ''
-            ? (int) ($request->session()->get('panel.active_branch_id') ?: ($request->user()?->branch_id ?? 0))
-            : (int) $raw;
-
-        $branch = $branches->firstWhere('id', $requested) ?? $branches->first();
-
-        if ($raw !== '' && $branch?->id !== $requested) {
-            throw ValidationException::withMessages(['branch_id' => ['Geçersiz şube.']]);
-        }
+        $branchId = $branchContext->currentBranchId();
+        $branch = $branchContext->currentBranch();
 
         return [
-            $branch?->id,
-            (string) ($branch->timezone ?? config('app.timezone')),
+            $branchId,
+            (string) ($branch?->timezone ?? config('app.timezone')),
         ];
     }
 

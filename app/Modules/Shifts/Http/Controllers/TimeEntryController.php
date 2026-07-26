@@ -16,6 +16,8 @@ use Illuminate\Http\Request;
  */
 class TimeEntryController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(
         private readonly TimeClockService $clock,
         private readonly AttendanceService $attendance,
@@ -31,7 +33,8 @@ class TimeEntryController extends Controller
             ->with(['user:id,name,position', 'branch:id,name', 'shift:id,starts_at,ends_at,break_min', 'breaks', 'device:id,name'])
             ->when(! $canViewAll, fn ($q) => $q->where('user_id', $user->id))
             ->when($canViewAll && $request->filled('user_id'), fn ($q) => $q->where('user_id', (int) $request->input('user_id')))
-            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', (int) $request->input('branch_id')))
+            // ŞUBE KAPSAMI: yalnız geçerli şubenin mesai kayıtları (yönetici).
+            ->when($canViewAll, fn ($q) => $q->where('branch_id', $this->currentBranchId()))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
             ->when($request->filled('from'), fn ($q) => $q->where('clock_in_at', '>=', $request->date('from')))
             ->when($request->filled('to'), fn ($q) => $q->where('clock_in_at', '<', $request->date('to')?->addDay()))

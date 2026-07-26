@@ -42,8 +42,19 @@ class PaymentPolicy
         return $this->owned($user, $payment) && $user->hasPermission('payments.refund');
     }
 
+    /**
+     * ŞUBE KAPSAMI: ödeme YALNIZ geçerli şubede görüntülenip void/refund
+     * edilebilir — başka şubenin ödemesine dokunulamaz (kasa izolasyonu).
+     */
     private function owned(User $user, Payment $payment): bool
     {
-        return $user->tenant_id !== null && (int) $payment->tenant_id === (int) $user->tenant_id;
+        if ($user->tenant_id === null || (int) $payment->tenant_id !== (int) $user->tenant_id) {
+            return false;
+        }
+
+        $branchId = $payment->getAttribute('branch_id');
+
+        return $branchId === null
+            || (int) $branchId === (int) app(\App\Modules\Tenancy\BranchContext::class)->currentBranchId();
     }
 }

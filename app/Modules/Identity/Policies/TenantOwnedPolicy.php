@@ -45,4 +45,25 @@ abstract class TenantOwnedPolicy
         return $user->tenant_id !== null
             && (int) $model->getAttribute('tenant_id') === (int) $user->tenant_id;
     }
+
+    /**
+     * ŞUBE KAPSAMI (izolasyonun 2. boyutu): şube-bağlı bir kayıt YALNIZ
+     * kullanıcının GEÇERLİ şubesindeyse erişilebilir. Personel kendi
+     * şubesine, yönetici aktif seçili şubesine kilitlidir (BranchContext).
+     *
+     * Şubesiz (branch_id = null) kayıtlar tenant-geneli sayılır, kısıtlanmaz.
+     * Bu yardımcı YALNIZ şube-bağlı modüllerin (Orders/Payments/...) policy'
+     * lerinde bilinçle çağrılır — Catalog/Menü gibi tenant-geneli modüllerde
+     * KULLANILMAZ.
+     */
+    protected function inCurrentBranch(Model $model): bool
+    {
+        $branchId = $model->getAttribute('branch_id');
+
+        if ($branchId === null) {
+            return true;
+        }
+
+        return (int) $branchId === (int) app(\App\Modules\Tenancy\BranchContext::class)->currentBranchId();
+    }
 }

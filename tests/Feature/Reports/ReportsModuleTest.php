@@ -41,15 +41,18 @@ class ReportsModuleTest extends TestCase
         $this->get('/panel/raporlar')->assertOk();
     }
 
-    public function test_bilinmeyen_rapor_404_yabanci_sube_422(): void
+    public function test_bilinmeyen_rapor_404_yabanci_sube_yoksayilir(): void
     {
         $a = $this->makeTenantWithUser();
         $b = $this->makeTenantWithUser();
         $this->actingAs($a['user']);
 
         $this->getJson('/api/v1/reports/olmayan-rapor')->assertNotFound();
+
+        // ŞUBE KAPSAMI: istekten gelen yabancı branch_id YOK SAYILIR — rapor
+        // daima kullanıcının geçerli şubesine süzülür (sızıntı değil, 422 değil).
         $this->getJson('/api/v1/reports/sales-summary?branch_id='.$b['branch']->id)
-            ->assertUnprocessable();
+            ->assertOk();
     }
 
     /**

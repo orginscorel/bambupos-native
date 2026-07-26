@@ -46,6 +46,14 @@ class BranchController extends Controller
     {
         $this->authorize('create', Branch::class);
 
+        // ŞUBE KAPSAMI: çok-şube (branches feature) kapalıysa tek-şube modu —
+        // yeni şube eklenemez.
+        abort_unless(
+            \App\Modules\Settings\Support\Features::enabled((int) $request->user()->tenant_id, 'branches'),
+            403,
+            'Çok şube özelliği kapalı; yeni şube eklenemez.'
+        );
+
         $data = $this->validated($request);
 
         $branch = new Branch($data);

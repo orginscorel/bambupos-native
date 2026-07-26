@@ -65,12 +65,22 @@ class ReservationTenantIsolationTest extends TestCase
     {
         $this->actingAs($this->a['user']);
 
-        $this->postJson('/api/v1/reservations', [
+        // ŞUBE KAPSAMI: istekteki yabancı branch_id YOK SAYILIR — kayıt
+        // kullanıcının GEÇERLİ (kendi) şubesine düşer, yabancı şubeye ASLA.
+        $response = $this->postJson('/api/v1/reservations', [
             'branch_id' => $this->b['branch']->id,
             'customer_name' => 'Sızma Denemesi',
             'reserved_at' => now()->addDay()->format('Y-m-d 19:00:00'),
             'party_size' => 2,
-        ])->assertUnprocessable()->assertJsonValidationErrors(['branch_id']);
+        ])->assertCreated();
+
+        // Yabancı (B) şubesine hiçbir rezervasyon yazılmadı.
+        $this->assertSame(0, Reservation::withoutTenancy()
+            ->where('branch_id', $this->b['branch']->id)->count());
+
+        // Kendi (A) şubesine yazıldı.
+        $this->assertSame($this->a['branch']->id, (int) Reservation::withoutTenancy()
+            ->where('id', $response->json('reservation.id'))->value('branch_id'));
     }
 
     public function test_bekleme_listesi_izolasyonu(): void

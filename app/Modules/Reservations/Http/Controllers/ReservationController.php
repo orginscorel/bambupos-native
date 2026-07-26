@@ -23,6 +23,8 @@ use Illuminate\Validation\Rule;
  */
 class ReservationController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(
         private readonly ReservationService $service,
         private readonly AvailabilityService $availability,
@@ -35,11 +37,9 @@ class ReservationController extends Controller
     {
         $this->authorize('viewAny', Reservation::class);
 
-        $query = Reservation::query()->with(['tables:id,name,number,capacity', 'area:id,name', 'creator:id,name']);
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin rezervasyonları.
+        $query = Reservation::query()->with(['tables:id,name,number,capacity', 'area:id,name', 'creator:id,name'])
+            ->where('branch_id', $this->currentBranchId());
 
         if ($request->filled('from')) {
             $query->where('reserved_at', '>=', Carbon::parse((string) $request->query('from'))->startOfDay());
@@ -90,6 +90,9 @@ class ReservationController extends Controller
             'ignore_reservation_id' => ['sometimes', 'integer'],
         ]);
 
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin uygunluğu sorgulanabilir.
+        abort_unless($this->branchContext()->isAllowed((int) $data['branch_id']), 403, 'Geçersiz şube.');
+
         $tables = $this->availability->tableAvailability(
             (int) $data['branch_id'],
             Carbon::parse($data['reserved_at']),
@@ -106,6 +109,8 @@ class ReservationController extends Controller
         $this->authorize('create', Reservation::class);
 
         $data = $this->validatePayload($request, creating: true);
+        // ŞUBE KAPSAMI: rezervasyon DAİMA geçerli şubede açılır.
+        $data['branch_id'] = $this->currentBranchId();
         $this->assertBranchBelongsToTenant($request, (int) $data['branch_id']);
 
         $reservation = $this->service->create(
@@ -234,8 +239,9 @@ class ReservationController extends Controller
             ? Carbon::parse((string) $request->query('to'))->endOfDay()
             : now()->endOfDay();
 
+        // ŞUBE KAPSAMI: no-show raporu yalnız geçerli şube.
         $base = Reservation::query()
-            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', (int) $request->query('branch_id')))
+            ->where('branch_id', $this->currentBranchId())
             ->whereBetween('reserved_at', [$from, $to]);
 
         $total = (clone $base)->count();

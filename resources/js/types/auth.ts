@@ -21,6 +21,7 @@ export interface BranchOption {
     id: number;
     name: string;
     code: string | null;
+    timezone?: string | null;
 }
 
 export interface AuthProps {
@@ -32,6 +33,9 @@ export interface AuthProps {
     tenant: { name: string; slug: string } | null;
     branches: BranchOption[];
     activeBranchId: number | null;
+    /** ŞUBE KAPSAMI: şube değiştirici görünmeli mi? Yalnız yönetici +
+     *  çok-şube açık + >1 şube. Kilitli personel/terminal/tek-şube → false. */
+    canSwitchBranch?: boolean;
     /** Kullanıcının seçebileceği açılış ekranları (izinli olanlar) */
     screenOptions?: { key: string; label: string; path: string }[];
     /** §13 Terminal kilitli mod: bu oturum bir istasyon cihazı mı? */

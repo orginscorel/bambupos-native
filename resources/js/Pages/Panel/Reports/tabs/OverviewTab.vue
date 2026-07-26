@@ -24,7 +24,7 @@ import {
  * Bu ekran DAİMA bugüne bakar; üstteki tarih filtresi burada gizlidir.
  * Yalnız şube seçimi (branchId) devralınır.
  */
-const props = defineProps<{ branchId: number | 'all' | null }>();
+const props = defineProps<{ branchId: number | null }>();
 const emit = defineEmits<{ navigate: [tab: string] }>();
 
 /** Bugün, seçili şube — filtre değişkeni olarak tek dilim. */

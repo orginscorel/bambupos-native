@@ -22,6 +22,12 @@ final class FeatureCatalog
     {
         return [
             [
+                'key' => 'branches',
+                'name' => 'Çok şube',
+                'description' => 'Birden çok şube/tesis yönetimi ve üst çubukta şube değiştirici. Kapalıyken sistem tek-şube modunda çalışır (yeni şube eklenemez, şube seçici gizlenir).',
+                'default' => true,
+            ],
+            [
                 'key' => 'kiosk',
                 'name' => 'Kiosk (self-servis)',
                 'description' => 'Müşterinin dokunmatik ekrandan kendi siparişini verdiği tam-ekran kiosk cihazları ve panel yönetimi.',

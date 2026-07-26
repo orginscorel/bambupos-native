@@ -15,19 +15,19 @@ use Illuminate\Validation\ValidationException;
 /** Salon/alan yönetimi (şube → kat → SALON/ALAN → masa). */
 class AreaController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Area::class);
 
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin alanları.
         $query = Area::query()
             ->with('floor:id,name')
             ->withCount('tables')
+            ->where('branch_id', $this->currentBranchId())
             ->orderBy('sort_order')
             ->orderBy('name');
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
 
         $areas = $query->get()->map(fn (Area $area): array => [
             'id' => $area->id,

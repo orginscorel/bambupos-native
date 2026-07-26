@@ -23,8 +23,16 @@ class CashSessionPolicy
         return $this->owned($user, $session) && $user->hasPermission('cash.close');
     }
 
+    /** ŞUBE KAPSAMI: kasa oturumu YALNIZ geçerli şubede görüntülenip yönetilebilir. */
     private function owned(User $user, CashSession $session): bool
     {
-        return $user->tenant_id !== null && (int) $session->tenant_id === (int) $user->tenant_id;
+        if ($user->tenant_id === null || (int) $session->tenant_id !== (int) $user->tenant_id) {
+            return false;
+        }
+
+        $branchId = $session->getAttribute('branch_id');
+
+        return $branchId === null
+            || (int) $branchId === (int) app(\App\Modules\Tenancy\BranchContext::class)->currentBranchId();
     }
 }

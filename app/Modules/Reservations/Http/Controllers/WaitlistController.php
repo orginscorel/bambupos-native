@@ -17,15 +17,14 @@ use Illuminate\Validation\ValidationException;
  */
 class WaitlistController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', WaitlistEntry::class);
 
-        $query = WaitlistEntry::query();
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin bekleme listesi.
+        $query = WaitlistEntry::query()->where('branch_id', $this->currentBranchId());
 
         // Varsayılan: bugünün listesi (açıklar + bugünkü kapananlar).
         $query->where(function ($q): void {

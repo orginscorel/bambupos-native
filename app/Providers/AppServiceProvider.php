@@ -33,6 +33,9 @@ class AppServiceProvider extends ServiceProvider
     {
         // Kiracı bağlamı: istek başına tek örnek (ADR-004).
         $this->app->singleton(TenantContext::class);
+
+        // Şube bağlamı: "geçerli şube" tek çözücü (izolasyonun 2. boyutu).
+        $this->app->singleton(\App\Modules\Tenancy\BranchContext::class);
     }
 
     public function boot(): void

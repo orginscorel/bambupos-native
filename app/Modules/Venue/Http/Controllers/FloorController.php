@@ -13,15 +13,16 @@ use Illuminate\Validation\ValidationException;
 /** Kat yönetimi (şube → KAT → alan → masa). */
 class FloorController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Floor::class);
 
-        $query = Floor::query()->withCount('areas')->orderBy('sort_order')->orderBy('name');
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin katları.
+        $query = Floor::query()->withCount('areas')
+            ->where('branch_id', $this->currentBranchId())
+            ->orderBy('sort_order')->orderBy('name');
 
         return response()->json(['floors' => $query->get()]);
     }

@@ -3,7 +3,6 @@ import { computed, reactive, ref } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { authFromPage } from '@/types/auth';
 import PanelShell from '@/Components/panel/PanelShell.vue';
-import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import BaseInput from '@/Components/ui/BaseInput.vue';
 import ReportsNav from './components/ReportsNav.vue';
 import OverviewTab from './tabs/OverviewTab.vue';
@@ -23,7 +22,6 @@ import { isoDate, lastDays, type ReportFilterState } from './reports';
  */
 const page = usePage();
 const auth = computed(() => authFromPage(page.props as Record<string, unknown>));
-const branches = computed(() => auth.value?.branches ?? []);
 
 /* ---- Tarih ön ayarları (dataviz: preset satırları önce, özel aralık sonra) ---- */
 type PresetKey = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'custom';
@@ -40,10 +38,13 @@ const presets: { key: PresetKey; label: string }[] = [
 const activePreset = ref<PresetKey>('7d');
 
 const initial = lastDays(7);
+// ŞUBE KAPSAMI: raporlar DAİMA aktif şubeyi izler (üst çubuk şube değiştirici).
+// "Tüm şubeler" YOK; rapor-içi şube seçici kaldırıldı — backend geçerli şubeyle
+// süzer (branch_id istekte gönderilse de yok sayılır).
 const filters = reactive<ReportFilterState>({
     from: initial.from,
     to: initial.to,
-    branchId: auth.value?.activeBranchId ?? 'all',
+    branchId: auth.value?.activeBranchId ?? null,
 });
 
 function applyPreset(key: PresetKey): void {
@@ -68,18 +69,6 @@ function applyPreset(key: PresetKey): void {
     }
     // 'custom': mevcut değerler korunur, girişler serbest kalır
 }
-
-const branchOptions = computed(() => [
-    { value: 'all', label: 'Tüm şubeler' },
-    ...branches.value.map((b) => ({ value: String(b.id), label: b.name })),
-]);
-
-const branchValue = computed({
-    get: () => String(filters.branchId ?? 'all'),
-    set: (v: string) => {
-        filters.branchId = v === 'all' ? 'all' : Number(v);
-    },
-});
 
 /* ---- Sekmeler ---- */
 /**
@@ -121,10 +110,6 @@ const tab = ref('overview');
                 </template>
 
                 <span v-else class="text-xs text-subtle">{{ filters.from }} – {{ filters.to }}</span>
-
-                <div v-if="branches.length > 1" class="ml-auto w-44">
-                    <BaseSelect v-model="branchValue" :options="branchOptions" size="sm" aria-label="Şube" />
-                </div>
             </div>
 
             <OverviewTab v-if="tab === 'overview'" :branch-id="filters.branchId" @navigate="tab = $event" />

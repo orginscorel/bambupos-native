@@ -26,6 +26,8 @@ use Illuminate\Validation\ValidationException;
  */
 class OrderController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(
         private readonly OrderService $orders,
         private readonly IdempotencyStore $idempotency,
@@ -39,11 +41,10 @@ class OrderController extends Controller
     {
         $this->authorize('viewAny', Order::class);
 
-        $query = Order::query()->with(['table:id,name,number']);
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
+        // ŞUBE KAPSAMI: geçerli şube (personel kendi, yönetici aktif) ile süzülür.
+        // İstekten gelen branch_id yok sayılır — başka şube adisyonu ASLA görünmez.
+        $query = Order::query()->with(['table:id,name,number'])
+            ->where('branch_id', $this->currentBranchId());
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->query('status'));
@@ -71,11 +72,12 @@ class OrderController extends Controller
     {
         $this->authorize('viewAny', Order::class);
 
-        $branchId = (int) $request->query('branch_id', 0);
+        // ŞUBE KAPSAMI: pano yalnız GEÇERLİ şubenin masa/adisyon/talep'ini gösterir.
+        $branchId = $this->currentBranchId() ?? 0;
 
         $tables = \App\Modules\Tables\Models\Table::query()
             ->with(['area:id,name,floor_id', 'area.floor:id,name'])
-            ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
+            ->where('branch_id', $branchId)
             ->where('is_active', true)
             ->orderBy('number')->orderBy('name')
             ->get();
@@ -85,7 +87,7 @@ class OrderController extends Controller
         // panoda görünmeli (aksi halde kasadan/panodan "kayboluyordu").
         $openOrders = Order::query()
             ->with(['table:id,name,number', 'items'])
-            ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
+            ->where('branch_id', $branchId)
             ->operationallyVisible()
             ->orderBy('id')
             ->get();
@@ -116,7 +118,7 @@ class OrderController extends Controller
         // Açık servis talepleri (garson çağır / hesap iste / su iste)
         $serviceRequests = \App\Modules\Orders\Models\ServiceRequest::query()
             ->with('table:id,name,number')
-            ->when($branchId > 0, fn ($q) => $q->where('branch_id', $branchId))
+            ->where('branch_id', $branchId)
             ->where('status', 'open')
             ->orderBy('id')
             ->get()
@@ -167,7 +169,13 @@ class OrderController extends Controller
             'total_minor' => ['sometimes', 'integer', 'min:0'], // Faz-1 uyumluluk (kullanılmaz)
         ]);
 
-        $branch = Branch::query()->find((int) $data['branch_id']); // scoped: yabancı şube çözülmez
+        // ŞUBE KAPSAMI: adisyon DAİMA geçerli şubede açılır (personel kendi,
+        // yönetici aktif). İstekten gelen branch_id yok sayılır → personel
+        // başka şubede adisyon açamaz; başka şube masası da bağlanamaz
+        // (OrderService::open masa şube-eşleşmesini zaten doğrular).
+        $branch = ($id = $this->currentBranchId()) !== null
+            ? Branch::query()->find($id) // scoped: yabancı şube çözülmez
+            : null;
 
         if ($branch === null) {
             throw ValidationException::withMessages(['branch_id' => ['Şube bulunamadı.']]);

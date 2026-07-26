@@ -54,15 +54,25 @@ class ProfileController extends Controller
 
     /**
      * Üst çubuktaki şube değiştirici: seçim oturumda tutulur.
-     * Branch modeli tenant-scope'lu olduğundan başka kiracının şubesi 404 olur.
+     *
+     * ŞUBE KAPSAMI güvenlik kapısı: yalnız YÖNETİCİ (aktif şube seçebilen)
+     * ve çok-şube açıkken şube değiştirebilir. Kilitli personel/terminal/
+     * tek-şube modunda 403 — kendi/cihaz şubesine kilitlidir, session'ı
+     * ezmeye çalışsa bile currentBranchId onu yok sayar. Branch modeli
+     * tenant-scope'lu olduğundan başka kiracının şubesi 404 olur.
      */
-    public function setActiveBranch(Request $request): JsonResponse
+    public function setActiveBranch(Request $request, \App\Modules\Tenancy\BranchContext $branchContext): JsonResponse
     {
+        abort_unless($branchContext->canSwitch($request->user()), 403, 'Şube değiştirme yetkiniz yok.');
+
         $data = $request->validate(['branch_id' => ['required', 'integer']]);
 
         $branch = Branch::query()
             ->where('is_active', true)
             ->findOrFail($data['branch_id']);
+
+        // Kiracının şubesi olsa bile bu kullanıcı için geçerli olmalı.
+        abort_unless($branchContext->isAllowed((int) $branch->getKey(), $request->user()), 403, 'Geçersiz şube.');
 
         $request->session()->put('panel.active_branch_id', $branch->getKey());
 

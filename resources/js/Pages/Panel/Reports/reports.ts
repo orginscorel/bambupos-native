@@ -12,7 +12,9 @@ import { api, ApiError } from '@/lib/http';
 export interface ReportFilterState {
     from: string;
     to: string;
-    branchId: number | 'all' | null;
+    // ŞUBE KAPSAMI: raporlar aktif şubeyi izler ("tümü/all" YOK). branch_id
+    // istekte gönderilse de backend geçerli şubeyle süzer.
+    branchId: number | null;
 }
 
 export interface PeriodTotals {

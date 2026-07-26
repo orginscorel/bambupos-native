@@ -84,20 +84,24 @@ class HandleInertiaRequests extends Middleware
 
         $tenant = $user->tenant;
 
-        $branches = $tenant === null
-            ? collect()
-            : \App\Modules\Tenancy\Models\Branch::query()
-                ->withoutGlobalScopes()
-                ->where('tenant_id', $tenant->getKey())
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(['id', 'name', 'code', 'timezone']); // timezone: panel saati şube dilimine göre gösterir
+        // Şube kapsamı: geçerli şube TEK çözücüden (BranchContext) gelir.
+        // Kilitli personel yalnız kendi şubesini görür, yönetici aktif şubesini.
+        $branchContext = app(\App\Modules\Tenancy\BranchContext::class);
+        $canSwitchBranch = $branchContext->canSwitch($user);
+        $activeBranchId = $branchContext->currentBranchId($user);
 
-        $activeBranchId = (int) ($request->session()->get('panel.active_branch_id') ?: $user->branch_id);
+        // Switcher yalnız yöneticide + çok-şube açıkken görünür. Kilitli
+        // personele YALNIZ kendi (geçerli) şubesini paylaşırız → başka şube
+        // adı bile arayüze sızmaz; değiştirici de doğal olarak gizlenir.
+        $allBranches = $branchContext->branches($user);
 
-        if (! $branches->contains(fn ($b) => (int) $b->id === $activeBranchId)) {
-            $activeBranchId = (int) ($branches->first()->id ?? 0);
-        }
+        $branches = ($canSwitchBranch ? $allBranches : $allBranches->where('id', $activeBranchId))
+            ->map(fn ($b) => [
+                'id' => (int) $b->id,
+                'name' => $b->name,
+                'code' => $b->code,
+                'timezone' => $b->timezone, // panel saati şube dilimine göre gösterir
+            ])->values();
 
         return [
             'user' => [
@@ -132,6 +136,9 @@ class HandleInertiaRequests extends Middleware
             'tenant' => $tenant?->only(['name', 'slug']),
             'branches' => $branches,
             'activeBranchId' => $activeBranchId ?: null,
+            // Şube değiştirici görünürlüğü: yalnız yönetici + çok-şube açık +
+            // >1 şube. Kilitli personel/terminal/tek-şube modunda false → gizli.
+            'canSwitchBranch' => $canSwitchBranch,
             // §13 Terminal kilitli mod: bu oturum bir istasyon cihazı mı?
             // Frontend bu bayrağa göre KDS ekranlarında nav çekmecesini gizler
             // ve "Terminal · {istasyon}" kilit rozetini gösterir.

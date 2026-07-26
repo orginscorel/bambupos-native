@@ -21,6 +21,8 @@ use Illuminate\Validation\ValidationException;
  */
 class CashController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(private readonly CashSessionService $cash)
     {
     }
@@ -31,8 +33,9 @@ class CashController extends Controller
     {
         $this->authorize('viewAny', CashRegister::class);
 
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin kasaları.
         $registers = CashRegister::query()
-            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', (int) $request->query('branch_id')))
+            ->where('branch_id', $this->currentBranchId())
             ->orderBy('name')
             ->get();
 
@@ -58,7 +61,10 @@ class CashController extends Controller
             'name' => ['required', 'string', 'min:2', 'max:80'],
         ]);
 
-        $branch = Branch::query()->find((int) $data['branch_id']); // scoped
+        // ŞUBE KAPSAMI: kasa DAİMA geçerli şubede açılır (istek branch_id yok sayılır).
+        $branch = ($id = $this->currentBranchId()) !== null
+            ? Branch::query()->find($id) // scoped
+            : null;
 
         if ($branch === null) {
             throw ValidationException::withMessages(['branch_id' => ['Şube bulunamadı.']]);
@@ -86,10 +92,11 @@ class CashController extends Controller
     {
         $this->authorize('viewAny', CashSession::class);
 
+        // ŞUBE KAPSAMI: yalnız geçerli şubenin oturumları.
         $sessions = CashSession::query()
             ->with(['register:id,name', 'openedBy:id,name', 'closedBy:id,name'])
+            ->where('branch_id', $this->currentBranchId())
             ->when($request->filled('register_id'), fn ($q) => $q->where('cash_register_id', (int) $request->query('register_id')))
-            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', (int) $request->query('branch_id')))
             ->when($request->filled('status'), fn ($q) => $q->where('status', (string) $request->query('status')))
             ->orderByDesc('id')
             ->limit(100)

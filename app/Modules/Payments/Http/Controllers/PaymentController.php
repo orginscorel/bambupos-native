@@ -27,6 +27,8 @@ use Illuminate\Validation\Rule;
  */
 class PaymentController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(
         private readonly PaymentService $payments,
         private readonly IdempotencyStore $idempotency,
@@ -40,16 +42,15 @@ class PaymentController extends Controller
     {
         $this->authorize('viewAny', Payment::class);
 
+        // ŞUBE KAPSAMI: kasa YALNIZ geçerli şubenin açık adisyonlarını görür/öder.
+        // Başka şube adisyonu bu listede ASLA görünmez (çapraz tahsilat engeli).
         $query = Order::query()
             ->with(['table:id,name,number', 'items'])
+            ->where('branch_id', $this->currentBranchId())
             ->whereNotIn('status', [
                 OrderStatus::Draft->value, OrderStatus::PendingApproval->value,
                 ...OrderStatus::closedValues(),
             ]);
-
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', (int) $request->query('branch_id'));
-        }
 
         if ($request->filled('q')) {
             $needle = '%'.str_replace(['%', '_'], ['\\%', '\\_'], (string) $request->query('q')).'%';

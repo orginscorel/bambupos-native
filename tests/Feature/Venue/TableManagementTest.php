@@ -142,17 +142,23 @@ class TableManagementTest extends TestCase
 
         $otherBranch = \App\Modules\Tenancy\Models\Branch::factory()->create(['tenant_id' => $this->a['tenant']->id]);
 
+        // ŞUBE KAPSAMI: masa DAİMA geçerli (aktif) şubede oluşur; istekteki
+        // branch_id yok sayılır. Farklı şubeye masa açmak için aktif şube
+        // değiştirilir (yönetici — çok-şube açık).
         $this->postJson('/api/v1/venue/tables', [
-            'branch_id' => $this->a['branch']->id, 'name' => 'Masa Bir', 'number' => 1,
+            'name' => 'Masa Bir', 'number' => 1,
         ])->assertCreated();
 
+        // Aktif şubeyi ikinci şubeye al → orada da aynı no serbest.
+        $this->postJson('/api/v1/auth/active-branch', ['branch_id' => $otherBranch->id])->assertOk();
+
         $this->postJson('/api/v1/venue/tables', [
-            'branch_id' => $otherBranch->id, 'name' => 'Masa Bir', 'number' => 1,
+            'name' => 'Masa Bir', 'number' => 1,
         ])->assertCreated();
 
-        // Aynı şubede aynı no reddedilir
+        // Aynı (geçerli/ikinci) şubede aynı no reddedilir.
         $this->postJson('/api/v1/venue/tables', [
-            'branch_id' => $this->a['branch']->id, 'name' => 'Başka Ad', 'number' => 1,
+            'name' => 'Başka Ad', 'number' => 1,
         ])->assertUnprocessable();
     }
 
