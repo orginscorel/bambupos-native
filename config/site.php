@@ -136,6 +136,7 @@ return [
                     ['t' => 'Neden BamBumPOS', 'u' => '/neden-bambumpos', 'd' => 'Farkımız'],
                     ['t' => 'Güvenlik & Altyapı', 'u' => '/guvenlik-altyapi', 'd' => 'Veri güvenliği'],
                     ['t' => 'Referanslar', 'u' => '/referanslar', 'd' => 'Müşteri hikâyeleri'],
+                    ['t' => 'Uygulamalar', 'u' => '/native', 'd' => 'iOS · Android · Windows · macOS'],
                 ],
             ], [
                 'heading' => 'İletişim & kaynak',
@@ -171,6 +172,7 @@ return [
         ['h' => 'Kurumsal', 'items' => [
             ['t' => 'Hakkımızda', 'u' => '/hakkimizda'], ['t' => 'Neden BamBumPOS', 'u' => '/neden-bambumpos'],
             ['t' => 'Fiyatlandırma', 'u' => '/fiyatlandirma'], ['t' => 'Entegrasyonlar', 'u' => '/entegrasyonlar'],
+            ['t' => 'Uygulamalar', 'u' => '/native'],
             ['t' => 'Blog', 'u' => '/blog'], ['t' => 'İletişim', 'u' => '/iletisim'],
         ]],
         ['h' => 'Destek & Yasal', 'items' => [

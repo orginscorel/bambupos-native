@@ -23,6 +23,122 @@
 
 return [
 
+    // UYGULAMALAR (/native) — BamBumPOS'un cihaz uygulamaları.
+    // Bogahost'taki native.bogahost.com ile aynı amaç: hangi platformda nasıl
+    // kurulacağı tek sayfada. Kurulum PWA tabanlıdır (App Store/Play Store
+    // beklemesi yok, güncelleme anında) — bu sayfada bunu DÜRÜSTÇE anlatırız.
+    'native' => [
+        'crumb' => 'Uygulamalar', 'eyebrow' => 'Uygulamalar', 'icon' => 'phone',
+        'title' => 'BamBumPOS uygulamaları — iOS, Android, Windows ve macOS',
+        'lead' => 'Kasa, adisyon, mutfak ve personel ekranlarını tablet, telefon ve bilgisayara kurun. Kurulum tek dokunuş; güncellemeler otomatik gelir, mağaza onayı beklemezsiniz.',
+        'hero_badges' => ['Tek dokunuşla kurulum', 'Otomatik güncelleme', 'Anlık bildirim', 'Tam ekran çalışır'],
+        'blocks' => [
+            [
+                'type' => 'cards',
+                'title' => 'Hangi ekranı kurmak istiyorsunuz?',
+                'lead' => 'Her ekran ayrı bir uygulama gibi kurulur; cihaz yalnız o işi yapar.',
+                'items' => [
+                    ['icon' => 'card', 'title' => 'Kasa', 'desc' => 'Tahsilat, para üstü, kısmi ödeme, borç tahsilatı ve Z raporu. Dokunmatik numpad ile hızlı çalışır.'],
+                    ['icon' => 'utensils', 'title' => 'Adisyon (Sipariş)', 'desc' => 'Masa panosu, ürün ızgarası, sepet ve mutfağa gönderme. Garson tabletleri için tasarlandı.'],
+                    ['icon' => 'chef', 'title' => 'Mutfak / Barista', 'desc' => 'Kulvar bazlı sipariş kuyruğu, gecikme sayacı, alerjen uyarısı ve termal fiş.'],
+                    ['icon' => 'bell', 'title' => 'Komi', 'desc' => 'Hazır ürünleri masaya taşıma akışı ve teslim süresi takibi.'],
+                    ['icon' => 'users', 'title' => 'Personel Portalı', 'desc' => 'Mesai başlat/bitir, mola, izin talebi ve profil. Personelin kendi telefonunda.'],
+                    ['icon' => 'kiosk', 'title' => 'Self Servis Kiosk', 'desc' => 'Müşterinin kendi sipariş verdiği tam ekran kiosk modu.'],
+                ],
+            ],
+            [
+                'type' => 'split',
+                'eyebrow' => 'iOS · iPadOS',
+                'icon' => 'phone',
+                'title' => 'iPhone ve iPad’e kurulum',
+                'body' => 'Safari ile bambumpos.com adresine girip panele giriş yapın. Ardından paylaş menüsünden ekleyin — uygulama ana ekranınıza kendi simgesiyle iner ve tam ekran açılır.',
+                'items' => [
+                    'Safari’de sayfayı açın (Chrome değil — iOS’ta kurulum Safari’den yapılır)',
+                    'Alttaki Paylaş düğmesine dokunun',
+                    '“Ana Ekrana Ekle” seçeneğini seçin',
+                    'Simge ana ekrana iner; açılışta BamBumPOS açılış ekranı gelir',
+                    'Bildirimler için uygulama içinden izin verin (iOS 16.4+)',
+                ],
+            ],
+            [
+                'type' => 'split',
+                'eyebrow' => 'Android',
+                'icon' => 'phone',
+                'title' => 'Android telefon ve tabletlere kurulum',
+                'body' => 'Chrome ile girdiğinizde tarayıcı kurulum çubuğunu kendisi gösterir. Görmezseniz sağ üstteki menüden elle kurabilirsiniz.',
+                'items' => [
+                    'Chrome ile bambumpos.com adresine girin',
+                    'Çıkan “Uygulamayı yükle” çubuğuna dokunun',
+                    'Çıkmazsa: menü (⋮) → “Uygulamayı yükle” / “Ana ekrana ekle”',
+                    'Anlık bildirimler (push) Android’de tam çalışır',
+                    'Garson ve mutfak tabletlerinde tam ekran kiosk modu önerilir',
+                ],
+            ],
+            [
+                'type' => 'split',
+                'eyebrow' => 'Windows',
+                'icon' => 'grid',
+                'title' => 'Windows bilgisayar ve POS terminalleri',
+                'body' => 'Edge veya Chrome adres çubuğundaki kurulum simgesiyle uygulama olarak kurulur; başlat menüsüne ve görev çubuğuna eklenir. Termal yazıcıyla sessiz fiş basımı bu kurulumda çalışır.',
+                'items' => [
+                    'Edge/Chrome ile girin, adres çubuğundaki kurulum simgesine tıklayın',
+                    'Uygulama kendi penceresinde, tarayıcı çubuğu olmadan açılır',
+                    'Sessiz fiş için Chrome’u --kiosk-printing ile başlatın',
+                    'Varsayılan yazıcıyı termal yazıcı (ör. pos-58) yapın',
+                    'Mutfak ekranını açılışta otomatik başlatacak şekilde ayarlayabilirsiniz',
+                ],
+            ],
+            [
+                'type' => 'split',
+                'eyebrow' => 'macOS',
+                'icon' => 'grid',
+                'title' => 'Mac bilgisayarlar',
+                'body' => 'Chrome veya Edge ile kurulduğunda Launchpad’e ve Dock’a eklenir, kendi penceresinde açılır. Safari’de “Dock’a Ekle” ile de kurulabilir (macOS Sonoma ve üzeri).',
+                'items' => [
+                    'Chrome/Edge: adres çubuğundaki kurulum simgesi',
+                    'Safari (Sonoma+): Dosya → “Dock’a Ekle”',
+                    'Uygulama Dock’tan tek tıkla açılır',
+                    'Bildirimler macOS bildirim merkezine düşer',
+                ],
+            ],
+            [
+                'type' => 'features',
+                'title' => 'Uygulamalarda ne var?',
+                'lead' => 'Kurulan her ekran, tarayıcı sekmesinde değil kendi penceresinde çalışır.',
+                'items' => [
+                    ['bolt', 'Açılış ekranı', 'Uygulama simgesiyle açılır; yükleme sırasında marka açılış ekranı ve ilerleme çubuğu görünür.'],
+                    ['bell', 'Anlık bildirim (push)', 'Yeni sipariş, hazır ürün, servis çağrısı ve gecikme uyarıları cihaz bildirimi olarak düşer.'],
+                    ['zap', 'Ekran içi uyarılar', 'İşlem sonuçları (tahsilat alındı, kalem eklendi, hata) anlık bildirim balonlarıyla gösterilir.'],
+                    ['lock', 'Güvenli giriş', 'Parola ya da personel PIN’i ile giriş; terminal cihazlarda cihaz kilidi ve boşta-kalma kilidi.'],
+                    ['clock', 'Boşta kilitlenme', 'Terminal bir süre kullanılmazsa kilitlenir; PIN ile açılır, yanlış kişi işlem yapamaz.'],
+                    ['shield', 'Cihaz kilidi', 'Ekran tokeni ilk açan cihaza kilitlenir; izinli cihazlar ekranından yönetilir.'],
+                ],
+            ],
+            [
+                'type' => 'callout',
+                'icon' => 'check',
+                'title' => 'Neden mağaza uygulaması değil?',
+                'body' => 'BamBumPOS ekranları web teknolojisiyle kurulur. Bu sayede güncellemeler anında herkese ulaşır, mağaza onayı beklenmez ve tek bir sürüm tüm cihazlarda çalışır. Kurulan uygulama yine kendi simgesiyle açılır, tam ekran çalışır ve bildirim gönderir.',
+            ],
+            [
+                'type' => 'faq',
+                'title' => 'Sık sorulanlar',
+                'items' => [
+                    ['İnternet kesilirse ne olur?', 'Açık ekranlar çalışmaya devam eder ve bağlantı gelince veriler eşitlenir. Kalıcı kesintide kasa ve mutfak ekranları uyarı gösterir.'],
+                    ['Aynı cihazda birden fazla ekran kurabilir miyim?', 'Evet. Kasa, mutfak ve adisyon ayrı ayrı kurulabilir; her biri kendi penceresinde açılır.'],
+                    ['Bildirimler iPhone’da çalışır mı?', 'iOS 16.4 ve üzerinde, uygulama ana ekrana eklendikten sonra çalışır. Safari sekmesinde açıkken bildirim gelmez.'],
+                    ['Eski bir tablet kullanabilir miyim?', 'Güncel Chrome veya Safari çalışan cihazlar yeterlidir. Mutfak ve kasa ekranları düşük donanımda da akıcı çalışacak şekilde tasarlandı.'],
+                    ['Kurulum ücreti var mı?', 'Hayır. Uygulama kurulumu ücretsizdir; aboneliğinize dahildir.'],
+                ],
+            ],
+            [
+                'type' => 'cta',
+                'title' => 'Cihazlarınızı bugün kurun',
+                'text' => 'Kurulumda takılırsanız ekip uzaktan bağlanıp yardımcı olur.',
+            ],
+        ],
+    ],
+
     'hakkimizda' => [
         'crumb' => 'Kurumsal', 'eyebrow' => 'Hakkımızda', 'icon' => 'store',
         'title' => 'Restoran teknolojisini herkes için erişilebilir kılıyoruz',

@@ -1,0 +1,26 @@
+{
+    "name": "BamBumPOS",
+    "short_name": "BamBumPOS",
+    "description": "Adisyon, kasa, mutfak ve işletme yönetimi",
+    "id": "/panel",
+    "start_url": "/panel",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#5443D2",
+    "theme_color": "#5443D2",
+    "lang": "tr",
+    "dir": "ltr",
+    "categories": ["business", "productivity", "food"],
+    "icons": [
+        { "src": "/favicon.svg?v=2", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+        { "src": "/icons/bambumpos-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "/icons/bambumpos-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+        { "src": "/icons/bambumpos-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ],
+    "shortcuts": [
+        { "name": "Kasa", "short_name": "Kasa", "url": "/panel/kasa", "description": "Tahsilat ekranı" },
+        { "name": "Siparişler", "short_name": "Siparişler", "url": "/panel/siparisler", "description": "Masa panosu" },
+        { "name": "Mutfak", "short_name": "Mutfak", "url": "/panel/mutfak", "description": "Hazırlık kuyruğu" }
+    ]
+}

@@ -36,8 +36,19 @@ createInertiaApp({
         createApp({ render: () => [h(App, props), h(ImpersonationBar)] })
             .use(plugin)
             .mount(el);
+
+        // AÇILIŞ EKRANINI KALDIR: uygulama gerçekten çizildikten sonra.
+        // Blade'deki #bhx-splash, Vue mount olana kadar beyaz ekran yerine
+        // marka ekranı gösterir (kurulu uygulamada "açılmadı" hissini önler).
+        const splash = document.getElementById('bhx-splash');
+        if (splash) {
+            splash.classList.add('bhx-hide');
+            window.setTimeout(() => splash.remove(), 350);
+        }
     },
     progress: {
-        color: '#2563eb',
+        // Sayfa geçişlerinde üstteki ince ilerleme çubuğu — marka rengiyle.
+        color: '#5443D2',
+        showSpinner: false,
     },
 });

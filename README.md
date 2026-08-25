@@ -1,58 +1,210 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# BamBumPOS
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Restoran, kafe ve nargile işletmeleri için **çok kiracılı (multi-tenant) adisyon,
+kasa ve işletme yönetimi** platformu. Tek bir Laravel uygulaması dört ayrı
+kullanıcı sistemini besler; her biri kendi arayüzü, yetki modeli ve cihaz
+profiliyle çalışır.
 
-## About Laravel
+> Üretim: <https://bambumpos.com> · Depo: özel (private)
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## İçindekiler
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- [Sistemler](#sistemler)
+- [Öne çıkan yetenekler](#öne-çıkan-yetenekler)
+- [Mimari](#mimari)
+- [Modül haritası](#modül-haritası)
+- [Kurulum](#kurulum)
+- [Geliştirme](#geliştirme)
+- [Test](#test)
+- [Dağıtım](#dağıtım)
+- [Güvenlik notları](#güvenlik-notları)
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Sistemler
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Sistem | Kim kullanır | Nereden girilir |
+| --- | --- | --- |
+| **Panel** | İşletme sahibi, müdür, muhasebe | `/panel` |
+| **Adisyon & Kasa** | Garson, kasiyer, mutfak, barista, komi | `/panel/siparisler`, `/panel/kasa`, `/panel/mutfak` |
+| **Personel Portalı** | Tüm personel (mesai, mola, izin, profil) | `personel.*` alt alanı, `/mesaim` |
+| **Patron** | Çok şubeli işletme sahibi (kiracı-üstü bakış) | `/patron` |
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+Dördü de aynı kod tabanında yaşar; ayrım **host + yetki + arayüz kabuğu**
+düzeyindedir. Süper-admin (`/yonetim`) kiracıları yönetir.
 
-## Agentic Development
+---
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Öne çıkan yetenekler
 
-```bash
-composer require laravel/boost --dev
+### Adisyon (sipariş) ekranı
+- Tam ekran POS düzeni: solda ürün ızgarası (görsel öne çıkan kartlar, iki
+  seviyeli kategori, arama), sağda sepet/geçmiş sekmeli adisyon paneli.
+- Varyant + seçenek grupları (`free_limit` ile "ilk N ücretsiz" kuralı),
+  kalem notu, ikram, kalem taşıma, adisyon bölme/birleştirme.
+- **Birleşik masalar:** kalabalık grup birden çok masaya oturduğunda masalar
+  tek adisyona bağlanır; pano birleşik gösterir, kasa tek hesapta toplar.
+- Kişi sayısı ve adisyon notu sonradan düzenlenebilir.
+- Hesap fişi yazdırma (termal 58/80mm, A4 veya PDF).
 
-php artisan boost:install
+### Kasa
+- Üç kolon POS: adisyon listesi · numpad + ödeme yöntemleri · adisyon paneli.
+- Kalem seçerek kısmi tahsilat, `1/n` serbest bölme, fiziksel klavye girişi.
+- Nakit para üstü, bahşiş, kısmi ödeme, void ve iade.
+- **Kasa oturumu otomatik açılır** — tahsilat asla Z raporunun dışında kalmaz.
+- **Masasız borç tahsilatı:** cari borçlar kasa ekranından tahsil edilir.
+- Hazır indirim tanımları (şehit/gazi yakını, kamu personeli…), tek-indirim
+  kuralı ve ay bazlı kullanım istatistiği.
+
+### Mutfak / Barista / Komi (KDS)
+- Kulvar bazlı kuyruk, SLA sayacı ve gecikme uyarısı, alerjen ve diyet
+  vurgusu, reçete görüntüleme, istasyonlar arası kalem aktarma.
+- Sessiz termal fiş yazdırma (kiosk-printing) ve sesli yeni sipariş uyarısı.
+
+### Masa panosu
+- Kat/alan gruplu kartlar; dolu/boş/rezerve renk kodu, açılış saati, masa
+  süresi, son sipariş (30 dk+ ise uyarı rengi), garson adı.
+- Sekmeler (tüm masalar / açık masalar / paket & kanal), sıralama, süzgeçler.
+- Paket, gel-al ve kiosk siparişleri; QR servis çağrıları (garson/su/hesap).
+
+### Diğer modüller
+Menü ve katalog · Stok ve reçete · Rezervasyon ve bekleme listesi · Cari
+borçlar · Prim/komisyon · Raporlar · Personel, vardiya ve izin · Kiosk ·
+Terminal cihazları · İzinli cihazlar · Entegrasyonlar (POS, e-posta, push).
+
+---
+
+## Mimari
+
+- **Laravel 12** + **Inertia 2** + **Vue 3** (`<script setup>`, TypeScript)
+- **Tailwind 4** — tüm renkler `--ui-*` token'larından; açık/koyu tema tek
+  kaynaktan türer, sabit renk (hex) kullanılmaz.
+- **Çok kiracılılık:** `BelongsToTenant` + `TenantContext`; şube kapsamı
+  `BranchContext` üzerinden — istekten `branch_id` **asla** güvenilmez.
+- **Yetki:** `config/authz.php` tek katalog; policy'ler izin + kiracı + şube
+  kapsamını birlikte doğrular.
+- **Para:** her tutar **kuruş (minor)** tamsayı olarak tutulur; float yok.
+  KDV fiyata dahildir (`Money::vatPortionOfGross`).
+- **Eşzamanlılık:** adisyon mutasyonları satır kilidi + `expected_version`
+  (iyimser kilit) ile korunur; çakışmada `409` döner.
+- **Idempotency:** kalem ekleme ve tahsilat `Idempotency-Key` ile korunur —
+  çift dokunma ikinci kaydı düşürmez.
+
+### Terminal ekranları
+Mutfak, komi, kasa, sipariş ve masa panosu **tam ekran terminal kabuğu**
+kullanır (`kds-canvas` + `TerminalTopBar`): cihaz kilidi, operatör kapısı,
+PIN'li hassas eylemler, boşta-kalma kilidi ve heartbeat bu kabukta yaşar.
+
+---
+
+## Modül haritası
+
+```
+app/Modules/
+├── Orders/        Adisyon, kalem, masa birleştirme/bölme, servis talepleri
+├── Payments/      Tahsilat, kasa oturumu (Z raporu), POS sağlayıcıları
+├── Catalog/       Ürün, varyant, seçenek grubu, kategori, alerjen, menü
+├── Kds/           Mutfak/barista/komi kuyrukları, istasyonlar, fiş
+├── Inventory/     Stok, reçete, sayım, satın alma, tedarikçi
+├── Receivables/   Cari hesap, borca taşıma, tahsilat
+├── Reservations/  Rezervasyon, bekleme listesi, no-show
+├── Identity/      Kullanıcı, rol, izin, PIN, denetim günlüğü
+├── Staff/         Personel, görev, vardiya, izin
+├── Portal/        Personel portalı (mesai/mola/profil)
+├── Boss/          Patron (çok şube üstü bakış)
+├── Venue/         Şube, alan/kat, masa, QR
+├── Devices/       İzinli cihazlar, cihaz kilidi
+├── Terminal/      İstasyon terminalleri, operatör kapısı
+├── Kiosk/         Self servis kiosk
+├── Notify/        Bildirim yönlendirme + Web Push (VAPID)
+├── Reports/       Raporlar ve pano
+├── Settings/      Ayarlar, eklenti (feature flag) kataloğu
+└── Marketing/     bambumpos.com tanıtım sayfaları
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+---
 
-## Contributing
+## Kurulum
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+composer install
+npm install
 
-## Code of Conduct
+cp .env.example .env
+php artisan key:generate
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+# Veritabanı bilgilerini .env içinde doldurun, sonra:
+php artisan migrate --seed
 
-## Security Vulnerabilities
+npm run build
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Gereksinimler: **PHP 8.3+**, **MySQL 8**, **Node 20+**.
 
-## License
+> Sunucuda PHP çağrıları `ea-php83` ile yapılır:
+> `/opt/cpanel/ea-php83/root/usr/bin/php artisan ...`
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+
+## Geliştirme
+
+```bash
+npm run dev          # Vite geliştirme sunucusu
+npm run build        # üretim derlemesi
+npm run typecheck    # vue-tsc (bellek için: NODE_OPTIONS=--max-old-space-size=4096)
+```
+
+### Kurallar
+- Para hesabı **daima** kuruş tamsayısı; `float` kullanmayın.
+- Renkler `--ui-*` token'larından; şablona sabit hex yazmayın.
+- Yeni izin eklerken `config/authz.php` kataloğunu güncelleyin.
+- Kullanıcıya görünen tüm metin **Türkçe**.
+
+---
+
+## Test
+
+```bash
+php artisan test
+# veya
+vendor/bin/phpunit --filter Order
+```
+
+Test paketi **SQLite bellek-içi** çalışır. Bu yüzden `orders` gibi ham SQL
+tetikleyicisi olan tablolara `foreignId()->constrained()` ile sütun
+**eklemeyin** — SQLite tabloyu yeniden kurar ve tetikleyiciler sessizce
+kaybolur. Sütunu düz ekleyip yabancı anahtarı yalnız MySQL'de tanımlayın
+(örnek: `2026_08_25_140000_add_discount_preset_id_to_orders`).
+
+---
+
+## Dağıtım
+
+Kaynak `/home/qrmenu/apps/qrmenu`, üretim hedefi `/home/bambumpos/apps/qrmenu`
+ve docroot `/home/bambumpos/public_html`.
+
+```bash
+npm run build
+rsync -a --exclude '*.bak*' resources/js/ /home/bambumpos/apps/qrmenu/resources/js/
+cp -rf public/build/. /home/bambumpos/apps/qrmenu/public/build/
+cp -rf public/build/. /home/bambumpos/public_html/build/
+chown -R bambumpos:bambumpos /home/bambumpos/apps/qrmenu /home/bambumpos/public_html/build
+sudo -u bambumpos /opt/cpanel/ea-php83/root/usr/bin/php artisan migrate --force
+sudo -u bambumpos /opt/cpanel/ea-php83/root/usr/bin/php artisan optimize:clear
+```
+
+> **Sahiplik tuzağı:** `.env` veya uygulama dosyaları root olarak
+> düzenlenirse site 500 verir. Her kopyalamadan sonra `chown` şarttır.
+
+---
+
+## Güvenlik notları
+
+- `.env` ve **yedekleri** (`.env.bak-*`) depoya girmez; `.gitignore` bunu
+  yıldızlı kalıpla kapatır. Yedek alırken bu kalıbın dışına çıkmayın.
+- Üretimde alınan `*.bak-*` dosyaları depoya dahil değildir.
+- Şube/kiracı kapsamı istekten değil bağlamdan türetilir.
+- Hassas eylemler (ikram, iptal, iade, indirim, tahsilat) terminal
+  oturumunda **PIN** ister ve denetim günlüğüne yazılır.
