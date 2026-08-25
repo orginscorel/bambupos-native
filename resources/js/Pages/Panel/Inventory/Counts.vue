@@ -145,9 +145,13 @@ const warehouseOptions = computed(() => warehouses.value.filter((w) => w.is_acti
 
 <template>
     <Head title="Stok Sayımı" />
-    <PanelShell title="Stok">
-        <InventoryNav active="counts" />
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav active="counts" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <div class="grid gap-4 lg:grid-cols-[320px_1fr]">
             <!-- Sol: sayım listesi -->
             <div class="flex flex-col gap-3">
@@ -265,5 +269,7 @@ const warehouseOptions = computed(() => warehouses.value.filter((w) => w.is_acti
                 </div>
             </form>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

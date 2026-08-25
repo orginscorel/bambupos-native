@@ -32,6 +32,11 @@ Route::middleware(['web', 'auth:web', 'tenant'])->prefix('api/v1')->group(functi
     Route::get('payments/pending-orders', [PaymentController::class, 'pendingOrders'])->name('payments.pending-orders');
     Route::get('payments/terminal-status', [PaymentController::class, 'terminalStatus'])->name('payments.terminal-status');
 
+    // POS ENTEGRATÖR yönetimi: işletme kendi cihazını/sağlayıcısını seçer (settings.manage)
+    Route::get('payments/pos-integration', [\App\Modules\Payments\Http\Controllers\PosIntegrationController::class, 'show'])->name('payments.pos.show');
+    Route::put('payments/pos-integration', [\App\Modules\Payments\Http\Controllers\PosIntegrationController::class, 'update'])->name('payments.pos.update');
+    Route::post('payments/pos-integration/test', [\App\Modules\Payments\Http\Controllers\PosIntegrationController::class, 'test'])->name('payments.pos.test');
+
     // Adisyon ödemeleri (Idempotency-Key desteklenir)
     Route::get('orders/{order}/payments', [PaymentController::class, 'index'])->whereNumber('order')->name('payments.index');
     Route::post('orders/{order}/payments', [PaymentController::class, 'store'])->whereNumber('order')->name('payments.store');

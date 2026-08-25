@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>BamBumPOS</title>
+<!--
+  ISKELET NOT: bu dosya BILEREK elle yazilmis duz HTML/CSS/JS - bir Vite/npm
+  derleme adimi GEREKTIRMEZ (gorev kisiti: "Node/cargo KURMA/DERLEME"). Tauri
+  `frontendDist` alani (tauri.conf.json) dogrudan bu klasoru gosterir.
+
+  Amac: ana pencere ("shell" penceresi) BURAYI yukler, BAGLANTI KONTROLU
+  yapar, online ise gercek panel'i AYRI bir Tauri penceresinde acar
+  (commands::open_online_panel - src-tauri/src/commands.rs), offline ise
+  asagidaki basit yer-tutucu ekrani gosterir. TAM POS arayuzu (masa
+  izgarasi, adisyon detayi, odeme...) bu gorevin kapsami DISINDA - TODO
+  olarak birakildi.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #111318; color: #e8e8ec;
+  }
+  .card {
+    max-width: 560px; width: 90%; padding: 2rem; border-radius: 12px;
+    background: #1b1e27; border: 1px solid #2a2e3a;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  .sub { color: #9aa0ae; font-size: .9rem; margin: 0 0 1.25rem; }
+  .badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; padding: .3rem .6rem; border-radius: 999px; }
+  .badge.online { background: #123a24; color: #5fd88a; }
+  .badge.offline { background: #3a1212; color: #e88; }
+  .badge.checking { background: #2a2e3a; color: #aab; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin: .6rem 0; font-size: .9rem; }
+  button {
+    margin-top: 1.25rem; width: 100%; padding: .7rem; border-radius: 8px; border: none;
+    background: #e65c00; color: #fff; font-size: .95rem; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: transparent; border: 1px solid #3a3f4d; color: #cdd; margin-top: .5rem; }
+  ul.todo { font-size: .78rem; color: #8a8fa0; padding-left: 1.1rem; }
+  #failed { margin-top: 1rem; font-size: .82rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>BamBumPOS Masaüstü</h1>
+    <p class="sub">Offline-first istemci kabuğu (iskelet)</p>
+
+    <div class="row"><span>Bağlantı</span><span id="statusBadge" class="badge checking">kontrol ediliyor…</span></div>
+    <div class="row"><span>Bekleyen işlem (kuyruk)</span><span id="pendingCount">–</span></div>
+    <div class="row"><span>Çözülmemiş hata</span><span id="failedCount">–</span></div>
+
+    <button id="openPanelBtn" disabled>Online paneli aç</button>
+    <button id="syncNowBtn" class="secondary">Şimdi senkronla</button>
+
+    <div id="failed"></div>
+
+    <ul class="todo">
+      <!-- Bilerek ekranda görünür TODO listesi - iskeletin ne kadar eksik
+           olduğu geliştiriciye/QA'ya ilk bakışta net olsun diye. -->
+      <li>TODO: gerçek POS arayüzü (masa ızgarası, adisyon, ödeme) yok.</li>
+      <li>TODO: kimlik doğrulama (auth) uygulanmadı - bkz. desktop/SYNC.md.</li>
+      <li>TODO: ilk kurulum sihirbazı (tenant/terminal kodu) yok.</li>
+    </ul>
+  </div>
+
+<script>
+// window.__TAURI__ global'i tauri.conf.json > app.withGlobalTauri:true
+// sayesinde her sayfada hazir olur (npm @tauri-apps/api paketi KURULMADI -
+// bilincli, "Node KURMA" kisitina uymak icin; ileride gercek UI yazilirken
+// npm paketine gecmek DAHA ERGONOMIK olur, bkz. SYNC.md).
+const invoke = (...args) => window.__TAURI__.core.invoke(...args);
+
+const statusBadge = document.getElementById('statusBadge');
+const pendingCount = document.getElementById('pendingCount');
+const failedCount = document.getElementById('failedCount');
+const openPanelBtn = document.getElementById('openPanelBtn');
+const syncNowBtn = document.getElementById('syncNowBtn');
+const failedBox = document.getElementById('failed');
+
+function setBadge(online) {
+  statusBadge.textContent = online ? 'çevrimiçi' : 'çevrimdışı';
+  statusBadge.className = 'badge ' + (online ? 'online' : 'offline');
+  openPanelBtn.disabled = !online;
+  openPanelBtn.textContent = online ? 'Online paneli aç' : 'Çevrimdışı - yerel modda çalışılıyor (POS ekranı TODO)';
+}
+
+async function refreshStatus() {
+  try {
+    const status = await invoke('get_status');
+    setBadge(status.online);
+    pendingCount.textContent = status.pending_ops;
+    failedCount.textContent = status.failed_ops;
+  } catch (e) {
+    // TODO: invoke basarisiz olursa (ör. Rust tarafi henuz derlenmedi/panik
+    // attiysa) kullaniciya anlamli bir hata gostermek yerine bugun yalniz
+    // konsola yaziyoruz - iskelet.
+    console.error('get_status basarisiz', e);
+  }
+}
+
+async function loadFailedOps() {
+  try {
+    const ops = await invoke('list_failed_ops');
+    failedBox.innerHTML = ops.map(op =>
+      `<div>⚠ ${op.scope} — ${op.error} <button data-id="${op.id}" class="ackBtn secondary" style="width:auto;padding:.15rem .5rem;margin:0 0 0 .4rem">kapat</button></div>`
+    ).join('');
+    failedBox.querySelectorAll('.ackBtn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await invoke('ack_failed_op', { id: Number(btn.dataset.id) });
+        loadFailedOps();
+      });
+    });
+  } catch (e) {
+    console.error('list_failed_ops basarisiz', e);
+  }
+}
+
+openPanelBtn.addEventListener('click', () => invoke('open_online_panel').catch(console.error));
+syncNowBtn.addEventListener('click', async () => {
+  syncNowBtn.disabled = true;
+  syncNowBtn.textContent = 'senkronlanıyor…';
+  try {
+    await invoke('force_sync');
+  } catch (e) {
+    console.error('force_sync basarisiz', e);
+  } finally {
+    syncNowBtn.disabled = false;
+    syncNowBtn.textContent = 'Şimdi senkronla';
+    refreshStatus();
+    loadFailedOps();
+  }
+});
+
+// Basit polling (TODO: main.rs arka plan dongusunden `app.emit()` ile
+// olay-tabanli guncellemeye gecilebilir - bkz. main.rs::run_background_cycle
+// sonundaki TODO).
+refreshStatus();
+loadFailedOps();
+setInterval(refreshStatus, 5000);
+setInterval(loadFailedOps, 15000);
+</script>
+</body>
+</html>

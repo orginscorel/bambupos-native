@@ -24,6 +24,9 @@ self.addEventListener('push', (event) => {
     }
 
     const title = payload.title || 'QR Menü';
+    // Operasyonel-kritik olaylar: ekranda kalsın + belirgin titreşim.
+    const critical = ['order_placed', 'service_call', 'delivery_sla_breach', 'item_ready'];
+    const isCritical = critical.indexOf(payload.type) !== -1;
     const options = {
         body: payload.body || '',
         icon: '/favicon.ico',
@@ -31,7 +34,11 @@ self.addEventListener('push', (event) => {
         // Aynı olayın (tag) tekrarı üst üste yığılmaz.
         tag: payload.tag || undefined,
         renotify: Boolean(payload.tag),
-        data: { url: payload.url || '/panel' },
+        // Mobil/masaüstü titreşim (cihaz destekliyorsa).
+        vibrate: isCritical ? [200, 100, 200, 100, 200] : [150, 80, 150],
+        // Kritik bildirim kullanıcı kapatana dek durur (kaçmasın).
+        requireInteraction: isCritical,
+        data: { url: payload.url || '/panel', type: payload.type || null },
         timestamp: Date.now(),
     };
 

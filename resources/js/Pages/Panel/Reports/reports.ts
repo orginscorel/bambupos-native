@@ -208,6 +208,39 @@ export interface ReconciliationSummary {
     has_cash_sessions: boolean;
 }
 
+/** §11 Komi Teslim SLA: teslim alma → masaya verme logu + ihlaller + komi kırılımı. */
+export interface DeliverySlaRow {
+    id: number;
+    order_id: number;
+    item: string;
+    table: string | null;
+    staff: string;
+    picked_up_at: string;
+    served_at: string | null;
+    duration_minutes: number;
+    status: string;
+    breached: boolean;
+}
+
+export interface DeliverySlaStaffRow {
+    name: string;
+    deliveries: number;
+    breaches: number;
+    breach_rate: number;
+    avg_duration_minutes: number | null;
+}
+
+export interface DeliverySlaReport {
+    target_minutes: number;
+    total: number;
+    breached_count: number;
+    breach_rate: number;
+    avg_duration_minutes: number | null;
+    open_breach_count: number;
+    rows: DeliverySlaRow[];
+    by_staff: DeliverySlaStaffRow[];
+}
+
 export interface ExportRow {
     id: number;
     report: string;

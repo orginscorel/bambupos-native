@@ -7,6 +7,12 @@
         {{-- Sunucu saati (ms epoch): panel saati istemci saatine güvenmez,
              bu değerden ofset hesaplar (PanelLayout.vue) --}}
         <meta name="app-server-epoch" content="{{ now()->getTimestampMs() }}" />
+        {{-- Favicon: public/favicon.ico BOŞTU (0 bayt) → sekmede kimliksiz
+             görünüyordu. SVG favicon modern tarayıcıların tamamında çalışır ve
+             tek dosyayla her boyutta net kalır; ?v= sürüm damgası, tarayıcı
+             favicon'u agresif cache'lediği için gerekli. --}}
+        <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/favicon.svg?v=2" />
         {{-- Poppins gövde (400) ön yükleme: Türkçe arayüz latin + latin-ext'in
              ikisini de kullanır; 500/700 CSS keşfiyle hemen ardından gelir --}}
         <link rel="preload" href="/fonts/poppins-400-latin.woff2" as="font" type="font/woff2" crossorigin />
@@ -30,7 +36,7 @@
              render edilmez → panel head'i BYTE-AYNI kalır. --}}
         @if (request()->getHost() === config('portal.host'))
             <link rel="manifest" href="/portal.webmanifest" />
-            <meta name="theme-color" content="#f97316" />
+            <meta name="theme-color" content="#2563eb" />
             <meta name="mobile-web-app-capable" content="yes" />
             <meta name="apple-mobile-web-app-capable" content="yes" />
             <meta name="apple-mobile-web-app-status-bar-style" content="default" />

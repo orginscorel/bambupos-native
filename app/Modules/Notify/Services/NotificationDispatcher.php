@@ -101,6 +101,7 @@ class NotificationDispatcher
         ];
 
         $written = 0;
+        $pushUsers = []; // push HTTP'si yanıttan SONRA (defer) toplu gönderilir
 
         foreach ($recipients as $user) {
             $pref = $this->preferences->for((int) $user->getKey(), $type);
@@ -137,8 +138,18 @@ class NotificationDispatcher
             }
 
             if ($pref['push']) {
-                $this->push->sendToUser($user, $pushPayload);
+                $pushUsers[] = (int) $user->getKey();
             }
+        }
+
+        // PUSH = yanıttan SONRA (defer) + TEK toplu paralel flush → istek
+        // BLOKE OLMAZ (kullanıcı beklemez) ve tüm alıcılara eksiksiz gider.
+        // DB bildirimleri (toast/poll) yukarıda SENKRON yazıldı → anında görünür.
+        if ($pushUsers !== []) {
+            $push = $this->push;
+            defer(static function () use ($push, $pushUsers, $pushPayload): void {
+                $push->sendToUsers($pushUsers, $pushPayload);
+            });
         }
 
         return $written;

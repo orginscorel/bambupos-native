@@ -3,10 +3,13 @@
 namespace App\Modules\Orders\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Catalog\Models\Product;
+use App\Modules\Orders\Enums\OrderItemStatus;
 use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\ServiceRequest;
 use App\Modules\Orders\Services\OrderService;
+use App\Modules\Orders\Services\TableStatusSynchronizer;
 use App\Modules\Tables\Models\Table;
 use App\Modules\Venue\Enums\TableStatus;
 use App\Modules\Venue\Services\QrTokenResolver;
@@ -35,6 +38,7 @@ class ServiceRequestController extends Controller
     public function __construct(
         private readonly QrTokenResolver $resolver,
         private readonly OrderService $orders,
+        private readonly TableStatusSynchronizer $tableSync,
         private readonly \App\Modules\Tenancy\TenantContext $context,
         private readonly \App\Modules\Notify\Services\NotifyEmitter $notify,
     ) {
@@ -70,12 +74,13 @@ class ServiceRequestController extends Controller
 
         $table = $resolution->table;
 
-        // §9 feature-flag: işletme "Garson/su/hesap çağır"ı kapattıysa uç ÇALIŞMAZ
-        // (ADR: kapalı=yok). Menüde buton zaten server-render ile gizlenir; bu, uç
-        // düzeyi kesin kapıdır. Kimlik token'dan çözülen kiracıdır (istekten gelmez).
-        if (! \App\Modules\Settings\Support\Features::enabled((int) $table->tenant_id, 'service_calls')) {
+        // §9 feature-flag: işletme ilgili eklentiyi kapattıysa uç ÇALIŞMAZ (ADR: kapalı=yok).
+        // Şarjmatik AYRI eklentidir ('sarjmatik'); garson/su/hesap 'service_calls'. Menüde
+        // buton zaten server-render ile gizlenir; bu, uç düzeyi kesin kapıdır.
+        $feature = $data['kind'] === 'sarjmatik' ? 'sarjmatik' : 'service_calls';
+        if (! \App\Modules\Settings\Support\Features::enabled((int) $table->tenant_id, $feature)) {
             return response()->json([
-                'message' => 'Bu işletmede masadan servis çağrısı alınmıyor. Lütfen personele seslenin.',
+                'message' => 'Bu işletmede bu talep alınmıyor. Lütfen personele seslenin.',
             ], 403);
         }
 
@@ -128,6 +133,11 @@ class ServiceRequestController extends Controller
     /** Talep türü → masa/sipariş durumu (görev §3 zinciriyle uyumlu). */
     private function reflectToTable(Table $table, string $kind): void
     {
+        // Şarjmatik: yalnız talep + bildirim; masa/adisyon durumunu DEĞİŞTİRMEZ.
+        if ($kind === 'sarjmatik') {
+            return;
+        }
+
         if ($kind === 'bill') {
             $openOrders = Order::withoutTenancy()
                 ->where('tenant_id', $table->tenant_id)
@@ -145,9 +155,15 @@ class ServiceRequestController extends Controller
             }
 
             if (! $transitioned) {
-                // Açık adisyon yoksa/geçiş yoksa masa yine de işaretlenir.
-                $table->status = TableStatus::BillRequested;
-                $table->save();
+                // Açık adisyon yok (ya da hiçbiri BillRequested'e geçemedi, ör.
+                // zaten PartiallyPaid) — durumu BURADA İCAT ETMEYİZ. TableStatusSynchronizer
+                // masa durumunu her zaman AÇIK SİPARİŞLERDEN türetir (kural §Sipariş
+                // olayları → masa durumu): açık adisyon yoksa masa Available'a döner
+                // (Reserved/OutOfService ezilmez), varsa gerçek en-ileri durumuna göre
+                // ayarlanır. Eski davranış burada doğrudan `BillRequested` yazıyordu;
+                // adisyonsuz bir masada bu YAZI HİÇBİR sipariş olayınca bir daha
+                // tetiklenmediğinden masa sonsuza dek "Hesap istendi" kilidinde kalıyordu.
+                $this->tableSync->sync($table);
             }
 
             return;
@@ -178,9 +194,91 @@ class ServiceRequestController extends Controller
             $serviceRequest->handled_by_id = $request->user()->getKey();
             $serviceRequest->handled_at = now();
             $serviceRequest->save();
+
+            // Şarjmatik onaylanınca: masanın açık adisyonuna gizli 0₺ "Şarjmatik"
+            // kalemi ekle (kayıt + olay günlüğü). Müşteriye görünmez ürün; yalnız
+            // burada hizmetin sağlandığını belgeler.
+            if ($serviceRequest->kind === 'sarjmatik') {
+                $this->provideSarjmatik($serviceRequest, $request->user());
+            }
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Şarjmatik hizmetini kayda geçir: gizli 0₺ ürünü masanın açık adisyonuna
+     * ekle ("Şarjmatik hizmeti sağlandı" notuyla) + hemen servis edildi işaretle
+     * (KDS'i meşgul etmesin). Masanın açık adisyonu yoksa (adisyon açılmadan
+     * şarjmatik istenmişse) sessizce atlanır — talebin kapanışı yine de geçerli.
+     */
+    private function provideSarjmatik(ServiceRequest $sr, \App\Modules\Identity\Models\User $actor): void
+    {
+        try {
+            if ($sr->tenant_id === null || $sr->table_id === null) {
+                return;
+            }
+
+            $order = Order::query()
+                ->where('tenant_id', $sr->tenant_id)
+                ->where('table_id', $sr->table_id)
+                ->whereNotIn('status', OrderStatus::closedValues())
+                ->orderByDesc('id')
+                ->first();
+
+            if ($order === null) {
+                return; // açık adisyon yok → faturalanacak yer yok
+            }
+
+            $product = $this->resolveSarjmatikProduct((int) $sr->tenant_id);
+
+            $item = $this->orders->addItem($order, [
+                'product_id' => (int) $product->getKey(),
+                'qty' => 1,
+                'note' => 'Şarjmatik hizmeti sağlandı',
+            ], $actor);
+
+            // Hizmet kalemi hazırlık gerektirmez → doğrudan "servis edildi".
+            $this->orders->setItemStatus($order, $item, OrderItemStatus::Served, $actor);
+        } catch (\Throwable) {
+            // yut — talebin kapanışı bozulmasın
+        }
+    }
+
+    /**
+     * Gizli "Şarjmatik" ürünü: kiracıya bir kez otomatik tanımlanır. Fiyat 0₺;
+     * channels=['pos'] → QR menüde GÖRÜNMEZ (public menü 'qr' içermeyen ürünü
+     * eler) ama panelde/kasada kullanılabilir.
+     */
+    private function resolveSarjmatikProduct(int $tenantId): Product
+    {
+        $product = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('sku', 'SARJMATIK')
+            ->first();
+
+        if ($product !== null) {
+            return $product;
+        }
+
+        $product = new Product();
+        $product->tenant_id = $tenantId;
+        $product->branch_id = null;
+        $product->category_id = null;
+        $product->name = 'Şarjmatik';
+        $product->sku = 'SARJMATIK';
+        $product->description = 'Taşınabilir şarj cihazı hizmeti (gizli servis kalemi).';
+        $product->price_minor = 0;
+        $product->currency = config('app.currency', 'TRY');
+        $product->tax_rate = 0;
+        $product->is_active = true;
+        $product->is_available = true;
+        $product->channels = ['pos'];
+        $product->station = null;
+        $product->track_stock = false;
+        $product->save();
+
+        return $product;
     }
 
     /** @return array<string, mixed> Public görünüm — iç kimlik sızmaz. */

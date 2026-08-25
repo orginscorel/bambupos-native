@@ -22,3 +22,10 @@ Schedule::command('reservations:send-reminders')->everyFiveMinutes()->withoutOve
 
 // §8/§11 Bildirim: komi teslim SLA ihlali + yaklaşan rezervasyon taraması.
 Schedule::command('notify:check-sla')->everyMinute()->withoutOverlapping();
+
+// Personel: vardiya başlangıcına ~10 dk kala hatırlatma (in-app + web push).
+Schedule::command('shifts:send-start-reminders')->everyMinute()->withoutOverlapping();
+
+// §17.5 Stok: kritik eşik altı kalemler için bildirim + periyodik hatırlatıcı
+// (komut kendi dedup'ıyla spam'i keser; saatte bir tarama yeterli).
+Schedule::command('inventory:low-stock-notify')->hourly()->withoutOverlapping();

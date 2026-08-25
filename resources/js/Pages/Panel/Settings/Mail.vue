@@ -69,6 +69,7 @@ const { success, danger } = useToast();
 const settingsTabs = [
     { href: '/panel/ayarlar/e-posta', label: 'E-posta' },
     { href: '/panel/ayarlar/isletme', label: 'İşletme / Marka' },
+    { href: '/panel/ayarlar/tema', label: 'Tema' },
     { href: '/panel/ayarlar/eklentiler', label: 'Eklentiler' },
 ];
 const isActiveTab = (href: string) => page.url.startsWith(href);
@@ -292,7 +293,10 @@ const passwordPlaceholder = computed(() =>
 <template>
     <Head title="E-posta Ayarları" />
 
-    <PanelShell title="E-posta Ayarları">
+    <PanelShell title="E-posta Ayarları" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
             <div class="flex flex-col gap-1.5">
                 <h1 class="text-2xl font-semibold text-body">Ayarlar</h1>
@@ -532,6 +536,8 @@ const passwordPlaceholder = computed(() =>
                     <BaseButton variant="danger" :loading="removing" @click="removeOverride">Kaldır</BaseButton>
                 </div>
             </BaseModal>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

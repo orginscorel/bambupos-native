@@ -133,7 +133,8 @@ class HandleInertiaRequests extends Middleware
             'stations' => app(\App\Modules\Kds\Services\KdsService::class)->stationFamilies($user),
             // Açılış ekranı tercih listesi (yalnız izinli ekranlar)
             'screenOptions' => \App\Modules\Identity\Support\HomeScreen::optionsFor($user),
-            'tenant' => $tenant?->only(['name', 'slug']),
+            // Panel teması (marka rengi + font + varsayılan mod) — kiracı bazlı.
+            'tenant' => $tenant ? $tenant->only(['name', 'slug']) + ['theme' => is_array($tenant->theme) ? $tenant->theme : null] : null,
             'branches' => $branches,
             'activeBranchId' => $activeBranchId ?: null,
             // Şube değiştirici görünürlüğü: yalnız yönetici + çok-şube açık +
@@ -144,6 +145,12 @@ class HandleInertiaRequests extends Middleware
             // ve "Terminal · {istasyon}" kilit rozetini gösterir.
             'is_terminal' => (bool) $user->is_terminal,
             'terminal_station' => $user->is_terminal ? $user->terminal_station : null,
+            // §13 Faz C: paylaşımlı terminalde AKTİF OPERATÖR (PIN'le seçilmiş
+            // gerçek personel) — üst bardaki "Aktif: {Ad}" çipi bunu gösterir.
+            // Yalnız terminalde anlamlıdır; yoksa null → "Personel Seç" vurgusu.
+            'terminal_operator' => $user->is_terminal
+                ? \App\Modules\Terminal\Support\TerminalOperator::summary($request)
+                : null,
         ];
     }
 }

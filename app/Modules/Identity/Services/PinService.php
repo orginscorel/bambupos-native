@@ -3,6 +3,7 @@
 namespace App\Modules\Identity\Services;
 
 use App\Modules\Identity\Models\User;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -35,11 +36,32 @@ class PinService
 
         $user->forceFill([
             'pin_hash' => Hash::make($pin),
+            // Yönetici "PIN görüntüle" için tersine-çevrilebilir kopya (app key ile
+            // çözülür). Doğrulama HÂLÂ pin_hash (bcrypt) iledir.
+            'pin_encrypted' => Crypt::encryptString($pin),
             'failed_pin_attempts' => 0,
             'pin_locked_until' => null,
         ])->save();
 
         $this->audit->log('auth.pin_set', $user);
+    }
+
+    /**
+     * Personelin PIN'ini düz metin olarak çöz (yalnız YETKİLİ yönetici görüntüler;
+     * çağıran taraf yetki + audit'ten sorumludur). Şifreli kopya yoksa (eski PIN
+     * bcrypt-only) null döner → "yeniden ata" gerekir.
+     */
+    public function revealPin(User $user): ?string
+    {
+        if ($user->pin_encrypted === null || $user->pin_encrypted === '') {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($user->pin_encrypted);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

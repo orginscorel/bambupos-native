@@ -98,6 +98,11 @@ final class KdsPresenter
             'updated_at' => $item->updated_at?->toIso8601String(),
             'allergens' => $allergens,
             'diets' => $diets,
+            // Reçete / hazırlama notu (ürün açıklaması) — mutfak nasıl hazırlayacağını
+            // görsün. Fiyat/ciro DEĞİL; yalnız hazırlama metni.
+            'recipe' => $item->product?->description !== null
+                ? mb_substr(trim((string) $item->product->description), 0, 600)
+                : null,
             'options' => $item->options
                 ->map(fn ($o): string => $o->option_name)
                 ->values()->all(),

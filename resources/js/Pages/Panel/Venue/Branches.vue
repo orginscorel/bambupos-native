@@ -38,7 +38,103 @@ onMounted(load);
 /* ================= Oluştur / düzenle ================= */
 const drawerOpen = ref(false);
 const editing = ref<BranchRow | null>(null);
+
+/* İşletme Vitrini (public QR menüsünde görünen bilgi kartı) */
+const DAY_LABELS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+const SOCIAL_FIELDS: { key: string; label: string; ph: string }[] = [
+    { key: 'instagram', label: 'Instagram', ph: 'kullanici veya tam URL' },
+    { key: 'facebook', label: 'Facebook', ph: 'sayfa veya tam URL' },
+    { key: 'x', label: 'X (Twitter)', ph: 'kullanici' },
+    { key: 'tiktok', label: 'TikTok', ph: 'kullanici' },
+    { key: 'youtube', label: 'YouTube', ph: 'kanal veya @handle' },
+    { key: 'whatsapp', label: 'WhatsApp', ph: '+9053...' },
+    { key: 'website', label: 'Web sitesi', ph: 'https://...' },
+];
+
+type HourRow = { d: number; closed: boolean; open: string; close: string };
+type ShowcaseForm = {
+    wifi_ssid: string;
+    wifi_password: string;
+    maps_url: string;
+    show_map: boolean;
+    hoursEnabled: boolean;
+    hours: HourRow[];
+    social: Record<string, string>;
+};
+
+function emptyShowcase(): ShowcaseForm {
+    return {
+        wifi_ssid: '',
+        wifi_password: '',
+        maps_url: '',
+        show_map: true,
+        hoursEnabled: false,
+        hours: Array.from({ length: 7 }, (_, d) => ({ d, closed: false, open: '09:00', close: '22:00' })),
+        social: Object.fromEntries(SOCIAL_FIELDS.map((f) => [f.key, ''])),
+    };
+}
+
+/* Kaydedilmiş showcase JSON'unu forma çevir (eksikleri varsayılana tamamla). */
+function showcaseFromRow(raw: unknown): ShowcaseForm {
+    const sc = emptyShowcase();
+    if (!raw || typeof raw !== 'object') return sc;
+    const r = raw as Record<string, unknown>;
+    sc.wifi_ssid = typeof r.wifi_ssid === 'string' ? r.wifi_ssid : '';
+    sc.wifi_password = typeof r.wifi_password === 'string' ? r.wifi_password : '';
+    sc.maps_url = typeof r.maps_url === 'string' ? r.maps_url : '';
+    sc.show_map = r.show_map !== false;
+    if (Array.isArray(r.hours) && r.hours.length > 0) {
+        sc.hoursEnabled = true;
+        for (const h of r.hours as Record<string, unknown>[]) {
+            const d = Number(h?.d);
+            if (d >= 0 && d <= 6) {
+                sc.hours[d] = {
+                    d,
+                    closed: h.closed === true,
+                    open: typeof h.open === 'string' ? h.open : '',
+                    close: typeof h.close === 'string' ? h.close : '',
+                };
+            }
+        }
+    }
+    if (r.social && typeof r.social === 'object') {
+        for (const f of SOCIAL_FIELDS) {
+            const v = (r.social as Record<string, unknown>)[f.key];
+            sc.social[f.key] = typeof v === 'string' ? v : '';
+        }
+    }
+    return sc;
+}
+
+/* Formu API gövdesine çevir; her şey boşsa null (kart hiç görünmez). */
+function showcaseToBody(sc: ShowcaseForm): Record<string, unknown> | null {
+    const social: Record<string, string> = {};
+    for (const f of SOCIAL_FIELDS) {
+        const v = sc.social[f.key]?.trim();
+        if (v) social[f.key] = v;
+    }
+    const out: Record<string, unknown> = {};
+    if (sc.wifi_ssid.trim()) out.wifi_ssid = sc.wifi_ssid.trim();
+    if (sc.wifi_password.trim()) out.wifi_password = sc.wifi_password.trim();
+    if (sc.maps_url.trim()) out.maps_url = sc.maps_url.trim();
+    out.show_map = sc.show_map;
+    if (sc.hoursEnabled) {
+        out.hours = sc.hours.map((h) => ({
+            d: h.d,
+            closed: h.closed,
+            open: h.closed ? null : h.open || null,
+            close: h.closed ? null : h.close || null,
+        }));
+    }
+    if (Object.keys(social).length > 0) out.social = social;
+
+    // Yalnız show_map (varsayılan) varsa "boş" say → null gönder.
+    const meaningful = out.wifi_ssid || out.wifi_password || out.maps_url || out.hours || out.social;
+    return meaningful ? out : null;
+}
+
 const form = ref({ name: '', code: '', address: '', phone: '', timezone: 'Europe/Istanbul', is_active: true });
+const showcase = ref<ShowcaseForm>(emptyShowcase());
 const formErrors = ref<Record<string, string>>({});
 const formBusy = ref(false);
 
@@ -46,6 +142,7 @@ function openCreate(): void {
     editing.value = null;
     formErrors.value = {};
     form.value = { name: '', code: '', address: '', phone: '', timezone: 'Europe/Istanbul', is_active: true };
+    showcase.value = emptyShowcase();
     drawerOpen.value = true;
 }
 
@@ -60,6 +157,7 @@ function openEdit(row: BranchRow): void {
         timezone: row.timezone,
         is_active: row.is_active,
     };
+    showcase.value = showcaseFromRow((row as unknown as { showcase?: unknown }).showcase);
     drawerOpen.value = true;
 }
 
@@ -75,6 +173,7 @@ async function submit(): Promise<void> {
         phone: form.value.phone || null,
         timezone: form.value.timezone,
         is_active: form.value.is_active,
+        showcase: showcaseToBody(showcase.value),
     };
 
     try {
@@ -128,10 +227,14 @@ const columns: TableColumn[] = [
 
 <template>
     <Head title="Şubeler" />
-    <PanelShell title="Şubeler">
-        <VenueNav />
+    <!-- TAM KAPLAMA: mekân gezinmesi SABİT şeritte; içerik kendi içinde kayar. -->
+    <PanelShell title="Şubeler" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <VenueNav />
+        </div>
 
-        <div class="flex flex-col gap-4">
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
             <BaseCard flush>
                 <template #header>
                     <h2 class="text-sm font-semibold text-body">Şubeler</h2>
@@ -196,6 +299,60 @@ const columns: TableColumn[] = [
                     <BaseInput v-model="form.timezone" placeholder="Europe/Istanbul" />
                 </FormField>
                 <BaseSwitch v-model="form.is_active" label="Aktif" description="Pasif şubenin menüsü ve masaları müşteriye kapalıdır" />
+
+                <!-- ============ İşletme Vitrini ============ -->
+                <div class="mt-2 border-t border-default pt-4">
+                    <div class="flex items-center gap-2">
+                        <AppIcon name="qr-code" class="size-4 text-primary" />
+                        <h3 class="text-sm font-semibold">İşletme Vitrini</h3>
+                    </div>
+                    <p class="mt-1 text-xs text-muted">Müşteri QR menüsünde görünen bilgi kartı: WiFi, çalışma saatleri, konum ve sosyal medya. Boş bıraktığınız alanlar gösterilmez.</p>
+
+                    <!-- WiFi -->
+                    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <FormField label="WiFi ağ adı (SSID)" :error="formErrors['showcase.wifi_ssid']">
+                            <BaseInput v-model="showcase.wifi_ssid" placeholder="ör. Cafe_Misafir" />
+                        </FormField>
+                        <FormField label="WiFi şifresi" :error="formErrors['showcase.wifi_password']">
+                            <BaseInput v-model="showcase.wifi_password" placeholder="Müşteri tek dokunuşla kopyalar" />
+                        </FormField>
+                    </div>
+
+                    <!-- Konum -->
+                    <FormField label="Harita / konum bağlantısı" class="mt-1" :error="formErrors['showcase.maps_url']" hint="Boş bırakılırsa adresten Google Haritalar linki otomatik üretilir">
+                        <BaseInput v-model="showcase.maps_url" placeholder="https://maps.google.com/..." inputmode="url" />
+                    </FormField>
+                    <BaseSwitch v-model="showcase.show_map" class="mt-2" label="Yol tarifi bağlantısını göster" description="Menüde konum/harita satırı görünsün" />
+
+                    <!-- Çalışma saatleri -->
+                    <BaseSwitch v-model="showcase.hoursEnabled" class="mt-3" label="Çalışma saatlerini göster" description="Haftalık açılış/kapanış saatleri; müşteri 'şu an açık/kapalı' görür" />
+                    <div v-if="showcase.hoursEnabled" class="mt-2 flex flex-col gap-1.5 rounded-lg border border-app bg-subtle p-2">
+                        <div v-for="row in showcase.hours" :key="row.d" class="flex items-center gap-2">
+                            <span class="w-20 shrink-0 text-xs font-medium">{{ DAY_LABELS[row.d] }}</span>
+                            <template v-if="!row.closed">
+                                <BaseInput v-model="row.open" type="time" class="!py-1 text-sm" />
+                                <span class="text-xs text-muted">–</span>
+                                <BaseInput v-model="row.close" type="time" class="!py-1 text-sm" />
+                            </template>
+                            <span v-else class="flex-1 text-xs text-muted">Kapalı</span>
+                            <label class="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted">
+                                <input v-model="row.closed" type="checkbox" class="size-3.5 accent-current" />
+                                Kapalı
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Sosyal medya -->
+                    <div class="mt-4">
+                        <span class="text-xs font-medium text-muted">Sosyal medya</span>
+                        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <FormField v-for="f in SOCIAL_FIELDS" :key="f.key" :label="f.label" :error="formErrors[`showcase.social.${f.key}`]">
+                                <BaseInput v-model="showcase.social[f.key]" :placeholder="f.ph" />
+                            </FormField>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex justify-end gap-2 pt-2">
                     <BaseButton variant="secondary" @click="drawerOpen = false">Vazgeç</BaseButton>
                     <BaseButton type="submit" :loading="formBusy">{{ editing ? 'Kaydet' : 'Oluştur' }}</BaseButton>
@@ -212,5 +369,6 @@ const columns: TableColumn[] = [
                 <BaseButton variant="danger" @click="remove">Sil</BaseButton>
             </template>
         </BaseModal>
+        </div>
     </PanelShell>
 </template>

@@ -144,9 +144,13 @@ const err = (f: string): string => formErrors.value[f]?.[0] ?? '';
 
 <template>
     <Head title="Stok Hareketleri" />
-    <PanelShell title="Stok">
-        <InventoryNav active="movements" />
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav active="movements" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <div class="flex flex-col gap-4">
             <!-- Bekleyen manuel hareket istekleri -->
             <BaseCard v-if="requests.length" title="Onay bekleyen manuel hareketler">
@@ -271,5 +275,7 @@ const err = (f: string): string => formErrors.value[f]?.[0] ?? '';
                 </div>
             </form>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

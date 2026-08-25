@@ -8,10 +8,30 @@ namespace Tests\Feature\Portal;
  */
 class PortalHostRoutingTest extends PortalTestCase
 {
-    public function test_portal_host_kok_mesaime_yonlendirir(): void
+    public function test_portal_host_kok_girisli_kullaniciyi_panelime_tasir(): void
     {
-        // Kimlikten bağımsız: HandlePortalHost middleware kökü /mesaim'e taşır.
-        $this->get($this->portalUrl('/'))->assertRedirect('/mesaim');
+        // Duvarlı bahçe: girişli kullanıcı portal kökünde portal ana ekranına (Panelim).
+        $ctx = $this->makeTenantWithUser();
+
+        $this->actingAs($ctx['user'])
+            ->get($this->portalUrl('/'))
+            ->assertRedirect('/panelim');
+    }
+
+    public function test_portal_host_kok_misafiri_girise_tasir(): void
+    {
+        // Misafir portal kökünde giriş ekranına (panele DÜŞMEZ).
+        $this->get($this->portalUrl('/'))->assertRedirect('/giris');
+    }
+
+    public function test_portal_hostunda_panel_yolu_portala_yonlenir(): void
+    {
+        // Duvarlı bahçe: portal host'unda QR panel yolu portala taşınır.
+        $ctx = $this->makeTenantWithUser();
+
+        $this->actingAs($ctx['user'])
+            ->get($this->portalUrl('/panel/masalar'))
+            ->assertRedirect('/panelim');
     }
 
     public function test_giris_yapmis_personel_portal_ekranini_gorur(): void

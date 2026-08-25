@@ -4,9 +4,11 @@ namespace App\Modules\Kiosk\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Catalog\Support\Money;
+use App\Modules\Devices\Services\DeviceBindingService;
 use App\Modules\Kiosk\Models\KioskDevice;
 use App\Modules\Kiosk\Services\KioskActor;
 use App\Modules\Kiosk\Services\KioskTokenResolver;
+use App\Modules\Settings\Support\Features;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Services\IdempotencyStore;
 use App\Modules\Orders\Services\OrderService;
@@ -54,6 +56,7 @@ class KioskOrderController extends Controller
     {
         $data = $request->validate([
             'token' => ['required', 'string', 'max:64'],
+            'device_token' => ['sometimes', 'nullable', 'string', 'max:64'],
             'order_type' => ['required', 'in:dine_in,takeaway,package'],
             'table_id' => ['required_if:order_type,dine_in', 'nullable', 'integer'],
             'customer_name' => ['nullable', 'string', 'max:120'],
@@ -83,6 +86,26 @@ class KioskOrderController extends Controller
 
         if ($device === null) {
             return $fail;
+        }
+
+        // ---- Cihaz kilidi (feature: device_lock) — savunma katmanı ----
+        // Asıl kapı heartbeat'tir (kilitli cihaz zaten sipariş ekranına
+        // ulaşamaz). Burada YALNIZ açık uyuşmazlıkta reddederiz: cihaz kimliği
+        // SUNULMUŞ ama başka cihaza kilitliyse. Kimlik sunulmamışsa (ilk anlık
+        // yarış) engellemeyiz → meşru sipariş bloklanmaz.
+        if (($data['device_token'] ?? null) !== null
+            && Features::enabled((int) $device->tenant_id, 'device_lock')) {
+            $this->context->setTenant((int) $device->tenant_id);
+            $bind = app(DeviceBindingService::class)
+                ->authorize('kiosk', $data['token'], $data['device_token']);
+            $this->context->forget();
+
+            if (! $bind->allowed) {
+                return response()->json([
+                    'result' => 'locked_device',
+                    'message' => 'Bu kiosk bağlantısı başka bir cihaza kilitli. Sipariş alınamaz.',
+                ], 403);
+            }
         }
 
         // Masada servis: masa BU CİHAZIN şubesine ait ve aktif olmalı.
@@ -256,11 +279,12 @@ class KioskOrderController extends Controller
             ], 201];
         }
 
-        // Mock POS tahsilatı — tutarın tamamı, tek çekim (ADR-010 akışı).
+        // Kiosk POS tahsilatı — tutarın tamamı, tek çekim (ADR-010 akışı). Sağlayıcı
+        // BELİRTİLMEZ → işletmenin yapılandırdığı POS entegratörü kullanılır
+        // (ProviderRegistry::keyForMethod); yapılandırılmadıysa varsayılana (mock) düşer.
         ['payment' => $payment] = $this->payments->pay($order, [
             'method' => 'credit_card',
             'amount_minor' => $total,
-            'provider' => 'mock',
             'terminal_id' => 'KIOSK-'.$device->getKey(),
             'note' => 'Kiosk: '.$device->name,
         ], $actor);

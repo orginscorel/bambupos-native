@@ -26,6 +26,7 @@ Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
     // Barista=içecekler). Çip'lerle geçiş + ?istasyon=X override serbest.
     Route::get('/panel/mutfak', [KdsPageController::class, 'kitchen'])->name('panel.kds.kitchen');
     Route::get('/panel/barista', [KdsPageController::class, 'barista'])->name('panel.kds.barista');
+    Route::get('/panel/nargile', [KdsPageController::class, 'hookah'])->name('panel.kds.hookah');
     Route::get('/panel/komi', [KdsPageController::class, 'runner'])->name('panel.kds.runner');
 
     /* ---- JSON uçları ---- */

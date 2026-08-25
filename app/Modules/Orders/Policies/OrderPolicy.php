@@ -41,6 +41,15 @@ class OrderPolicy extends TenantOwnedPolicy
             && $user->hasPermission('orders.refund');
     }
 
+    /**
+     * Adisyondan bağımsız indirim yetkisi (hazır indirim TANIMLARI için).
+     * Model örneği yoktur — yalnız izin bakılır.
+     */
+    public function discountAny(User $user): bool
+    {
+        return $user->hasPermission('orders.discount');
+    }
+
     public function discount(User $user, Order $order): bool
     {
         return $this->ownedByUserTenant($user, $order) && $this->inCurrentBranch($order)

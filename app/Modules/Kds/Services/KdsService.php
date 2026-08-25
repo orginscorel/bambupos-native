@@ -36,9 +36,14 @@ class KdsService
         'partially_ready', 'ready', 'awaiting_service',
     ];
 
-    /** Mutfak kartında görünen kalem durumları (served/cancelled hariç). */
+    /**
+     * Mutfak kartında görünen kalem durumları (served/cancelled hariç).
+     * NOT: 'placed' BİLİNÇLİ olarak YOK — yeni eklenen kalem "gönderilmemiş taslak"tır,
+     * garson "Mutfağa gönder" (sent_to_station) diyene kadar KDS'e DÜŞMEZ. Böylece
+     * kazara eklenen ürün mutfağa gitmeden önce düzeltilebilir/silinebilir.
+     */
     private const KITCHEN_ITEM_STATUSES = [
-        'placed', 'sent_to_station', 'accepted', 'preparing', 'ready',
+        'sent_to_station', 'accepted', 'preparing', 'ready',
     ];
 
     /**
@@ -52,11 +57,17 @@ class KdsService
      */
     private function scopeKitchenOrders($query)
     {
-        return $query->where(function ($q): void {
-            $q->whereIn('status', self::KITCHEN_ORDER_STATUSES)
-                ->orWhere(fn ($paid) => $paid->where('status', OrderStatus::Paid->value)
-                    ->whereHas('items', fn ($iq) => $iq->whereIn('status', self::KITCHEN_ITEM_STATUSES)));
-        });
+        // Adisyon KDS'e YALNIZ en az bir "mutfağa gönderilmiş" (sent_to_station+)
+        // kalemi varsa çıkar — yalnız placed (gönderilmemiş taslak) kalemi olan adisyon
+        // görünmez. Statü kapısı: normal mutfak aşamaları + ödeme fazına geçmiş ama
+        // kalemi hâlâ pişen adisyonlar (denetim #2).
+        return $query
+            ->whereHas('items', fn ($iq) => $iq->whereIn('status', self::KITCHEN_ITEM_STATUSES))
+            ->whereIn('status', array_merge(self::KITCHEN_ORDER_STATUSES, [
+                OrderStatus::BillRequested->value,
+                OrderStatus::PartiallyPaid->value,
+                OrderStatus::Paid->value,
+            ]));
     }
 
     public function __construct(
@@ -109,13 +120,33 @@ class KdsService
         }
 
         $barista = (array) config('authz.barista_stations', []);
+        $hookah = $this->hookahLaneStations();
         $families = [];
 
         foreach ($allowed as $key) {
-            $families[] = in_array($key, $barista, true) ? 'barista' : 'kitchen';
+            $families[] = in_array($key, $barista, true) ? 'barista'
+                : (in_array($key, $hookah, true) ? 'nargile' : 'kitchen');
         }
 
         return array_values(array_unique($families));
+    }
+
+    /**
+     * NARGİLE kulvarı istasyonları — YALNIZ 'nargile' eklentisi AÇIKSA doludur.
+     * Kapalıyken boş döner → hookah istasyonu Mutfak kulvarında kalır (kalem
+     * kaybolmaz). "Kod değil konfig": istasyon anahtarları config/authz.php'de.
+     *
+     * @return array<int, string>
+     */
+    private function hookahLaneStations(): array
+    {
+        $tenantId = (int) app(\App\Modules\Tenancy\TenantContext::class)->tenantId();
+
+        if ($tenantId <= 0 || ! \App\Modules\Settings\Support\Features::enabled($tenantId, 'nargile')) {
+            return [];
+        }
+
+        return (array) config('authz.hookah_stations', []);
     }
 
     /**
@@ -131,14 +162,20 @@ class KdsService
     public function laneStations(string $lane): array
     {
         $barista = (array) config('authz.barista_stations', []);
+        $hookah = $this->hookahLaneStations(); // boş = nargile eklentisi kapalı
         $keys = $this->stations->all(activeOnly: false)->pluck('key')->all();
 
         if ($lane === 'barista') {
             return array_values(array_filter($keys, fn ($k): bool => in_array($k, $barista, true)));
         }
 
-        // Mutfak kulvarı: barista-kulvarı DIŞI istasyonlar + istasyonsuz kova.
-        $kitchen = array_values(array_filter($keys, fn ($k): bool => ! in_array($k, $barista, true)));
+        if ($lane === 'nargile') {
+            return array_values(array_filter($keys, fn ($k): bool => in_array($k, $hookah, true)));
+        }
+
+        // Mutfak kulvarı: barista + (eklenti açıksa) nargile DIŞI istasyonlar + istasyonsuz kova.
+        $exclude = array_merge($barista, $hookah);
+        $kitchen = array_values(array_filter($keys, fn ($k): bool => ! in_array($k, $exclude, true)));
         $kitchen[] = (string) config('kds.unassigned_key', '_none');
 
         return array_values(array_unique($kitchen));
@@ -165,9 +202,23 @@ class KdsService
 
         $laneKeys = $this->laneStations($lane);
 
-        return $effective === null
-            ? $laneKeys
-            : array_values(array_intersect($effective, $laneKeys));
+        if ($effective === null) {
+            return $laneKeys;
+        }
+
+        $narrowed = array_values(array_intersect($effective, $laneKeys));
+
+        // İSTASYONSUZ ürün (denetim #6): station=null kalemler `_none` kovasında; atanmış
+        // aşçının kesişimi bunu düşürüyordu → TÜM aşçılar istasyona atanmışsa bu ürünler
+        // hiç kimseye görünmüyordu. MUTFAK kulvarında `_none`'u DAİMA kapsa (kimsesiz kalmasın).
+        if ($lane !== 'barista' && $lane !== 'nargile') {
+            $none = (string) config('kds.unassigned_key', '_none');
+            if (! in_array($none, $narrowed, true)) {
+                $narrowed[] = $none;
+            }
+        }
+
+        return $narrowed;
     }
 
     /**
@@ -195,8 +246,16 @@ class KdsService
     private function assertItemInScope(User $user, OrderItem $item): void
     {
         $allowed = $this->allowedStations($user);
+        $station = (string) $item->station;
 
-        if ($allowed !== null && ! in_array((string) $item->station, $allowed, true)) {
+        // İstasyonsuz kalem (denetim #6): belirli bir istasyona ait değil → herhangi
+        // bir aşçı ele alabilir (kimsesiz kalmasın); kapsam kısıtı yalnız İSTASYONLU
+        // kalemlere uygulanır.
+        if ($station === '') {
+            return;
+        }
+
+        if ($allowed !== null && ! in_array($station, $allowed, true)) {
             throw new AccessDeniedHttpException('Bu kalem sizin istasyonunuza ait değil.');
         }
     }
@@ -239,7 +298,7 @@ class KdsService
                 'openedBy:id,name',
                 'items' => fn ($q) => $q->orderBy('id'),
                 'items.options',
-                'items.product:id,prep_minutes',
+                'items.product:id,prep_minutes,description',
                 'items.product.allergens:id,name,kind,icon,color',
                 // Kart görseli: relation zaten is_primary DESC sıralı — presenter ->first() alır.
                 'items.product.images:id,product_id,path,is_primary,sort_order',
@@ -302,7 +361,7 @@ class KdsService
                 'openedBy:id,name',
                 'items' => fn ($q) => $q->where('status', OrderItemStatus::Ready->value)->orderBy('updated_at'),
                 'items.options',
-                'items.product:id,prep_minutes',
+                'items.product:id,prep_minutes,description',
                 'items.product.allergens:id,name,kind,icon,color',
                 'items.product.images:id,product_id,path,is_primary,sort_order',
             ])
@@ -504,6 +563,12 @@ class KdsService
                 'from_station' => $from,
                 'to_station' => $stationKey,
             ], null, null, $fresh);
+
+            // ÇAPRAZ-HAT UYARISI (denetim orta): kalem yeni istasyona/kulvara taşındı →
+            // hedef kulvar (Mutfak/Barista) "yeni ürün geldi" bildirimi alır. orderItemPlaced
+            // laneForStation ile doğru kulvarı hedefler + order+lane dedup'lıdır (spam yok).
+            $fresh->setRelation('order', $locked);
+            app(\App\Modules\Notify\Services\NotifyEmitter::class)->orderItemPlaced($fresh);
 
             return $fresh;
         });

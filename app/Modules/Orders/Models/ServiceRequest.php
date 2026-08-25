@@ -13,7 +13,7 @@ class ServiceRequest extends Model
 {
     use BelongsToTenant;
 
-    public const KINDS = ['waiter', 'bill', 'water'];
+    public const KINDS = ['waiter', 'bill', 'water', 'sarjmatik'];
 
     protected $fillable = [
         'kind',
@@ -33,6 +33,7 @@ class ServiceRequest extends Model
             'waiter' => 'Garson çağırıyor',
             'bill' => 'Hesap istiyor',
             'water' => 'Su istiyor',
+            'sarjmatik' => 'Şarjmatik istiyor',
             default => (string) $this->kind,
         };
     }
@@ -43,6 +44,7 @@ class ServiceRequest extends Model
             'waiter' => 'bell',
             'bill' => 'cart',
             'water' => 'inbox',
+            'sarjmatik' => 'plug',
             default => 'bell',
         };
     }

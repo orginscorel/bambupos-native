@@ -411,7 +411,10 @@ onMounted(() => {
 <template>
     <Head title="Hesabım" />
 
-    <PanelShell title="Hesabım">
+    <PanelShell title="Hesabım" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
             <div class="flex flex-col gap-1.5">
                 <h1 class="text-2xl font-semibold text-body">Hesabım</h1>
@@ -928,5 +931,7 @@ onMounted(() => {
                 </BaseButton>
             </template>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

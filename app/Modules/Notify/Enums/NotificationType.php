@@ -48,6 +48,33 @@ enum NotificationType: string
     /** Personel mola/tuvalet başlattı ya da bitirdi → yönetici + o an mesaide olanlar. */
     case StaffBreak = 'staff_break';
 
+    /** Bir personele görev atandı → YALNIZ o personel (extra_user_ids). */
+    case TaskAssigned = 'task_assigned';
+
+    /** Personel izin talebinde bulundu → yöneticiler (onaylayabilenler). */
+    case LeaveRequested = 'leave_requested';
+
+    /** Vardiya başlangıcı yaklaştı (10 dk kala) → YALNIZ o personel. */
+    case ShiftReminder = 'shift_reminder';
+
+    /** İzin talebi karara bağlandı (onay/ret/iptal) → YALNIZ talep sahibi. */
+    case LeaveDecided = 'leave_decided';
+
+    /** Teslimat kuryeye atandı → YALNIZ o kurye. */
+    case DeliveryAssigned = 'delivery_assigned';
+
+    /** Teslimat tamamlandı (kurye teslim etti) → yöneticiler. */
+    case DeliveryDelivered = 'delivery_delivered';
+
+    /** Adisyon ödemeye gönderildi (hesap istendi) → KASA + yönetici. */
+    case AwaitingPayment = 'awaiting_payment';
+
+    /** Adisyon ödenmeden borca (cari) taşındı → KASA + yönetici. */
+    case DebtTransferred = 'debt_transferred';
+
+    /** QR'dan gelen sipariş onay bekliyor → garson + yönetici. */
+    case OrderNeedsApproval = 'order_needs_approval';
+
     public function label(): string
     {
         return match ($this) {
@@ -60,6 +87,15 @@ enum NotificationType: string
             self::ReservationNoShow => 'Rezervasyon gelmedi (no-show)',
             self::ServiceCall => 'Servis çağrısı',
             self::StaffBreak => 'Personel molası',
+            self::TaskAssigned => 'Görev atandı',
+            self::LeaveRequested => 'İzin talebi',
+            self::ShiftReminder => 'Mesai hatırlatması',
+            self::LeaveDecided => 'İzin sonucu',
+            self::DeliveryAssigned => 'Teslimat atandı',
+            self::DeliveryDelivered => 'Teslimat tamamlandı',
+            self::AwaitingPayment => 'Ödeme bekliyor',
+            self::DebtTransferred => 'Borca taşındı',
+            self::OrderNeedsApproval => 'Sipariş onayı bekliyor',
         };
     }
 
@@ -76,6 +112,15 @@ enum NotificationType: string
             self::ReservationNoShow => 'Rezervasyon sahibi gelmediğinde.',
             self::ServiceCall => 'Bir masa QR menüden garson/su/hesap çağırdığında.',
             self::StaffBreak => 'Bir personel molaya/tuvalete çıktığında veya döndüğünde.',
+            self::TaskAssigned => 'Size yeni bir görev atandığında.',
+            self::LeaveRequested => 'Bir personel izin/rapor talebinde bulunduğunda.',
+            self::ShiftReminder => 'Vardiyanızın başlamasına az kaldığında.',
+            self::LeaveDecided => 'İzin talebiniz onaylandığında veya reddedildiğinde.',
+            self::DeliveryAssigned => 'Size bir paket teslimatı atandığında.',
+            self::DeliveryDelivered => 'Bir paket teslimatı tamamlandığında.',
+            self::AwaitingPayment => 'Bir adisyon kasaya ödemeye gönderildiğinde.',
+            self::DebtTransferred => 'Bir adisyon ödenmeden borca (cari) taşındığında.',
+            self::OrderNeedsApproval => 'QR menüden gelen bir sipariş onay beklediğinde.',
         };
     }
 
@@ -83,12 +128,13 @@ enum NotificationType: string
     public function category(): string
     {
         return match ($this) {
-            self::OrderPlaced, self::OrderServed => 'orders',
+            self::OrderPlaced, self::OrderServed, self::DeliveryAssigned, self::DeliveryDelivered,
+            self::AwaitingPayment, self::DebtTransferred, self::OrderNeedsApproval => 'orders',
             self::ItemReady, self::DeliverySlaBreach => 'kitchen',
             self::LowStock => 'stock',
             self::ReservationUpcoming, self::ReservationNoShow => 'reservations',
             self::ServiceCall => 'service',
-            self::StaffBreak => 'staff',
+            self::StaffBreak, self::TaskAssigned, self::LeaveRequested, self::ShiftReminder, self::LeaveDecided => 'staff',
         };
     }
 
@@ -128,13 +174,30 @@ enum NotificationType: string
             self::OrderServed => ['orders.view'],
             self::LowStock => ['stock.view', 'stock.adjust'],
             self::ReservationUpcoming, self::ReservationNoShow => ['reservations.view', 'reservations.manage'],
-            // Garson = masaya bakan personel (sipariş açıp güncelleyen). Kasiyer
-            // (yalnız orders.view) çağrı almaz; yönetici includeManagers ile dahil.
-            self::ServiceCall => ['orders.create'],
+            // Garson (orders.create) = masaya bakan personel + KASA (payments.take):
+            // özellikle "hesap iste" çağrısının kasaya da ulaşması için. Yönetici
+            // includeManagers ile dahil.
+            self::ServiceCall => ['orders.create', 'payments.take'],
+            // Ödemeye gönderilen / borca taşınan adisyon → kasa (+ yönetici).
+            self::AwaitingPayment, self::DebtTransferred => ['payments.take'],
+            // QR sipariş onayı → onaylayan garson (+ yönetici).
+            self::OrderNeedsApproval => ['orders.create'],
             // Personel molası izne göre HEDEFLENMEZ: alıcılar yönetici
             // (includeManagers) + o an mesaide olan diğer personel (emitter'ın
             // extra_user_ids'i ile) → hangi izne sahip olduklarından bağımsız.
             self::StaffBreak => [],
+            // Görev atama: yalnız atanan kişi (extra_user_ids); izin hedefi yok.
+            self::TaskAssigned => [],
+            // İzin talebi: onaylayabilen yöneticiler.
+            self::LeaveRequested => ['staff.manage'],
+            // Mesai hatırlatması: yalnız o personel (extra_user_ids).
+            self::ShiftReminder => [],
+            // İzin sonucu: yalnız talep sahibi (extra_user_ids).
+            self::LeaveDecided => [],
+            // Teslimat atandı: yalnız o kurye (extra_user_ids).
+            self::DeliveryAssigned => [],
+            // Teslimat tamamlandı: teslimat panosunu görenler + yönetici.
+            self::DeliveryDelivered => ['delivery.view', 'delivery.manage'],
         };
     }
 
@@ -144,6 +207,9 @@ enum NotificationType: string
         // panoyu izler (gürültü olmasın). SLA/stok/rezervasyon: yönetici de alır.
         return match ($this) {
             self::OrderPlaced, self::ItemReady, self::OrderServed => false,
+            // Kişiye özel bildirimler: YALNIZ ilgili kişi (extra_user_ids) —
+            // yönetici her göreve/hatırlatmaya boğulmasın.
+            self::TaskAssigned, self::ShiftReminder, self::LeaveDecided, self::DeliveryAssigned => false,
             // Servis çağrısı: garsona gider + yönetici de görür (masa bekliyor).
             default => true,
         };
@@ -167,6 +233,15 @@ enum NotificationType: string
             self::ReservationUpcoming, self::ReservationNoShow => 'calendar',
             self::ServiceCall => 'bell',
             self::StaffBreak => 'clock',
+            self::TaskAssigned => 'clipboard',
+            self::LeaveRequested => 'calendar',
+            self::ShiftReminder => 'clock',
+            self::LeaveDecided => 'check',
+            self::DeliveryAssigned => 'store',
+            self::DeliveryDelivered => 'check',
+            self::AwaitingPayment => 'wallet',
+            self::DebtTransferred => 'inbox',
+            self::OrderNeedsApproval => 'bell',
         };
     }
 

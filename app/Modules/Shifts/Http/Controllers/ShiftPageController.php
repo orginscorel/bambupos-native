@@ -89,4 +89,13 @@ class ShiftPageController extends Controller
 
         return Inertia::render('Panel/Shifts/Settings');
     }
+
+    /** /panel/mesai/maaslar — maaş/bordro (yönetici) */
+    public function payroll(Request $request): Response
+    {
+        $this->featureGate();
+        abort_unless($request->user()->hasPermission('staff.manage'), 403);
+
+        return Inertia::render('Panel/Shifts/Payroll');
+    }
 }

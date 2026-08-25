@@ -45,6 +45,9 @@ class RecipientResolver
             ->where('tenant_id', $tenantId)
             ->where('is_active', true)
             ->where('is_terminal', false)
+            // hasPermission()/permissionKeys() aday başına izinleri sorgular →
+            // N+1'i önlemek için rol izinleri + kişisel izinler eager-load edilir.
+            ->with(['roles.permissions', 'personalPermissions'])
             ->when($branchId !== null, function ($q) use ($branchId): void {
                 // Olayın şubesindeki personel + şubesiz (HQ/çok-şube yönetici) personel.
                 $q->where(function ($w) use ($branchId): void {

@@ -79,6 +79,13 @@ const groups = computed<Group[]>(() => {
 
     if (canManage.value) {
         list.push({
+            key: 'payroll',
+            label: 'Maaşlar',
+            icon: 'wallet',
+            href: '/panel/mesai/maaslar',
+            desc: 'Personele aylık sabit veya saatlik maaş tanımlar; saatlikte mesaiye göre günlük/aylık hak edişi otomatik hesaplanır.',
+        });
+        list.push({
             key: 'settings',
             label: 'Cihazlar & Ayar',
             icon: 'settings',
@@ -99,6 +106,7 @@ const pageToGroup: Record<string, string> = {
     performance: 'attendance',
     leaves: 'leaves',
     approvals: 'leaves',
+    payroll: 'payroll',
     settings: 'settings',
 };
 

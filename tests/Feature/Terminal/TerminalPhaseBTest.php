@@ -111,17 +111,28 @@ class TerminalPhaseBTest extends TestCase
         $this->get('/terminal/'.$device->token)->assertRedirect('/panel/siparisler');
     }
 
-    public function test_kasa_terminali_yalniz_kasa_ekraninda_kalir(): void
+    public function test_kasa_terminali_yonetime_erisemez_operasyona_erisir(): void
     {
+        // Güncellenmiş erişim modeli (§13): terminal tek ekrana KİLİTLİ değil;
+        // yönetim-DIŞI, izinli operasyon ekranlarına gidebilir, yönetim kapalıdır.
         $device = $this->makeDevice('kasa');
         $this->actingAs(User::find($device->user_id));
 
+        // Kendi istasyon ekranı açık.
         $this->get('/panel/kasa')->assertOk();
-        // Başka panel sayfası → kendi ekranına redirect.
+
+        // İzinli başka OPERASYON ekranı: kasa'nın orders.view izni var →
+        // Siparişler artık erişilebilir (eskiden kendi ekranına redirect'ti).
+        $this->get('/panel/siparisler')->assertOk();
+
+        // YÖNETİM/hassas sayfalar → kendi ekranına redirect (block-list).
         $this->get('/panel/personel')->assertRedirect('/panel/kasa');
+        $this->get('/panel/ayarlar/e-posta')->assertRedirect('/panel/kasa');
+        $this->get('/panel/raporlar')->assertRedirect('/panel/kasa');
+        // (/panel/boss KALDIRILDI — Patron Paneli artık yalnız patron.* subdomain'inde.)
+
+        // Kök / panel kökü → cihaz kendi istasyon ekranıyla açılır.
         $this->get('/panel')->assertRedirect('/panel/kasa');
-        // Kasa TEK ekrandır: alt yol (yönetim) da engellenir.
-        $this->get('/panel/kasa/yonetim')->assertRedirect('/panel/kasa');
     }
 
     public function test_order_entry_terminali_adisyon_detayina_gidebilir(): void
@@ -135,8 +146,11 @@ class TerminalPhaseBTest extends TestCase
         $this->get('/panel/siparisler')->assertOk();
         // Alt yol (adisyon detay) SERBEST — sipariş-giriş terminali için.
         $this->get("/panel/siparisler/{$orderId}")->assertOk();
-        // Başka ekran (kasa) → kendi ekranına redirect.
-        $this->get('/panel/kasa')->assertRedirect('/panel/siparisler');
+        // YÖNETİM sayfası → kendi ekranına redirect (block-list).
+        $this->get('/panel/personel')->assertRedirect('/panel/siparisler');
+        // Operasyon ekranı ama İZNİ YOK (kasa = payments.take): 403 —
+        // yönlendirme değil; erişim kararını rota izin kontrolü verir.
+        $this->get('/panel/kasa')->assertForbidden();
     }
 
     /* ---------------- PIN kapısı (hassas işlemler) ---------------- */

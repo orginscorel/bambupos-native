@@ -41,7 +41,10 @@ const print = () => window.print();
 
 <template>
     <Head :title="session ? `Z Raporu #${session.z_number}` : 'Z Raporu'" />
-    <PanelShell title="Z Raporu">
+    <PanelShell title="Z Raporu" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
+
         <p v-if="loading" class="p-6 text-center text-sm text-muted">Yükleniyor…</p>
         <EmptyState v-else-if="!report || !session" title="Rapor bulunamadı" icon="inbox" />
 
@@ -145,6 +148,8 @@ const print = () => window.print();
                     </section>
                 </div>
             </BaseCard>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

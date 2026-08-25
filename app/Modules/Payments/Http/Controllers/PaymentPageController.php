@@ -49,6 +49,8 @@ class PaymentPageController extends Controller
             'movementTypes' => CashMovementType::manualOptions(),
             'cashRoundingStep' => (int) config('payments.cash_rounding_step_minor', 25),
             'canRefund' => (bool) auth()->user()?->hasPermission('payments.refund'),
+            // Kasada indirim uygulanabilsin (hazır tanımlar) — adisyon ekranına gitmeden.
+            'canDiscount' => (bool) auth()->user()?->hasPermission('orders.discount'),
             'canCashManage' => (bool) auth()->user()?->hasPermission('cash.close'),
             'canCashView' => (bool) auth()->user()?->hasPermission('cash.view'),
         ];

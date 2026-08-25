@@ -109,6 +109,11 @@ class InventorySeeder extends Seeder
 
     private function warehouse(int $tenantId, ?int $branchId): Warehouse
     {
+        $existing = Warehouse::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('name', 'Merkez Depo')->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $w = new Warehouse([
             'name' => 'Merkez Depo',
             'code' => 'MRKZ',
@@ -125,6 +130,11 @@ class InventorySeeder extends Seeder
 
     private function category(int $tenantId, string $name): ItemCategory
     {
+        $existing = ItemCategory::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('name', $name)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $c = new ItemCategory(['name' => $name]);
         $c->tenant_id = $tenantId;
         $c->save();
@@ -134,6 +144,11 @@ class InventorySeeder extends Seeder
 
     private function supplier(int $tenantId): Supplier
     {
+        $existing = Supplier::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('name', 'Anadolu Gıda Tedarik')->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $s = new Supplier([
             'name' => 'Anadolu Gıda Tedarik',
             'contact_name' => 'Satın Alma',

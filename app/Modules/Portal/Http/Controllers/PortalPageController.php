@@ -15,9 +15,29 @@ use Inertia\Response;
  */
 class PortalPageController extends Controller
 {
+    public function dashboard(): Response
+    {
+        return Inertia::render('Portal/Dashboard');
+    }
+
     public function shift(): Response
     {
         return Inertia::render('Portal/Shift');
+    }
+
+    public function schedule(): Response
+    {
+        return Inertia::render('Portal/Schedule');
+    }
+
+    public function tasks(): Response
+    {
+        return Inertia::render('Portal/Tasks');
+    }
+
+    public function deliveries(): Response
+    {
+        return Inertia::render('Portal/Deliveries');
     }
 
     public function reports(): Response

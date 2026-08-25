@@ -177,7 +177,9 @@ class SalesReportService
                  COALESCE(SUM(order_items.line_total_minor), 0) AS revenue_minor,
                  COUNT(DISTINCT order_items.order_id) AS orders_count"
             )
-            ->groupBy('name')
+            // 'name' TAM İFADEYLE grupla: `GROUP BY name` alias ile order_items.name /
+            // categories.name arasında BELİRSİZ (SQLite hata verir). İfade aynı → davranış değişmez.
+            ->groupBy(DB::raw("COALESCE(categories.name, CASE WHEN order_items.product_id IS NULL THEN 'Silinmiş ürün' ELSE 'Kategorisiz' END)"))
             ->orderByDesc('revenue_minor')
             ->get();
 

@@ -71,9 +71,13 @@ const dayEndTotalCost = computed(() => (dayEnd.value?.items ?? []).reduce((s, i)
 
 <template>
     <Head title="Stok Raporu" />
-    <PanelShell title="Stok">
-        <InventoryNav active="reports" />
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav active="reports" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <!-- Dönem seçimi -->
         <div class="mb-4 flex flex-wrap items-end gap-2">
             <div class="inline-flex overflow-hidden rounded-md border border-default">
@@ -163,6 +167,8 @@ const dayEndTotalCost = computed(() => (dayEnd.value?.items ?? []).reduce((s, i)
                     Mutabakat: her kalem için Açılış + Giriş − Çıkış = Kapanış. Defter değişmezdir; rakamlar hareket defterinden anlık hesaplanır.
                 </p>
             </BaseCard>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

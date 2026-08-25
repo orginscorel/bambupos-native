@@ -30,6 +30,7 @@ export interface PaymentsMeta {
     movementTypes: MovementTypeMeta[];
     cashRoundingStep: number;
     canRefund: boolean;
+    canDiscount: boolean;
     canCashManage: boolean;
     canCashView: boolean;
 }
@@ -41,6 +42,7 @@ export function metaFromProps(props: Record<string, unknown>): PaymentsMeta {
         movementTypes: (props.movementTypes as MovementTypeMeta[]) ?? [],
         cashRoundingStep: (props.cashRoundingStep as number) ?? 25,
         canRefund: Boolean(props.canRefund),
+        canDiscount: Boolean(props.canDiscount),
         canCashManage: Boolean(props.canCashManage),
         canCashView: Boolean(props.canCashView),
     };
@@ -49,6 +51,8 @@ export function metaFromProps(props: Record<string, unknown>): PaymentsMeta {
 export interface PayableOrder {
     id: number;
     table_name: string | null;
+    /** Bu adisyona bağlı ek masalar (birleşik masa) — kasa 'Masa 4 + Masa 5' gösterir. */
+    linked_table_names?: string[];
     channel_label: string;
     channel_icon: string;
     status: string;
@@ -60,6 +64,10 @@ export interface PayableOrder {
     items_count: number;
     items_total_minor: number;
     discount_minor: number;
+    /** Uygulanmış indirimin gerekçesi/adı (hazır tanımda tanımın adı). */
+    discount_reason?: string | null;
+    /** Yüzde indirimde oran; sabit tutar indirimde null. */
+    discount_percent?: number | null;
     /** KDV DAHİL toplam KDV payı (kuruş) — toplama zaten dahildir (bilgi satırı). */
     vat_total_minor: number;
     service_charge_minor: number;
@@ -90,7 +98,7 @@ export interface OrderItemRow {
     comp_reason: string | null;
     is_active: boolean;
     note: string | null;
-    options: Array<{ id: number; group_name: string; option_name: string; price_minor: number }>;
+    options: Array<{ id: number; option_id?: number | null; group_name: string; option_name: string; price_minor: number }>;
 }
 
 /** OrderPresenter::detail — kalemli tam adisyon (mevcut Orders ucu). */
@@ -100,6 +108,10 @@ export interface OrderDetail {
     table_name: string | null;
     customer_name: string | null;
     channel_label: string;
+    /** Kanal anahtarı (table/qr/package/kiosk…) — ürün eklerken doğru fiyat sütunu. */
+    channel?: string;
+    /** Şube — ürün ekleme kataloğu doğru şubeden gelsin. */
+    branch_id?: number | null;
     guest_count: number | null;
     is_open: boolean;
     status: string;
@@ -153,6 +165,27 @@ export interface RegisterRow {
     is_active: boolean;
     open_session: SessionRow | null;
 }
+
+/**
+ * Terminal (kart POS) durumu — FAZ2 kasiyer göstergesi. `simulated=true`:
+ * sağlayıcı gerçek bir banka/ECR'a bağlı DEĞİL (mock/demo/sandbox — test/sunum/
+ * yapılandırılmamış iskelet); kasiyer ekranı bunu rozetle gösterir, kart
+ * ödemesinin GERÇEK tahsilat değil manuel/simülasyon olduğunu belirtir.
+ */
+export interface TerminalStatusRow {
+    online: boolean;
+    terminal_id: string | null;
+    message: string | null;
+    provider: string;
+    provider_label: string;
+    simulated: boolean;
+}
+
+/** Aktif POS sağlayıcısının gerçek durumunu sunucudan okur (uydurma YOK). */
+export const fetchTerminalStatus = (provider?: string | null) =>
+    api<TerminalStatusRow>(
+        `/api/v1/payments/terminal-status${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`,
+    );
 
 export interface SessionRow {
     id: number;
@@ -238,11 +271,25 @@ export const fetchSessionReport = (id: number) =>
 export const money = (minor: number): string =>
     (minor / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** "12,50" / "12.5" / "12" → kuruş; geçersizse null. */
+/**
+ * Türkçe para girişini kuruşa çevirir. Nokta = BİNLİK, virgül = ONDALIK.
+ *  "1.234,56" → 123456 · "1.234" → 123400 (binlik!) · "12,50" → 1250 ·
+ *  "12.5"/"12.50" → ondalık. Böylece "1.234" YANLIŞLIKLA 1,23 ₺ okunmaz
+ *  (eksik tahsilat bug'ı). Geçersizse null.
+ */
 export function parseMoney(input: string): number | null {
-    const normalized = input.trim().replace(/\./g, input.includes(',') ? '' : '.').replace(',', '.');
-    if (normalized === '' || Number.isNaN(Number(normalized))) return null;
-    const minor = Math.round(Number(normalized) * 100);
+    let s = input.trim();
+    if (s === '') return null;
+    if (s.includes(',')) {
+        s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.includes('.')) {
+        // Yalnız nokta: tüm gruplar 3 haneli ise BİNLİK ayıracı (kaldır); değilse ondalık.
+        const parts = s.split('.');
+        const isThousands = parts.length > 1 && parts.slice(1).every((p) => /^\d{3}$/.test(p));
+        if (isThousands) s = parts.join('');
+    }
+    if (Number.isNaN(Number(s))) return null;
+    const minor = Math.round(Number(s) * 100);
     return minor >= 0 ? minor : null;
 }
 

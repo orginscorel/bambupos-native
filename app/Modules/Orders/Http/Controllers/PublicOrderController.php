@@ -95,6 +95,13 @@ class PublicOrderController extends Controller
                 'public.orders.store',
                 function () use ($table, $data): array {
                     $order = $this->orders->createPublicOrder($table, $data);
+
+                    // GARSON'a bildirim: yeni QR siparişi onay bekliyor VEYA müşteri
+                    // mevcut AKTİF adisyona QR'dan kalem ekledi (denetim #3: ikinci ekleme
+                    // eskiden sessizdi → onay/haber atlanıyordu). Emitter durum-bağımsız,
+                    // order_id ile dedup'lı → tekrar eklemede spam yok, garson her hâlde haberdar.
+                    app(\App\Modules\Notify\Services\NotifyEmitter::class)->orderNeedsApproval($order);
+
                     $order->load(['items.options']);
 
                     return [['order' => OrderPresenter::publicView($order)], 201];
@@ -109,6 +116,16 @@ class PublicOrderController extends Controller
 
     public function show(Request $request, string $publicToken): JsonResponse
     {
+        // Hız sınırı: token+IP. İstemci 10 sn'de bir yoklar (~6/dk); 30/dk
+        // headroom bırakır ama public_token numaralandırmasını/kötüye kullanımı sınırlar.
+        $limiterKey = 'order-show:'.sha1($publicToken.'|'.(string) $request->ip());
+        if (RateLimiter::tooManyAttempts($limiterKey, 30)) {
+            return response()->json([
+                'message' => 'Çok sık istek gönderildi.',
+            ], 429)->header('Retry-After', (string) RateLimiter::availableIn($limiterKey));
+        }
+        RateLimiter::hit($limiterKey, 60);
+
         $qrToken = (string) $request->query('token', '');
 
         $resolution = $this->resolver->resolve($qrToken, $request);

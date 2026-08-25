@@ -12,7 +12,6 @@ use App\Modules\Identity\Http\Controllers\StaffController;
 use App\Modules\Identity\Http\Controllers\TwoFactorController;
 use App\Modules\Orders\Http\Controllers\CustomerController;
 use App\Modules\Reporting\Http\Controllers\ReportController;
-use App\Modules\Tables\Http\Controllers\TableController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('api/v1')->group(function (): void {
@@ -52,8 +51,11 @@ Route::prefix('api/v1')->group(function (): void {
         // Faz-1 alan iskeleti (izolasyon kanıtı; sonraki fazlar genişletir)
         Route::apiResource('products', ProductController::class);
         Route::apiResource('customers', CustomerController::class);
-        Route::apiResource('tables', TableController::class)->parameters(['tables' => 'table']);
-        Route::post('tables/{table}/rotate-qr', [TableController::class, 'rotateQr'])->name('tables.rotate-qr');
+        // Faz-1'in "tables" (App\Modules\Tables\Http\Controllers\TableController)
+        // ucu KALDIRILDI (denetim ORTA #3): frontend hiç çağırmıyordu (grep boş),
+        // açık-adisyon guard'ı taşımıyordu ve zengin masa mantığından (VenueTableController,
+        // routes/venue.php `api/v1/venue/tables`) habersizdi — gereksiz saldırı yüzeyiydi.
+        // Masa yönetimi artık YALNIZ /api/v1/venue/tables (VenueTableController).
         // Sipariş uçları Faz-3'te routes/orders.php'ye taşındı (aynı URI'ler).
         Route::get('reports/summary', [ReportController::class, 'summary'])->name('reports.summary');
     });

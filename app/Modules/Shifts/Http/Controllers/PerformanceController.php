@@ -14,6 +14,8 @@ use Illuminate\Http\Request;
  */
 class PerformanceController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
     public function __construct(private readonly PerformanceService $performance)
     {
     }
@@ -36,6 +38,8 @@ class PerformanceController extends Controller
             'metrics' => $this->performance->staffMetrics(
                 CarbonImmutable::parse($data['from']),
                 CarbonImmutable::parse($data['to']),
+                // ŞUBE KAPSAMI: yönetici aktif seçili şubesinin performansını görür.
+                $this->currentBranchId(),
             ),
         ]);
     }

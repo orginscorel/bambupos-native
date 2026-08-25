@@ -32,6 +32,14 @@ class OrderController extends Controller
         private readonly OrderService $orders,
         private readonly IdempotencyStore $idempotency,
         private readonly \App\Modules\Terminal\Services\TerminalPinGate $pinGate,
+        // Offline-kuyruk idempotency (op_id gövdede; header'dan bağımsız —
+        // bkz. addItem + docs/offline-sync-protocol.md). SADECE addItem'de
+        // kullanılır (PROOF); diğer uçlar bugünkü davranışını korur.
+        private readonly \App\Support\Idempotency\IdempotentRequest $opIdempotency,
+        // setItemStatus'ün KDS durumlarını (accepted/preparing/ready/served)
+        // KdsActionController İLE AYNI izin+istasyon-kapsamı kuralıyla
+        // uygulaması için (istasyon-yönlendirme denetimi 2026-08-06).
+        private readonly \App\Modules\Kds\Services\KdsService $kds,
     ) {
     }
 
@@ -43,7 +51,9 @@ class OrderController extends Controller
 
         // ŞUBE KAPSAMI: geçerli şube (personel kendi, yönetici aktif) ile süzülür.
         // İstekten gelen branch_id yok sayılır — başka şube adisyonu ASLA görünmez.
-        $query = Order::query()->with(['table:id,name,number'])
+        // OrderPresenter::summary items (kısmi teslim sayacı) + openedBy (açan
+        // personel) erişir → N+1 olmasın diye eager-load edilir.
+        $query = Order::query()->with(['table:id,name,number', 'items', 'openedBy:id,name'])
             ->where('branch_id', $this->currentBranchId());
 
         if ($request->filled('status')) {
@@ -86,18 +96,66 @@ class OrderController extends Controller
         // siparişler. Kiosk siparişi başta 'paid' olur; teslim edilene kadar
         // panoda görünmeli (aksi halde kasadan/panodan "kayboluyordu").
         $openOrders = Order::query()
-            ->with(['table:id,name,number', 'items'])
+            ->with(['table:id,name,number', 'items', 'openedBy:id,name'])
             ->where('branch_id', $branchId)
             ->operationallyVisible()
             ->orderBy('id')
             ->get();
 
-        $byTable = $openOrders->whereNotNull('table_id')->groupBy('table_id');
+        // MASA KARTI yalnız AÇIK adisyonla dolu görünür: ödenmiş/kapanmış sipariş
+        // (paid dine-in = masa boşaldı) masayı İŞGAL ETMEZ. Ön-ödemeli kiosk siparişleri
+        // masasızdır (channel_orders'a düşer) → bu filtre onları etkilemez.
+        $byTable = $openOrders
+            ->whereNotNull('table_id')
+            ->filter(fn (Order $o): bool => $o->statusEnum()->isOpen())
+            ->groupBy('table_id');
 
-        $tableCards = $tables->map(function ($table) use ($byTable): array {
+        // BİRLEŞİK MASALAR: kalabalık grup birden çok masaya oturduğunda,
+        // birleştirilen masalar hâlâ o adisyona bağlıdır. Bu masalar panoda
+        // BOŞ değil, "birleşik" görünür ve tıklanınca ana adisyona gider.
+        // Bağ yalnız AÇIK adisyonlar için geçerlidir (kapanan adisyonun bağı
+        // kendiliğinden düşer — ayrı temizlik gerekmez).
+        $openOrderIds = $openOrders
+            ->filter(fn (Order $o): bool => $o->statusEnum()->isOpen())
+            ->pluck('id')->all();
+
+        $linkedByTable = \App\Modules\Orders\Models\OrderLinkedTable::query()
+            ->whereIn('order_id', $openOrderIds !== [] ? $openOrderIds : [0])
+            ->get()
+            ->keyBy('table_id');
+
+        // Bugünkü AKTİF (henüz oturtulmamış/iptal olmamış) rezervasyonlar → masa
+        // kartında "Rezerve" rozeti + isim/saat. Boş görünen masa aslında birine
+        // ayrılmışsa personel bunu panoda görsün (adisyon açmadan önce).
+        $tz = \App\Modules\Tenancy\Models\Branch::query()->where('id', $branchId)->value('timezone')
+            ?: (string) config('app.timezone');
+        $todayLocal = now($tz)->toDateString();
+        $resByTable = \Illuminate\Support\Facades\DB::table('reservation_tables as rt')
+            ->join('reservations as r', 'r.id', '=', 'rt.reservation_id')
+            ->where('r.branch_id', $branchId)
+            ->whereIn('r.status', ['requested', 'pending', 'confirmed', 'late', 'arrived'])
+            ->get(['rt.table_id', 'r.customer_name', 'r.reserved_at', 'r.duration_minutes', 'r.party_size'])
+            ->filter(fn ($x): bool => \Illuminate\Support\Carbon::parse($x->reserved_at)->timezone($tz)->toDateString() === $todayLocal)
+            ->groupBy('table_id');
+
+        $tableCards = $tables->map(function ($table) use ($byTable, $resByTable, $linkedByTable, $openOrders, $tz): array {
             $status = $table->status instanceof \App\Modules\Venue\Enums\TableStatus
                 ? $table->status
                 : \App\Modules\Venue\Enums\TableStatus::tryFrom((string) $table->status) ?? \App\Modules\Venue\Enums\TableStatus::Available;
+
+            $resList = $resByTable->get($table->id);
+            $reservation = null;
+            if ($resList !== null && $resList->isNotEmpty()) {
+                $first = $resList->sortBy('reserved_at')->first();
+                $start = \Illuminate\Support\Carbon::parse($first->reserved_at)->timezone($tz);
+                $end = $start->copy()->addMinutes((int) ($first->duration_minutes ?: 120));
+                $reservation = [
+                    'name' => $first->customer_name,
+                    'time' => $start->format('H:i'),
+                    'time_end' => $end->format('H:i'),
+                    'party' => (int) $first->party_size,
+                ];
+            }
 
             return [
                 'id' => $table->id,
@@ -110,8 +168,28 @@ class OrderController extends Controller
                 'status_label' => $status->label(),
                 'status_icon' => $status->icon(),
                 'status_variant' => $status->variant(),
+                'reservation' => $reservation,
                 'orders' => ($byTable->get($table->id) ?? collect())
                     ->map(fn (Order $o): array => OrderPresenter::summary($o))->values()->all(),
+                // Bu masa başka bir adisyona BAĞLI mı (grup birleştirmesi)?
+                // Doluysa kart "birleşik" görünür ve ana adisyona yönlendirir.
+                'linked_to' => (function () use ($table, $linkedByTable, $openOrders): ?array {
+                    $link = $linkedByTable->get($table->id);
+                    if ($link === null) {
+                        return null;
+                    }
+                    $main = $openOrders->firstWhere('id', (int) $link->order_id);
+                    if ($main === null) {
+                        return null;
+                    }
+
+                    return [
+                        'order_id' => (int) $main->getKey(),
+                        'table_name' => $main->table?->name,
+                        'remaining_minor' => (int) $main->remaining_minor,
+                        'items_count' => (int) $main->items->where('is_active', true)->count(),
+                    ];
+                })(),
             ];
         });
 
@@ -155,10 +233,22 @@ class OrderController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $this->authorize('create', Order::class);
+        // ATIF (§13, Faz C/B): TERMİNALDE aktif operatör varsa ONA atfet
+        // (yeniden PIN sorma — zaten PIN'le giriş yaptı; #183 davranışı
+        // KORUNUR); operatör yoksa gövdede PIN gelirse Kasa'daki gibi FALLBACK
+        // (PIN'den personel çözülür), hiçbiri yoksa 422 "Önce personel seçin."
+        // NORMAL oturumda: policy + oturum kullanıcısı (mevcut davranış
+        // DEĞİŞMEZ). Diğer tüm adisyon-mutasyon uçlarıyla (cancel/comp/pay/
+        // refund) AYNI desen (actorOrOperator) — önceden yalnız bu uç
+        // (openingActor) PIN-fallback'siz kalmıştı (BUG #1).
+        $actor = $this->pinGate->actorOrOperator($request, 'orders.create', 'order.open',
+            fn () => $this->authorize('create', Order::class));
 
         $data = $request->validate([
-            'branch_id' => ['required', 'integer'],
+            // branch_id İSTEKTEN ALINMAZ (aşağıda BranchContext'ten atanır) —
+            // bu yüzden zorunlu DEĞİL. Terminal/personel şubeyi seçmez; cihaz/
+            // kullanıcı zaten bir şubeye bağlıdır. Gelirse yok sayılır.
+            'branch_id' => ['sometimes', 'nullable', 'integer'],
             'channel' => ['sometimes', Rule::enum(OrderChannel::class)],
             'service_type' => ['sometimes', Rule::enum(ServiceType::class)],
             'table_id' => ['nullable', 'integer'],
@@ -195,7 +285,7 @@ class OrderController extends Controller
             }
         }
 
-        $order = $this->orders->open($data, $request->user());
+        $order = $this->orders->open($data, $actor);
 
         // Tek-adisyon kuralı: masada zaten açık adisyon varsa YENİSİ
         // açılmaz, var olan İDEMPOTENT biçimde döner (201 DEĞİL, 200 —
@@ -205,7 +295,7 @@ class OrderController extends Controller
         // Yeni oturma + masaya bağlıysa: rezervasyonu ilerlet (seated) ya da
         // net çakışma işaretle (ReservationService; idempotent open'da çalışmaz).
         if ($order->wasRecentlyCreated && $order->table_id !== null) {
-            $this->progressReservationForWalkIn($order, $request->user());
+            $this->progressReservationForWalkIn($order, $actor);
         }
 
         return response()->json(['order' => OrderPresenter::summary($order->fresh(['table']))], $status);
@@ -225,20 +315,74 @@ class OrderController extends Controller
             'option_ids.*' => ['integer'],
             'note' => ['nullable', 'string', 'max:255'],
             'expected_version' => ['nullable', 'integer'],
+            // Offline-kuyruk idempotency (PROOF — görev B, docs/offline-sync-protocol.md):
+            // istemci işlemi KUYRUĞA eklerken üretir, ağ isteğinden ÖNCE var olur; geç
+            // senkronda da AYNI kalır. Idempotency-Key HEADER'ından bağımsızdır.
+            // YOKSA (mevcut istemciler) davranış AŞAĞIDA bugünküyle BİREBİR aynıdır.
+            'op_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
 
-        [$response, $status, $replayed] = $this->idempotency->run(
-            (int) $order->tenant_id,
-            $request->header('Idempotency-Key'),
-            'orders.items.add',
-            function () use ($order, $data, $request): array {
-                $this->orders->addItem($order, $data, $request->user(), $data['expected_version'] ?? null);
+        $opId = $data['op_id'] ?? null;
+        unset($data['op_id']); // OrderService payload'ına sızmasın (bugünkü alan seti korunur)
 
-                return [['order' => $this->freshDetail($order)], 201];
+        // Bugünkü uç: Idempotency-Key header'ıyla çift-dokunma korumalı ekleme.
+        // op_id VARSA/YOKSA bu iç akış DEĞİŞMEDEN aynen çalışır.
+        $viaHeader = function () use ($order, $data, $request): array {
+            [$response, $status, $replayed] = $this->idempotency->run(
+                (int) $order->tenant_id,
+                $request->header('Idempotency-Key'),
+                'orders.items.add',
+                function () use ($order, $data, $request): array {
+                    $this->orders->addItem($order, $data, $request->user(), $data['expected_version'] ?? null);
+
+                    return [['order' => $this->freshDetail($order)], 201];
+                },
+            );
+
+            return [$response, $status, $replayed];
+        };
+
+        if ($opId === null || $opId === '') {
+            // op_id YOK → bugünkü davranışın AYNISI (kırılmaz).
+            [$response, $status, $replayed] = $viaHeader();
+
+            return response()->json($response + ['replayed' => $replayed], $replayed ? 200 : $status);
+        }
+
+        // op_id VAR → offline-kuyruk idempotency katmanı sarmalar (aynı op_id
+        // ikinci kez gelirse iş TEKRAR ÇALIŞMAZ, ilk yanıt aynen döner).
+        [$response, $status, $replayed] = $this->opIdempotency->run(
+            (int) $order->tenant_id,
+            $opId,
+            'order.item.add',
+            $data,
+            function () use ($viaHeader): array {
+                [$response, $status] = $viaHeader();
+
+                return [$response, $status];
             },
         );
 
         return response()->json($response + ['replayed' => $replayed], $replayed ? 200 : $status);
+    }
+
+    /**
+     * Adisyon başlığı: kişi sayısı + adisyon notu (yalnız bu iki alan).
+     * Tutar/kalem/durum etkilenmez; `orders.update` izni yeter.
+     */
+    public function updateInfo(Request $request, Order $order): JsonResponse
+    {
+        $this->authorize('update', $order);
+
+        $data = $request->validate([
+            'guest_count' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:200'],
+            'note' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'expected_version' => ['nullable', 'integer'],
+        ]);
+
+        $this->orders->updateOrderInfo($order, $data, $request->user(), $data['expected_version'] ?? null);
+
+        return response()->json(['order' => $this->freshDetail($order)]);
     }
 
     public function updateItem(Request $request, Order $order, OrderItem $item): JsonResponse
@@ -271,8 +415,9 @@ class OrderController extends Controller
 
     public function cancelItem(Request $request, Order $order, OrderItem $item): JsonResponse
     {
-        // Terminal oturumda PIN → personel (iptal O'na atfedilir); normal: policy.
-        $actor = $this->pinGate->actor($request, 'orders.cancel', 'order.item_cancel',
+        // Terminalde: aktif operatör varsa ONA atfet (yeniden PIN sorma — zaten
+        // PIN'le giriş yaptı); PIN gönderildiyse PIN kapısı. Normal: policy.
+        $actor = $this->pinGate->actorOrOperator($request, 'orders.cancel', 'order.item_cancel',
             fn () => $this->authorize('cancel', $order));
         $this->assertItemBelongs($order, $item);
 
@@ -288,17 +433,19 @@ class OrderController extends Controller
 
     public function compItem(Request $request, Order $order, OrderItem $item): JsonResponse
     {
-        // Terminal oturumda PIN → personel (ikram O'na atfedilir); normal: policy.
-        $actor = $this->pinGate->actor($request, 'orders.comp', 'order.item_comp',
+        // Terminalde: aktif operatör varsa ONA atfet (yeniden PIN sorma); PIN
+        // gönderildiyse PIN kapısı. Normal: policy.
+        $actor = $this->pinGate->actorOrOperator($request, 'orders.comp', 'order.item_comp',
             fn () => $this->authorize('comp', $order));
         $this->assertItemBelongs($order, $item);
 
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:255'],
             'expected_version' => ['nullable', 'integer'],
+            'qty' => ['nullable', 'integer', 'min:1', 'max:'.(int) $item->qty], // kısmi ikram adedi
         ]);
 
-        $this->orders->compItem($order, $item, $data['reason'], $actor, $data['expected_version'] ?? null);
+        $this->orders->compItem($order, $item, $data['reason'], $actor, $data['expected_version'] ?? null, $data['qty'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
@@ -313,7 +460,28 @@ class OrderController extends Controller
             'expected_version' => ['nullable', 'integer'],
         ]);
 
-        $this->orders->setItemStatus($order, $item, OrderItemStatus::from($data['status']), $request->user(), $data['expected_version'] ?? null);
+        $to = OrderItemStatus::from($data['status']);
+        $user = $request->user();
+
+        // KDS'in yönettiği durumlar (accepted/preparing/ready/served): bu genel
+        // adisyon ucu 'orders.update' (garson dahil) ile açıktı ve KdsActionController'ın
+        // kds.view/kds.deliver izni + istasyon-kapsamı (assertItemInScope) kontrolünü
+        // ATLIYORDU — garson/kasiyer başka istasyonun kalemini bu uçtan doğrudan
+        // "hazır"/"servis edildi" işaretleyebiliyordu. KdsService::advanceItem'a delege
+        // ederek KDS ekranıyla AYNI kural uygulanır (istasyon-yönlendirme denetimi 2026-08-06).
+        if (in_array($to, [OrderItemStatus::Accepted, OrderItemStatus::Preparing, OrderItemStatus::Ready, OrderItemStatus::Served], true)) {
+            if ($to === OrderItemStatus::Served) {
+                abort_unless($user->hasPermission('kds.deliver'), 403);
+            } else {
+                abort_unless($user->hasPermission('kds.view'), 403);
+            }
+
+            $this->kds->advanceItem($user, $item, $to, $data['expected_version'] ?? null);
+
+            return response()->json(['order' => $this->freshDetail($order)]);
+        }
+
+        $this->orders->setItemStatus($order, $item, $to, $user, $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
     }
@@ -361,6 +529,16 @@ class OrderController extends Controller
         return response()->json(['order' => $this->freshDetail($order)]);
     }
 
+    /** "Mutfağa gönder": gönderilmemiş (placed) kalemleri sent_to_station yapar. */
+    public function sendToKitchen(Request $request, Order $order): JsonResponse
+    {
+        $this->authorize('update', $order);
+
+        $this->orders->sendToKitchen($order, $request->user(), $this->expectedVersion($request));
+
+        return response()->json(['order' => $this->freshDetail($order)]);
+    }
+
     public function requestBill(Request $request, Order $order): JsonResponse
     {
         $this->authorize('update', $order);
@@ -370,20 +548,75 @@ class OrderController extends Controller
         return response()->json(['order' => $this->freshDetail($order)]);
     }
 
+    /**
+     * KASA eylemi: "ödeme bekleyen" (bill_requested) adisyonu yeniden servise/
+     * siparişe döndürür (yanlışlıkla gönderildiyse ya da ek sipariş alınacaksa).
+     * YALNIZ payments.take (kasiyer/yönetici) — garson geri gönderemez.
+     */
+    public function sendBackToService(Request $request, Order $order): JsonResponse
+    {
+        $actor = $this->pinGate->actorOrOperator($request, 'payments.take', 'order.send_to_service',
+            fn () => abort_unless(
+                $request->user()?->hasPermission('payments.take') ?? false,
+                403,
+                'Bu işlem için kasa yetkisi gerekir.'
+            ));
+
+        abort_unless(
+            $order->statusEnum() === OrderStatus::BillRequested,
+            422,
+            'Yalnızca ödeme bekleyen adisyon siparişe geri gönderilebilir.'
+        );
+
+        $this->orders->transition($order, OrderStatus::Served, $actor, $this->expectedVersion($request));
+
+        return response()->json(['order' => $this->freshDetail($order)]);
+    }
+
     /* ---------------- İndirim / ödeme / iptal / iade (§12.3) ---------------- */
+
+    /** Uygulanmış indirimi kaldırır (tek-indirim kuralının karşılığı). */
+    public function removeDiscount(Request $request, Order $order): JsonResponse
+    {
+        $this->authorize('discount', $order);
+
+        $this->orders->removeDiscount($order, $request->user(), $this->expectedVersion($request));
+
+        return response()->json(['order' => $this->freshDetail($order)]);
+    }
 
     public function discount(Request $request, Order $order): JsonResponse
     {
         $this->authorize('discount', $order);
 
+        // Hazır tanım (preset_id) verildiyse tür/değer/gerekçe TANIMDAN gelir —
+        // istemci bunları göndermek zorunda değildir ve gönderse bile tanım
+        // kazanır (oran/gerekçe istemciden oynatılamaz).
+        $preset = null;
+        if ($request->filled('preset_id')) {
+            $preset = \App\Modules\Orders\Models\DiscountPreset::query()
+                ->where('is_active', true)
+                ->findOrFail((int) $request->input('preset_id'));
+        }
+
         $data = $request->validate([
-            'type' => ['required', Rule::in(['percent', 'amount'])],
-            'value' => ['required', 'numeric', 'gt:0'],
-            'reason' => ['required', 'string', 'min:3', 'max:255'],
+            'preset_id' => ['nullable', 'integer'],
+            'type' => [Rule::requiredIf($preset === null), Rule::in(['percent', 'amount'])],
+            'value' => [Rule::requiredIf($preset === null), 'numeric', 'gt:0'],
+            'reason' => [Rule::requiredIf($preset === null), 'string', 'min:3', 'max:255'],
             'approver_email' => ['nullable', 'email'],
             'approver_pin' => ['nullable', 'string', 'max:10'],
             'expected_version' => ['nullable', 'integer'],
         ]);
+
+        if ($preset !== null) {
+            $data['type'] = $preset->type;
+            $data['value'] = $preset->value();
+            $data['reason'] = $preset->name;
+        }
+
+        // Tanım "onay istemez" işaretliyse eşik atlanır (tanımı yönetici yaptı).
+        $preapproved = $preset !== null && ! $preset->requires_approval;
 
         $approver = $this->resolveApprover($request, $data);
 
@@ -391,6 +624,8 @@ class OrderController extends Controller
             'type' => $data['type'],
             'value' => $data['type'] === 'percent' ? (float) $data['value'] : (int) $data['value'],
             'reason' => $data['reason'],
+            'preapproved' => $preapproved,
+            'preset_id' => $preset?->getKey(),
         ], $request->user(), $approver, $data['expected_version'] ?? null);
 
         return response()->json(['order' => $this->freshDetail($order)]);
@@ -404,10 +639,16 @@ class OrderController extends Controller
      */
     public function pay(Request $request, Order $order): JsonResponse
     {
-        // Ödeme alma para eylemidir → terminal oturumda PIN (payments.take).
-        // Normal oturumda mevcut davranış (orders.update ile hızlı ödeme).
-        $actor = $this->pinGate->actor($request, 'payments.take', 'order.pay',
-            fn () => $this->authorize('update', $order));
+        // Ödeme alma (§13, Faz C): terminal oturumda AKTİF OPERATÖRE atfedilir
+        // (PIN gelirse mevcut PIN kapısı). ROL AYRIMI: ödeme YALNIZ payments.take
+        // yetkisiyle alınır — garson (orders.update) artık ödeme ALAMAZ; adisyonu
+        // "Ödemeye gönder" (request-bill) ile kasaya iletir. Operatör yoksa 422.
+        $actor = $this->pinGate->actorOrOperator($request, 'payments.take', 'order.pay',
+            fn () => abort_unless(
+                $request->user()?->hasPermission('payments.take') ?? false,
+                403,
+                'Ödeme almak için kasa yetkiniz gerekir. Adisyonu "Ödemeye gönder" ile kasaya iletin.'
+            ));
 
         $data = $request->validate([
             'amount_minor' => ['required', 'integer', 'min:1'],
@@ -428,8 +669,9 @@ class OrderController extends Controller
 
     public function cancel(Request $request, Order $order): JsonResponse
     {
-        // Terminal oturumda PIN → personel (iptal O'na atfedilir); normal: policy.
-        $actor = $this->pinGate->actor($request, 'orders.cancel', 'order.cancel',
+        // Terminalde: aktif operatör varsa ONA atfet (yeniden PIN sorma); PIN
+        // gönderildiyse PIN kapısı. Normal: policy.
+        $actor = $this->pinGate->actorOrOperator($request, 'orders.cancel', 'order.cancel',
             fn () => $this->authorize('cancel', $order));
 
         $data = $request->validate([
@@ -449,9 +691,10 @@ class OrderController extends Controller
      */
     public function refund(Request $request, Order $order): JsonResponse
     {
-        // İade para çıkışı doğurur → terminal oturumda PIN (orders.refund);
-        // normal oturumda mevcut davranış (policy + oturum kullanıcısı).
-        $actor = $this->pinGate->actor($request, 'orders.refund', 'order.refund',
+        // Terminalde: aktif operatör varsa ONA atfet (yeniden PIN sorma — operatör
+        // zaten PIN'le giriş yaptı, yetkisi doğrulanır); PIN gönderildiyse PIN
+        // kapısı. Normal oturumda mevcut davranış (policy + oturum kullanıcısı).
+        $actor = $this->pinGate->actorOrOperator($request, 'orders.refund', 'order.refund',
             fn () => $this->authorize('refund', $order));
 
         $data = $request->validate([

@@ -195,10 +195,14 @@ const areaColumns: TableColumn[] = [
 
 <template>
     <Head title="Alanlar ve Katlar" />
-    <PanelShell title="Alanlar ve Katlar">
-        <VenueNav />
+    <!-- TAM KAPLAMA: mekân gezinmesi SABİT şeritte; içerik kendi içinde kayar. -->
+    <PanelShell title="Alanlar ve Katlar" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <VenueNav />
+        </div>
 
-        <div class="flex flex-col gap-4">
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
             <BaseCard>
                 <div class="flex flex-wrap items-end gap-3">
                     <div class="w-full sm:w-64">
@@ -323,5 +327,6 @@ const areaColumns: TableColumn[] = [
                 <BaseButton variant="danger" @click="removeArea">Sil</BaseButton>
             </template>
         </BaseModal>
+        </div>
     </PanelShell>
 </template>

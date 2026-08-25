@@ -75,7 +75,10 @@ const nativeEntries = computed(() => props.native.entries);
 <template>
     <Head title="Sürüm Notları" />
 
-    <PanelShell title="Sürüm Notları">
+    <PanelShell title="Sürüm Notları" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-8">
             <div class="flex flex-col gap-2">
                 <h1 class="text-2xl font-semibold text-body">Sürüm notları</h1>
@@ -218,6 +221,8 @@ const nativeEntries = computed(() => props.native.entries);
                     </div>
                 </template>
             </BaseTabs>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

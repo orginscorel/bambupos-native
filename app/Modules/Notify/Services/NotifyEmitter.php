@@ -7,6 +7,7 @@ use App\Modules\Inventory\Models\StockLevel;
 use App\Modules\Kds\Models\ItemPickup;
 use App\Modules\Kds\Services\StationRegistry;
 use App\Modules\Notify\Enums\NotificationType;
+use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\OrderItem;
 use App\Modules\Reservations\Models\Reservation;
@@ -37,6 +38,13 @@ class NotifyEmitter
         try {
             $order = $item->order;
             if ($order === null || $order->tenant_id === null) {
+                return;
+            }
+
+            // QR onay bekleyen / taslak sipariş MUTFAĞA DÜŞMEZ (erken uyarı yok);
+            // garson onaylayınca `orderApproved()` mutfağı bilgilendirir.
+            $st = $order->statusEnum();
+            if ($st === OrderStatus::PendingApproval || $st === OrderStatus::Draft) {
                 return;
             }
 
@@ -217,9 +225,11 @@ class NotifyEmitter
                     'kind' => $sr->kind,
                     'url' => '/panel/siparisler',
                 ],
-                // Aynı masa+tür kısa pencerede tek bildirim (istek düzeyi 2 dk dedup
-                // ile uyumlu; alıcı başına kısa-pencere dedup burada da uygulanır).
-                'dedup_key' => 'service_call:'.$sr->table_id.':'.$sr->kind,
+                // dedup TALEP ID'si düzeyinde (denetim orta): çift-dokunma zaten
+                // ServiceRequestController'da satır düzeyinde (2 dk) engellenir ve o
+                // durumda notify() ÇAĞRILMAZ. Buraya gelen HER çağrı gerçek yeni bir
+                // taleptir → masa+tür anahtarı 2. gerçek çağrıyı yutmasın diye ID kullan.
+                'dedup_key' => 'service_call:'.$sr->getKey(),
             ]);
         } catch (\Throwable) {
             // yut — public servis-çağrı akışı bozulmaz
@@ -313,6 +323,106 @@ class NotifyEmitter
     }
 
     /* ---------------- yardımcılar ---------------- */
+
+    /** Adisyon ödemeye gönderildi (BillRequested) → KASA + yönetici. */
+    public function awaitingPayment(Order $order): void
+    {
+        try {
+            if ($order->tenant_id === null) {
+                return;
+            }
+            $where = $this->orderDestination($order);
+            $this->dispatcher->notify(NotificationType::AwaitingPayment, [
+                'tenant_id' => (int) $order->tenant_id,
+                'branch_id' => $order->branch_id !== null ? (int) $order->branch_id : null,
+                'title' => 'Ödeme bekliyor · '.$where,
+                'body' => $where.' adisyonu kasaya gönderildi.',
+                'data' => ['order_id' => (int) $order->getKey(), 'url' => '/panel/kasa'],
+                'dedup_key' => 'awaiting_payment:'.$order->getKey(),
+            ]);
+        } catch (\Throwable) {
+            // yut — ödeme akışı bozulmaz
+        }
+    }
+
+    /** Adisyon borca (cari) taşındı → KASA + yönetici. */
+    public function debtTransferred(Order $order): void
+    {
+        try {
+            if ($order->tenant_id === null) {
+                return;
+            }
+            $where = $this->orderDestination($order);
+            $this->dispatcher->notify(NotificationType::DebtTransferred, [
+                'tenant_id' => (int) $order->tenant_id,
+                'branch_id' => $order->branch_id !== null ? (int) $order->branch_id : null,
+                'title' => 'Borca taşındı · '.$where,
+                'body' => $where.' adisyonu ödenmeden borca (cari) aktarıldı.',
+                'data' => ['order_id' => (int) $order->getKey(), 'url' => '/panel/borclar'],
+                'dedup_key' => 'debt_transferred:'.$order->getKey(),
+            ]);
+        } catch (\Throwable) {
+            // yut
+        }
+    }
+
+    /** QR'dan gelen sipariş onay bekliyor → garson + yönetici. */
+    public function orderNeedsApproval(Order $order): void
+    {
+        try {
+            if ($order->tenant_id === null) {
+                return;
+            }
+            $where = $this->orderDestination($order);
+            $this->dispatcher->notify(NotificationType::OrderNeedsApproval, [
+                'tenant_id' => (int) $order->tenant_id,
+                'branch_id' => $order->branch_id !== null ? (int) $order->branch_id : null,
+                'title' => 'Sipariş onayı bekliyor · '.$where,
+                'body' => $where.' QR menüden sipariş verdi — onaylayın.',
+                'data' => ['order_id' => (int) $order->getKey(), 'url' => '/panel/siparisler'],
+                'dedup_key' => 'needs_approval:'.$order->getKey(),
+            ]);
+        } catch (\Throwable) {
+            // yut
+        }
+    }
+
+    /**
+     * Adisyon onaylandı (PendingApproval → Placed): kalemler onay öncesi mutfağa
+     * DÜŞMEDİĞİNDEN, onay anında mutfak/barista bir kez bilgilendirilir. Kulvar
+     * başına tek bildirim (bekleyen kalemlerin istasyonlarından türetilir).
+     */
+    public function orderApproved(Order $order): void
+    {
+        try {
+            if ($order->tenant_id === null) {
+                return;
+            }
+            $dest = $this->orderDestination($order);
+            // Bekleyen kalemlerin kulvarlarını topla (mutfak/barista) → her biri bir kez.
+            $lanes = [];
+            foreach ($order->items()->whereNull('cancelled_at')->get(['station']) as $it) {
+                $lanes[$this->laneForStation($it->station)] = true;
+            }
+            if ($lanes === []) {
+                $lanes['kitchen'] = true;
+            }
+            foreach (array_keys($lanes) as $lane) {
+                $laneLabel = $lane === 'barista' ? 'Barista' : 'Mutfak';
+                $this->dispatcher->notify(NotificationType::OrderPlaced, [
+                    'tenant_id' => (int) $order->tenant_id,
+                    'branch_id' => $order->branch_id !== null ? (int) $order->branch_id : null,
+                    'title' => 'Yeni sipariş · '.$dest,
+                    'body' => $laneLabel.' — onaylanan sipariş geldi',
+                    'data' => ['order_id' => (int) $order->getKey(), 'url' => '/panel/siparisler'],
+                    'lane' => $lane,
+                    'dedup_key' => 'order_placed:'.$order->getKey().':'.$lane,
+                ]);
+            }
+        } catch (\Throwable) {
+            // yut
+        }
+    }
 
     private function laneForStation(?string $station): string
     {

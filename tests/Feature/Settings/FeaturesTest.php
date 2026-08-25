@@ -140,6 +140,42 @@ class FeaturesTest extends TestCase
         $this->get('/panel/borclar')->assertNotFound();
     }
 
+    public function test_kapali_inventory_api_reddeder(): void
+    {
+        $setup = $this->makeTenantWithUser(['stock.view']);
+        $this->actingAs($setup['user']);
+
+        // Açıkken erişilir.
+        $this->getJson('/api/v1/inventory/items')->assertOk();
+        $this->get('/panel/stok')->assertOk();
+
+        Features::set((int) $setup['tenant']->id, 'inventory', false);
+
+        // Kapalıyken sayfa VE API 404 (ADR: kapalı=yok) — izin olsa bile.
+        $this->get('/panel/stok')->assertNotFound();
+        $this->getJson('/api/v1/inventory/items')->assertNotFound();
+        $this->getJson('/api/v1/inventory/warehouses')->assertNotFound();
+        $this->postJson('/api/v1/inventory/items', ['name' => 'X', 'base_unit' => 'kg'])->assertNotFound();
+    }
+
+    public function test_kapali_reservations_api_reddeder(): void
+    {
+        $setup = $this->makeTenantWithUser(['reservations.view', 'reservations.create']);
+        $this->actingAs($setup['user']);
+
+        // Açıkken erişilir.
+        $this->getJson('/api/v1/reservations')->assertOk();
+        $this->get('/panel/rezervasyonlar')->assertOk();
+
+        Features::set((int) $setup['tenant']->id, 'reservations', false);
+
+        // Kapalıyken sayfa VE API 404 (ADR: kapalı=yok) — izin olsa bile.
+        $this->get('/panel/rezervasyonlar')->assertNotFound();
+        $this->getJson('/api/v1/reservations')->assertNotFound();
+        $this->getJson('/api/v1/reservations/waitlist')->assertNotFound();
+        $this->postJson('/api/v1/reservations', [])->assertNotFound();
+    }
+
     public function test_kapali_qr_ordering_public_siparisi_reddeder(): void
     {
         $setup = $this->makeTenantWithUser();

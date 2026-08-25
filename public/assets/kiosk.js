@@ -1,12 +1,23 @@
 /* ============================================================
    Kiosk istemcisi (Faz 8) — build'siz vanilla JS durum makinesi.
 
-   GÜVENLİK / GİZLİLİK (§18):
-   - TÜM müşteri durumu (sepet, isim, not, seçimler) yalnız bu dosyanın
-     S nesnesindedir. Yerel depolama / oturum deposu / çerez KULLANILMAZ
-     (bekçi test: KioskScreenTest bu dosyada depolama API'si arar).
-   - Sıfırlama = location.reload(): bellek tamamen boşalır; bir sonraki
-     müşteri öncekinin HİÇBİR verisini göremez.
+   GÜVENLİK / GİZLİLİK (§18 — 2026-08-04 itibarıyla daraltılmış sözleşme):
+   - TÜM müşteri SİPARİŞ/SEPET/KİŞİSEL verisi (sepet, isim, not, seçimler,
+     ödeme durumu) yalnız bu dosyanın S nesnesindedir — kalıcı depolamaya
+     ASLA yazılmaz. Oturum deposu / belge çerezi / gömülü veritabanı HİÇ
+     kullanılmaz.
+   - TEK istisna: device_lock özelliği (§13/ADR-008 deseni, varsayılan
+     KAPALI) açıkken, bu kiosk ekranını sunan cihazı tanımlamak için
+     PII-OLMAYAN, opak, sunucu-üretimli bir "cihaz-bağlama token'ı"
+     (`bbpos_kiosk_device`) yerel depoda tutulabilir — bkz. aşağıdaki blok.
+     Bu token müşteriyle değil CİHAZLA ilişkilidir; sepet/isim/not/sipariş
+     içeriği barındırmaz ve müşteriden müşteriye hiçbir iz taşımaz.
+   - Bekçi test (KioskScreenTest): oturum deposu/çerez/gömülü veritabanının
+     hiç kullanılmadığını VE yerel depolamanın yalnız bu tek anahtarla,
+     müşteri verisi taşımadan kullanıldığını doğrular.
+   - Sıfırlama = location.reload(): bellek (S) tamamen boşalır; bir sonraki
+     müşteri öncekinin HİÇBİR SİPARİŞ/SEPET/KİŞİSEL verisini göremez (cihaz
+     kimliği kasıtlı olarak kalır — cihazın kendisi değişmedi).
    - Zaman aşımı: idle sn dokunulmazsa uyarı; warn sn içinde yanıt yoksa
      sıfırlama. Ödeme doğrulanırken sayaç DURUR (para çekilmiş olabilir).
 
@@ -19,6 +30,33 @@
     'use strict';
 
     var D = JSON.parse(document.getElementById('kiosk-data').textContent);
+
+    /* ---------------- Cihaz kilidi kimliği (§18 uyumlu) ----------------
+       device_lock özelliği AÇIKSA: bu kiosk bağlantısını İLK açan cihaza
+       kilitlemek için opak bir "cihaz kimliği" localStorage'da tutulur.
+       DİKKAT: bu MÜŞTERİ VERİSİ DEĞİL (sepet/isim değil) — o veriler hâlâ
+       yalnız JS belleğinde; reload hepsini siler, cihaz kimliği kalır (§18
+       gizlilik amacı korunur: müşteriden müşteriye iz taşınmaz). Özellik
+       kapalıyken sunucu kimlik üretmez/istemez → tek satır bile çalışmaz.
+       Kimlik: (1) ?dt= claim linki (yönetici ön-yetkili), (2) localStorage. */
+    var DEVICE_KEY = 'bbpos_kiosk_device';
+    var deviceToken = null;
+    try {
+        var _claim = new URLSearchParams(location.search).get('dt');
+        if (_claim) { localStorage.setItem(DEVICE_KEY, _claim); }
+        deviceToken = localStorage.getItem(DEVICE_KEY);
+    } catch (e) { deviceToken = null; } // localStorage engelliyse sessizce geç
+    function saveDeviceToken(tok) {
+        deviceToken = tok;
+        try { localStorage.setItem(DEVICE_KEY, tok); } catch (e) {}
+    }
+    function showDeviceLocked(msg) {
+        var o = document.getElementById('k-devlock');
+        if (!o) { return; }
+        var m = document.getElementById('k-devlock-msg');
+        if (m && msg) { m.textContent = msg; }
+        o.style.display = 'flex'; // [hidden]/display:none başlangıcını ez
+    }
 
     /* ---------------- i18n (yalnız arayüz metinleri; ürün adları katalogtan gelir) ---------------- */
     var I18N = {
@@ -542,6 +580,7 @@
 
         var payload = {
             token: D.token,
+            device_token: deviceToken,
             order_type: S.orderType,
             table_id: S.orderType === 'dine_in' ? S.tableId : null,
             customer_name: $('#k-name').value.trim() || null,
@@ -582,6 +621,23 @@
 
     function handleOrderResponse(status, json) {
         S.submitting = false;
+
+        // Cihaz kilidi: bu bağlantı başka cihaza kilitli → engelleyici kilit ekranı.
+        if (status === 403 && json && json.result === 'locked_device') {
+            showDeviceLocked(json.message);
+            return;
+        }
+
+        // Panel-kilitli cihaz (KioskOrderController::resolveDeviceOrFail 'locked'
+        // durumu → 423): jenerik "tekrar dene" dalına düşürüp aynı hatayı tekrar
+        // üretmek yerine sayfa yeniden yüklenir — sunucu /kiosk/{token}'ı tekrar
+        // çözer ve kendini 15sn'de bir yoklayan kiosk.locked ekranını döner (kilit
+        // kalkınca otomatik kiosk ekranına geri döner). Kullanıcı aktif "tekrar
+        // dene" döngüsüne girmez, pasifçe bekler.
+        if (status === 423) {
+            hardReset();
+            return;
+        }
 
         if (json && (json.result === 'paid' || json.result === 'placed_pay_at_counter')) {
             showReceipt(json.receipt);
@@ -731,16 +787,23 @@
     window.addEventListener('offline', function () { setOffline(true); });
     setOffline(!navigator.onLine);
 
-    /* ---------------- Kalp atışı (uzaktan kilit + sağlık) ---------------- */
-    setInterval(function () {
-        post(D.endpoints.heartbeat, { token: D.token })
+    /* ---------------- Kalp atışı (uzaktan kilit + sağlık + cihaz kilidi) ---------------- */
+    function runHeartbeat() {
+        post(D.endpoints.heartbeat, { token: D.token, device_token: deviceToken })
             .then(function (r) {
                 if (r.status === 410 || r.status === 404) { hardReset(); return; } // token yenilendi/iptal
-                if (r.json && r.json.status === 'locked' && S.screen === 'attract') { hardReset(); }
+                var j = r.json || {};
+                // Cihaz kilidi: ilk bağlanmada sunucu kimlik verir → sakla.
+                if (j.device_token) { saveDeviceToken(j.device_token); }
+                // Bu bağlantı başka cihaza kilitli → engelleyici kilit ekranı.
+                if (j.status === 'locked_device') { showDeviceLocked(j.message); return; }
+                if (j.status === 'locked' && S.screen === 'attract') { hardReset(); }
                 setOffline(false);
             })
             .catch(function () { setOffline(!navigator.onLine ? true : false); });
-    }, D.timing.heartbeat * 1000);
+    }
+    setInterval(runHeartbeat, D.timing.heartbeat * 1000);
+    runHeartbeat(); // ilk açılışta hemen: cihaz kilidini erken kur/doğrula
 
     /* ---------------- Akış ---------------- */
     function enterMenu() {

@@ -25,3 +25,26 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# ===== Güvenlik: ortam dosyası YEDEKLERİ =====
+# .env zaten hariçti ama `.env.bak-*` gibi yedekler DEĞİLDİ ve gerçek
+# APP_KEY / veritabanı şifresi taşıyorlardı. Yıldızlı kalıp bunu kapatır.
+.env.*
+!.env.example
+
+# ===== Üretimde alınan dosya yedekleri =====
+# Sunucuda her değişiklikten önce `*.bak-<konu>-<tarih>` yedeği alınıyor.
+# Bunlar depoya ait değil: gürültü yapar, eski kodu canlıymış gibi gösterir.
+*.bak
+*.bak-*
+*.bak_*
+
+# ===== Yerel/üretim çıktıları =====
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+/public/assets/site
+error_log
+*.sql
+*.sqlite

@@ -40,11 +40,24 @@ class EnsureTenantContext
 
         $tenant = $user->tenant;
 
-        if ($tenant === null || ! $tenant->isActive()) {
+        if ($tenant === null) {
             Auth::guard('web')->logout();
             $request->session()->invalidate();
 
-            abort(403, 'İşletme hesabı askıda.');
+            abort(403, 'İşletme bulunamadı.');
+        }
+
+        // Askıdaki işletme: oturumu KORU (geri alınabilir), dostça askı ekranına yönlendir.
+        // Aktifleşince kullanıcı kaldığı yerden devam eder — çıkış yaptırmayız.
+        if ($tenant->isSuspended()) {
+            if ($request->header('X-Inertia')) {
+                return response('', 409)->header('X-Inertia-Location', route('tenant.suspended'));
+            }
+            if ($request->expectsJson()) {
+                abort(402, 'İşletme hesabı askıda.');
+            }
+
+            return redirect()->route('tenant.suspended');
         }
 
         $this->context->setTenant($tenant);

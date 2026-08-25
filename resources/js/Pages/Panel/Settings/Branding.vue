@@ -9,6 +9,8 @@ import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseCard from '@/Components/ui/BaseCard.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
+import BaseInput from '@/Components/ui/BaseInput.vue';
+import FormField from '@/Components/ui/FormField.vue';
 
 /*
  * Panel > Ayarlar > İşletme / Marka
@@ -30,6 +32,7 @@ const page = usePage();
 const settingsTabs = [
     { href: '/panel/ayarlar/e-posta', label: 'E-posta' },
     { href: '/panel/ayarlar/isletme', label: 'İşletme / Marka' },
+    { href: '/panel/ayarlar/tema', label: 'Tema' },
     { href: '/panel/ayarlar/eklentiler', label: 'Eklentiler' },
 ];
 const isActiveTab = (href: string) => page.url.startsWith(href);
@@ -44,12 +47,43 @@ const fileInput = ref<HTMLInputElement | null>(null);
 
 const initial = computed(() => (branding.value?.name?.trim()?.charAt(0) ?? '?').toUpperCase());
 
+/* İşletme adı düzenleme (QR menü başlığında görünen isim). */
+const nameDraft = ref('');
+const savingName = ref(false);
+const nameError = ref<string | null>(null);
+const nameDirty = computed(() => nameDraft.value.trim() !== (branding.value?.name ?? '').trim());
+
+async function saveName(): Promise<void> {
+    const value = nameDraft.value.trim();
+    nameError.value = null;
+    if (value.length < 2) {
+        nameError.value = 'İşletme adı en az 2 karakter olmalı.';
+        return;
+    }
+    if (savingName.value || !nameDirty.value) return;
+    savingName.value = true;
+    try {
+        const data = await api<{ branding: BrandingDto }>('/api/v1/settings/branding/profile', {
+            method: 'PUT',
+            body: { name: value },
+        });
+        branding.value = data.branding;
+        nameDraft.value = data.branding.name;
+        success('İşletme adı güncellendi', 'QR menü başlığı ve panel kimliği yeni adı gösterir.');
+    } catch (e) {
+        nameError.value = e instanceof ApiError ? e.displayMessage : 'Kaydedilemedi. Lütfen tekrar deneyin.';
+    } finally {
+        savingName.value = false;
+    }
+}
+
 async function load(): Promise<void> {
     loading.value = true;
     loadFailed.value = false;
     try {
         const data = await api<{ branding: BrandingDto }>('/api/v1/settings/branding');
         branding.value = data.branding;
+        nameDraft.value = data.branding.name ?? '';
     } catch (e) {
         loadFailed.value = true;
         danger('Ayarlar yüklenemedi', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen bir hata oluştu.');
@@ -121,7 +155,10 @@ async function removeLogo(): Promise<void> {
 <template>
     <Head title="İşletme / Marka" />
 
-    <PanelShell title="İşletme / Marka">
+    <PanelShell title="İşletme / Marka" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-6">
             <div class="flex flex-col gap-1.5">
                 <h1 class="text-2xl font-semibold text-body">Ayarlar</h1>
@@ -147,6 +184,68 @@ async function removeLogo(): Promise<void> {
             </template>
 
             <template v-else-if="!loadFailed && branding">
+                <!-- ============ İşletme adı ============ -->
+                <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-2 md:grid-cols-[260px_1fr]">
+                    <div class="flex flex-col gap-1.5">
+                        <h2 class="text-base font-semibold text-body">İşletme adı</h2>
+                        <p class="text-sm leading-relaxed text-muted">
+                            Müşterilerin QR menüsünün üst başlığında ve panel kimliğinde görünen isim.
+                            Kurulumdan gelen ismi buradan işletmenizin gerçek adıyla değiştirin.
+                        </p>
+                    </div>
+                    <div class="min-w-0">
+                        <BaseCard>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                <FormField label="İşletme adı" class="flex-1" :error="nameError ?? undefined">
+                                    <BaseInput
+                                        v-model="nameDraft"
+                                        placeholder="ör. Keyif Kahve & Nargile"
+                                        maxlength="120"
+                                        @keyup.enter="saveName"
+                                    />
+                                </FormField>
+                                <BaseButton
+                                    variant="primary"
+                                    class="shrink-0"
+                                    :loading="savingName"
+                                    :disabled="!nameDirty"
+                                    @click="saveName"
+                                >
+                                    Kaydet
+                                </BaseButton>
+                            </div>
+                        </BaseCard>
+                    </div>
+                </section>
+
+                <!-- ============ Adres / saat / WiFi yönlendirme ============ -->
+                <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-2 md:grid-cols-[260px_1fr]">
+                    <div class="flex flex-col gap-1.5">
+                        <h2 class="text-base font-semibold text-body">Adres, çalışma saatleri & WiFi</h2>
+                        <p class="text-sm leading-relaxed text-muted">
+                            İşletmenizin adresi, telefonu, haftalık çalışma saatleri ve WiFi bilgileri
+                            QR menüdeki "İşletme Vitrini" kartında gösterilir. Bunlar şubeye özeldir,
+                            Şubeler ekranından düzenlenir.
+                        </p>
+                    </div>
+                    <div class="min-w-0">
+                        <BaseCard>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <p class="text-sm text-muted">
+                                    Şubeyi açıp "İşletme Vitrini" bölümünden adres, telefon, çalışma
+                                    saatleri, WiFi ve sosyal medya bağlantılarını girin.
+                                </p>
+                                <Link href="/panel/subeler" class="shrink-0">
+                                    <BaseButton variant="secondary">
+                                        <AppIcon name="store" :size="16" />
+                                        Şubeler ekranına git
+                                    </BaseButton>
+                                </Link>
+                            </div>
+                        </BaseCard>
+                    </div>
+                </section>
+
                 <section class="grid grid-cols-1 gap-x-12 gap-y-4 py-2 md:grid-cols-[260px_1fr]">
                     <div class="flex flex-col gap-1.5">
                         <h2 class="text-base font-semibold text-body">Logo</h2>
@@ -201,6 +300,8 @@ async function removeLogo(): Promise<void> {
                     <BaseButton variant="danger" :loading="removing" @click="removeLogo">Kaldır</BaseButton>
                 </div>
             </BaseModal>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

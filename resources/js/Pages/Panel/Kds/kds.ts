@@ -62,6 +62,8 @@ export interface KdsItem {
     updated_at: string | null;
     allergens: AllergenChip[];
     diets: string[];
+    /** Reçete / hazırlama notu (ürün açıklaması). */
+    recipe: string | null;
     options: string[];
     picked_up_at: string | null;
     picked_up_by: string | null;
@@ -179,8 +181,10 @@ export function createPollingFeed<T extends { cursor: number }>(opts: FeedOption
 
     function schedule(): void {
         if (!running) return;
+        // Ekran arka plandayken hafif yavaşlar (×2), tamamen durmaz — adanmış
+        // mutfak/terminal ekranı öne gelmeden de yeni siparişi yakında yakalar.
         const hidden = typeof document !== 'undefined' && document.hidden;
-        timer = setTimeout(() => void tick(), hidden ? opts.intervalMs * 4 : opts.intervalMs);
+        timer = setTimeout(() => void tick(), hidden ? opts.intervalMs * 2 : opts.intervalMs);
     }
 
     async function load(): Promise<void> {

@@ -10,18 +10,28 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>@yield('title', 'Menü')</title>
-    <meta name="theme-color" content="#c2410c">
+    <meta name="theme-color" content="#1d4ed8">
     {{-- Poppins ön yükleme (self-host): Türkçe menü metni latin + latin-ext'in
          ikisini de kullanır; 4 dosya ≈ 27KB, font-display: swap ile bloklamaz --}}
     <link rel="preload" href="/fonts/poppins-400-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-400-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-700-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/poppins-700-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/assets/menu.css?v=20260726.1">
+    <link rel="stylesheet" href="/assets/menu.css?v=20260730.8">
+    {{-- Koyu/açık tema: cihaz tercihi VARSAYILAN; müşteri elle seçerse localStorage'
+         dan erken (flash'sız) uygulanır. --}}
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('qrm-theme');
+                if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        })();
+    </script>
     @stack('tenant-theme')
 </head>
 <body class="@yield('body_class')">
     @yield('content')
-    <script src="/assets/menu.js?v=20260726.1" defer></script>
+    <script src="/assets/menu.js?v=20260805.1" defer></script>
 </body>
 </html>

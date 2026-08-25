@@ -139,6 +139,16 @@ final class ReportRegistry
                 'title' => 'QR / Kiosk Kullanımı', 'rows' => 'channels',
                 'columns' => ['label' => 'Kanal', 'orders' => 'Sipariş', 'share' => 'Pay (%)'],
             ],
+            // §11 Komi Teslim SLA: teslim alma → masaya verme logu + ihlaller.
+            'ops-delivery-sla' => [
+                'service' => OpsReportService::class, 'method' => 'deliverySla',
+                'title' => 'Komi Teslim SLA', 'rows' => 'rows',
+                'columns' => [
+                    'staff' => 'Komi', 'item' => 'Ürün', 'table' => 'Masa',
+                    'picked_up_at' => 'Teslim Alındı', 'served_at' => 'Masaya Verildi',
+                    'duration_minutes' => 'Süre (dk)', 'status' => 'Durum', 'breached' => 'SLA İhlali',
+                ],
+            ],
 
             'staff-performance' => [
                 'service' => StaffReportService::class, 'method' => 'performance',

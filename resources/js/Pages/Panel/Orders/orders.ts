@@ -116,6 +116,8 @@ export interface OrderSummary {
     remaining_minor: number;
     total_display: string;
     remaining_display: string;
+    /** Bu adisyona bağlı ek masaların adları (birleşik masalar). */
+    linked_table_names?: string[];
     opened_by: string | null;
     placed_at: string | null;
     created_at: string | null;
@@ -138,6 +140,10 @@ export interface BoardTable {
     status_label: string;
     status_icon: string;
     status_variant: StatusMeta['variant'];
+    /** Bugünkü aktif rezervasyon (henüz oturtulmadı) — boş masada "Rezerve" göstergesi. */
+    reservation: { name: string; time: string; time_end: string; party: number } | null;
+    /** Bu masa başka bir adisyona bağlıysa (grup birleştirmesi) ana adisyon. */
+    linked_to?: { order_id: number; table_name: string | null; remaining_minor: number; items_count: number } | null;
     orders: OrderSummary[];
 }
 
@@ -220,6 +226,8 @@ export interface CatalogProduct {
 
 export interface CatalogCategory {
     id: number;
+    /** Üst kategori (yoksa null) — iki seviyeli kategori gezinmesi için. */
+    parent_id?: number | null;
     name: string;
     icon: string | null;
     color: string | null;

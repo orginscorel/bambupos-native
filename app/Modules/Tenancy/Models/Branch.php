@@ -21,6 +21,7 @@ class Branch extends Model
         'code',
         'address',
         'phone',
+        'showcase',
         'timezone',
         'is_active',
     ];
@@ -29,6 +30,7 @@ class Branch extends Model
     {
         return [
             'is_active' => 'boolean',
+            'showcase' => 'array',
         ];
     }
 

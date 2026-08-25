@@ -43,12 +43,16 @@ class User extends Authenticatable
         'theme',
         'default_screen',
         'is_active',
+        'is_super_admin',
+        'salary_type',
+        'salary_amount_minor',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
         'pin_hash',
+        'pin_encrypted',
         'two_factor_secret',
         'two_factor_recovery_codes',
     ];
@@ -59,11 +63,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'is_super_admin' => 'boolean',
             // §13 Terminal cihaz modu: gizli, istasyona-atanmış kullanıcı.
             // is_terminal BİLİNÇLİ olarak $fillable DIŞINDA — yalnız
             // TerminalProvisioner set eder; personel formundan atanamaz.
             'is_terminal' => 'boolean',
             'hired_at' => 'date',
+            'salary_amount_minor' => 'integer',
             'last_login_at' => 'datetime',
             'pin_locked_until' => 'datetime',
             'two_factor_secret' => 'encrypted',

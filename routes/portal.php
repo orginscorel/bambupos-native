@@ -4,7 +4,12 @@ use App\Modules\Portal\Http\Controllers\PortalClockController;
 use App\Modules\Portal\Http\Controllers\PortalPageController;
 use App\Modules\Portal\Http\Controllers\PortalProfileController;
 use App\Modules\Portal\Http\Controllers\PortalReportController;
+use App\Modules\Commission\Http\Controllers\PortalEarningsController;
+use App\Modules\Delivery\Http\Controllers\PortalDeliveryController;
+use App\Modules\Portal\Http\Controllers\PortalLeaveController;
+use App\Modules\Portal\Http\Controllers\PortalScheduleController;
 use App\Modules\Portal\Support\Portal;
+use App\Modules\StaffTasks\Http\Controllers\PortalTaskController;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Support\Facades\Route;
 
@@ -32,7 +37,12 @@ Route::domain(Portal::host())
     ->group(function (): void {
 
         /* ---- Inertia sayfaları (portal layout) ---- */
+        Route::get('/panelim', [PortalPageController::class, 'dashboard'])->name('portal.dashboard');
         Route::get('/mesaim', [PortalPageController::class, 'shift'])->name('portal.shift');
+        Route::get('/takvim', [PortalPageController::class, 'schedule'])->name('portal.schedule');
+        Route::get('/gorevlerim', [PortalPageController::class, 'tasks'])->name('portal.tasks');
+        Route::get('/teslimatlarim', [PortalPageController::class, 'deliveries'])
+            ->middleware('feature:delivery')->name('portal.deliveries');
         Route::get('/raporlarim', [PortalPageController::class, 'reports'])->name('portal.reports');
         Route::get('/profilim', [PortalPageController::class, 'profile'])->name('portal.profile');
 
@@ -45,8 +55,34 @@ Route::domain(Portal::host())
             Route::post('break/start', [PortalClockController::class, 'breakStart'])->name('portal.break.start');
             Route::post('break/end', [PortalClockController::class, 'breakEnd'])->name('portal.break.end');
 
+            // Takvim: kişinin kendi yaklaşan vardiyaları
+            Route::get('schedule', [PortalScheduleController::class, 'index'])->name('portal.schedule.data');
+
+            // Mesai geçmişi: kişinin son mesai kayıtları
+            Route::get('history', [PortalClockController::class, 'history'])->name('portal.history');
+
+            // İzin talebi: kendi taleplerini listele / oluştur / iptal et
+            Route::get('leave-requests', [PortalLeaveController::class, 'index'])->name('portal.leaves.index');
+            Route::post('leave-requests', [PortalLeaveController::class, 'store'])->name('portal.leaves.store');
+            Route::post('leave-requests/{leave}/cancel', [PortalLeaveController::class, 'cancel'])->name('portal.leaves.cancel');
+
+            // Görevlerim: kişiye atanan görevler + durum güncelle (kendi görevi)
+            Route::get('tasks', [PortalTaskController::class, 'index'])->name('portal.tasks.data');
+            Route::post('tasks/{task}/status', [PortalTaskController::class, 'updateStatus'])->name('portal.tasks.status');
+
             // Raporlarım
             Route::get('reports', [PortalReportController::class, 'index'])->name('portal.reports.data');
+
+            // Teslimatlarım (kurye) — feature: delivery
+            Route::middleware('feature:delivery')->group(function (): void {
+                Route::get('deliveries', [PortalDeliveryController::class, 'index'])->name('portal.deliveries.data');
+                Route::post('deliveries/{delivery}/status', [PortalDeliveryController::class, 'updateStatus'])
+                    ->whereNumber('delivery')->name('portal.deliveries.status');
+            });
+
+            // Kazancım (prim) — feature: commission
+            Route::get('earnings', [PortalEarningsController::class, 'index'])
+                ->middleware('feature:commission')->name('portal.earnings');
 
             // Profilim
             Route::put('profile', [PortalProfileController::class, 'update'])->name('portal.profile.update');

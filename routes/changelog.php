@@ -41,3 +41,18 @@ Route::middleware(['web', 'auth:web', 'tenant'])->get('/api/v1/changelog/version
         ],
     ]);
 })->name('api.changelog.version');
+
+/*
+|--------------------------------------------------------------------------
+| Sürüm yoklama ucu (açık oturumlara "yeni güncelleme" bildirimi)
+|--------------------------------------------------------------------------
+| Tüm istemci kabukları (panel / personel portalı / patron / KDS) periyodik
+| olarak yalnız güncel sürüm numarasını yoklar. Auth GEREKTİRMEZ, tenant'a
+| özel veri taşımaz — hafif ve hızlı. İlk görülenden farklı sürüm görülünce
+| istemci "yenile" toast'ı gösterir.
+*/
+Route::middleware(['web'])->get('/api/v1/app-version', function () {
+    return response()->json([
+        'version' => config('changelog.current_version'),
+    ]);
+})->name('api.app-version');

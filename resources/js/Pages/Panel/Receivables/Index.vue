@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import PanelShell from '@/Components/panel/PanelShell.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
@@ -27,6 +28,7 @@ import {
 } from './receivables';
 
 const { success, danger } = useToast();
+const { can } = usePermissions();
 
 /* ================= Liste ================= */
 const rows = ref<ReceivableRow[]>([]);
@@ -140,6 +142,33 @@ async function togglePassive(row: ReceivableRow): Promise<void> {
 const detail = ref<ReceivableRow | null>(null);
 const detailTransactions = ref<ReceivableTransactionRow[]>([]);
 const detailOrders = ref<ReceivableDebtOrderRow[]>([]);
+
+/** Açık ziyaret kartları (kalem dökümü görünenler). */
+const expandedOrders = ref<Set<number>>(new Set());
+function toggleOrder(id: number): void {
+    const next = new Set(expandedOrders.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expandedOrders.value = next;
+}
+
+/** Ziyaretlerin borç toplamı (başlıktaki bağlam). */
+const detailOrdersTotal = computed(() =>
+    detailOrders.value.reduce((n, o) => n + (o.debt_amount_minor ?? o.total_minor), 0),
+);
+
+/** "24 Ağustos 2026, Pazartesi · 19:42" — ziyaretin ne zaman olduğu. */
+function visitDate(o: ReceivableDebtOrderRow): string {
+    const iso = o.closed_at ?? o.created_at ?? null;
+    if (!iso) return `Adisyon #${o.id}`;
+    const d = new Date(iso);
+    return `${d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })} · ${d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** O ziyarette alınan toplam ürün adedi (kalem sayısı değil). */
+function visitQty(o: ReceivableDebtOrderRow): number {
+    return (o.items ?? []).reduce((n, i) => n + i.qty, 0);
+}
 const detailLoading = ref(false);
 
 async function openDetail(row: ReceivableRow): Promise<void> {
@@ -152,6 +181,8 @@ async function openDetail(row: ReceivableRow): Promise<void> {
         detail.value = res.receivable;
         detailTransactions.value = res.transactions;
         detailOrders.value = res.debt_orders;
+        // Yeni cari açıldığında önceki carinin açık kartları taşınmasın.
+        expandedOrders.value = new Set();
     } catch (e) {
         danger('Cari detayı yüklenemedi', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen bir hata oluştu.');
     } finally {
@@ -220,8 +251,10 @@ async function submitCollect(): Promise<void> {
 
 <template>
     <Head title="Borçlar" />
-    <PanelShell title="Borçlar">
-        <div class="flex flex-col gap-4">
+    <!-- TAM KAPLAMA: cari listesi ekranı doldurur, kendi içinde kayar. -->
+    <PanelShell title="Borçlar" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
             <BaseCard flush>
                 <template #header>
                     <h2 class="text-sm font-semibold text-body">Cari hesaplar</h2>
@@ -325,19 +358,100 @@ async function submitCollect(): Promise<void> {
                             {{ money(detail.balance_minor) }} ₺
                         </p>
                     </div>
-                    <BaseButton :disabled="detail.balance_minor <= 0" @click="openCollect">
-                        <AppIcon name="check-circle" :size="15" />
-                        Tahsilat al
-                    </BaseButton>
+                    <!-- Tahsilat KASADA alınır: para kasa oturumuna, nakit kasa
+                         defterine ve Z raporuna oradan düşer. Buradaki hızlı
+                         modal korunur (küçük düzeltmeler için), ama birincil yol
+                         kasa ekranıdır. -->
+                    <div class="flex flex-col items-end gap-1.5">
+                        <BaseButton
+                            v-if="can('receivables.collect')"
+                            :disabled="detail.balance_minor <= 0"
+                            href="/panel/kasa?sekme=borclar"
+                        >
+                            <AppIcon name="cart" :size="15" />
+                            Kasada tahsil et
+                        </BaseButton>
+                        <button
+                            v-if="can('receivables.collect') && detail.balance_minor > 0"
+                            type="button"
+                            class="text-xs font-medium text-muted underline transition hover:text-body"
+                            @click="openCollect"
+                        >
+                            Kasaya gitmeden hızlı kaydet
+                        </button>
+                    </div>
                 </div>
 
+                <!-- ZİYARET DÖKÜMÜ: her borç kaydı, o günün sipariş özeti.
+                     Önceden yalnız "#124 · Masa 3 — 250,00 ₺" yazıyordu; her gün
+                     gelen bir müşteride borcun neden o kadar olduğu izlenemiyor,
+                     itiraz halinde savunulamıyordu. Artık tarih + saat + nerede
+                     + kaç kalem + ne alındığı tek tek görünür. -->
                 <div>
-                    <h3 class="pb-2 text-sm font-semibold text-body">Borca taşınmış adisyonlar</h3>
-                    <EmptyState v-if="!detailLoading && detailOrders.length === 0" title="Kayıt yok" description="Bu cariye taşınmış adisyon yok." />
-                    <ul v-else class="flex flex-col gap-1.5">
-                        <li v-for="o in detailOrders" :key="o.id" class="flex items-center justify-between rounded-md border border-default px-3 py-2 text-sm">
-                            <span>#{{ o.id }} · {{ o.table_name ?? '—' }}</span>
-                            <span class="font-medium">{{ money(o.debt_amount_minor ?? o.total_minor) }} ₺</span>
+                    <div class="flex items-center justify-between gap-2 pb-2">
+                        <h3 class="text-sm font-semibold text-body">Ziyaretler ve harcamalar</h3>
+                        <span v-if="detailOrders.length" class="text-xs font-semibold text-muted tabular-nums">
+                            {{ detailOrders.length }} kayıt · {{ money(detailOrdersTotal) }} ₺
+                        </span>
+                    </div>
+
+                    <EmptyState
+                        v-if="!detailLoading && detailOrders.length === 0"
+                        title="Kayıt yok"
+                        description="Bu cariye taşınmış adisyon yok."
+                    />
+                    <ul v-else class="flex flex-col gap-2">
+                        <li v-for="o in detailOrders" :key="o.id" class="overflow-hidden rounded-lg border border-default">
+                            <!-- Ziyaret başlığı: tarih · saat · yer · tutar -->
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2 bg-inset/50 px-3 py-2 text-left transition hover:bg-inset"
+                                :aria-expanded="expandedOrders.has(o.id)"
+                                @click="toggleOrder(o.id)"
+                            >
+                                <AppIcon
+                                    :name="expandedOrders.has(o.id) ? 'chevron-down' : 'chevron-right'"
+                                    :size="15"
+                                    class="shrink-0 text-subtle"
+                                />
+                                <span class="min-w-0 grow">
+                                    <span class="block truncate text-sm font-semibold text-body">
+                                        {{ visitDate(o) }}
+                                    </span>
+                                    <span class="block truncate text-xs text-muted">
+                                        #{{ o.id }} · {{ o.table_name ?? o.channel_label ?? '—' }}
+                                        <template v-if="o.items?.length"> · {{ visitQty(o) }} ürün</template>
+                                    </span>
+                                </span>
+                                <span class="shrink-0 text-sm font-bold tabular-nums text-danger">
+                                    {{ money(o.debt_amount_minor ?? o.total_minor) }} ₺
+                                </span>
+                            </button>
+
+                            <!-- Kalem dökümü: ne yenmiş / ne içilmiş -->
+                            <div v-if="expandedOrders.has(o.id)" class="border-t border-default">
+                                <p v-if="!o.items || o.items.length === 0" class="px-3 py-2 text-xs text-muted">
+                                    Bu adisyonun kalem dökümü yok.
+                                </p>
+                                <ul v-else class="divide-y divide-default">
+                                    <li v-for="it in o.items" :key="it.id" class="flex items-center gap-2 px-3 py-1.5 text-sm">
+                                        <span class="min-w-7 shrink-0 rounded bg-inset px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-body">
+                                            {{ it.qty }}×
+                                        </span>
+                                        <span class="min-w-0 grow truncate text-body">
+                                            {{ it.name }}
+                                            <span v-if="it.variant_name" class="text-xs text-muted">({{ it.variant_name }})</span>
+                                            <span v-if="it.is_comp" class="text-xs font-medium text-info"> · ikram</span>
+                                        </span>
+                                        <span
+                                            class="shrink-0 text-xs font-semibold tabular-nums"
+                                            :class="it.is_comp ? 'text-subtle line-through' : 'text-muted'"
+                                        >
+                                            {{ money(it.line_total_minor) }} ₺
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
                         </li>
                     </ul>
                 </div>
@@ -387,5 +501,6 @@ async function submitCollect(): Promise<void> {
                 <BaseButton :loading="collectBusy" @click="submitCollect">Tahsil et</BaseButton>
             </template>
         </BaseModal>
+        </div>
     </PanelShell>
 </template>

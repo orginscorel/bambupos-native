@@ -74,7 +74,7 @@ class KdsQueueController extends Controller
     {
         $lane = $request->query('lane');
 
-        return in_array($lane, ['kitchen', 'barista'], true) ? $lane : null;
+        return in_array($lane, ['kitchen', 'barista', 'nargile'], true) ? $lane : null;
     }
 
     private function authorizeMode(Request $request, string $mode): void

@@ -221,7 +221,10 @@ async function deleteConfirmed(): Promise<void> {
 </script>
 
 <template>
-    <PanelShell title="Kiosk Cihazları">
+    <PanelShell title="Kiosk Cihazları" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-5">
 
             <div class="flex items-center justify-between gap-3">
@@ -359,5 +362,7 @@ async function deleteConfirmed(): Promise<void> {
                 </div>
             </div>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

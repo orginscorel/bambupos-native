@@ -26,8 +26,13 @@ Route::middleware(['web', 'auth:web', 'tenant'])->prefix('panel')->group(functio
     Route::get('/rezervasyonlar/no-show', [ReservationPageController::class, 'noShowReport'])->name('panel.reservations.no-show');
 });
 
-/* ---- Panel API'si ---- */
-Route::middleware(['web', 'auth:web', 'tenant'])->prefix('api/v1/reservations')->group(function (): void {
+/* ---- Panel API'si ----
+ * feature:reservations (denetim #panel-mgmt-3, bkz. routes/shifts.php'deki
+ * aynı düzeltme): "Rezervasyon" eklentisi kapalıysa TÜM grup 404 — eskiden
+ * yalnız ReservationPageController::featureGate() sayfayı gate'liyordu,
+ * ReservationController/WaitlistController (CRUD + hatırlatma + depozito)
+ * kapalıyken de açıktı. */
+Route::middleware(['web', 'auth:web', 'tenant', 'feature:reservations'])->prefix('api/v1/reservations')->group(function (): void {
 
     Route::get('/', [ReservationController::class, 'index'])->name('reservations.index');
     Route::get('availability', [ReservationController::class, 'availability'])->name('reservations.availability');

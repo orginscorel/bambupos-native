@@ -4,6 +4,7 @@ namespace App\Modules\Payments\Providers;
 
 use App\Modules\Payments\Contracts\PaymentProviderInterface;
 use App\Modules\Payments\Enums\PaymentMethod;
+use App\Modules\Payments\Services\PosConfigResolver;
 use Illuminate\Contracts\Container\Container;
 
 /**
@@ -16,8 +17,10 @@ class ProviderRegistry
     /** @var array<string, PaymentProviderInterface> */
     private array $resolved = [];
 
-    public function __construct(private readonly Container $container)
-    {
+    public function __construct(
+        private readonly Container $container,
+        private readonly PosConfigResolver $posConfig,
+    ) {
     }
 
     public function get(string $key): PaymentProviderInterface
@@ -53,8 +56,19 @@ class ProviderRegistry
             return $requested;
         }
 
-        return $method->usesTerminal()
-            ? (string) config('payments.default_terminal_provider', 'mock')
-            : 'cash';
+        if (! $method->usesTerminal()) {
+            return 'cash';
+        }
+
+        // ÇOK-İŞLETMELİ ENTEGRATÖR: işletme kendi POS sağlayıcısını seçtiyse (ve kayıtlı
+        // ise) onu kullan; yoksa global varsayılana düş. Böylece her işletme farklı
+        // cihaz/bankaya bağlanabilir ("kod değil konfig").
+        $tenantProvider = $this->posConfig->providerKey();
+
+        if ($tenantProvider !== null && $this->has($tenantProvider)) {
+            return $tenantProvider;
+        }
+
+        return (string) config('payments.default_terminal_provider', 'mock');
     }
 }

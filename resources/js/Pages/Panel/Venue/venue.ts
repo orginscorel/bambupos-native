@@ -29,6 +29,7 @@ export interface BranchRow {
     phone: string | null;
     timezone: string;
     is_active: boolean;
+    showcase: Record<string, unknown> | null;
     has_qr_token: boolean;
     areas_count: number;
     tables_count: number;

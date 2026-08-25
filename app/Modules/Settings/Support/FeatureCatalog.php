@@ -75,6 +75,36 @@ final class FeatureCatalog
                 'description' => 'Cihaza-bağlı kilitli istasyon terminalleri (Mutfak/Barista/Komi/Kasa/Sipariş-giriş).',
                 'default' => true,
             ],
+            [
+                'key' => 'delivery',
+                'name' => 'Teslimat / Paket',
+                'description' => 'Paket siparişlerde adres, kurye atama ve teslim durumu takibi. Kapalıyken teslimat panosu ve kurye ekranları gizlenir.',
+                'default' => false,
+            ],
+            [
+                'key' => 'commission',
+                'name' => 'Prim / Komisyon',
+                'description' => 'Personele satış-bazlı prim/komisyon şeması, hedef takibi ve prim raporu. Kapalıyken prim ekranları gizlenir.',
+                'default' => false,
+            ],
+            [
+                'key' => 'nargile',
+                'name' => 'Nargile',
+                'description' => 'Nargile mekânları için ayrı "Nargile" hazırlık ekranı (kendi KDS kulvarı) + nargileci terminali. Açıkken Nargile istasyonuna atanan ürünler Mutfak yerine Nargile ekranına düşer; kapalıyken Mutfak kulvarında kalır.',
+                'default' => false,
+            ],
+            [
+                'key' => 'sarjmatik',
+                'name' => 'Şarjmatik',
+                'description' => 'QR menüde müşterinin "Şarjmatik İste" (taşınabilir şarj cihazı) butonu. Açıkken müşteri masadan talep eder, personele bildirim düşer. Kapalıyken buton hiç görünmez.',
+                'default' => false,
+            ],
+            [
+                'key' => 'device_lock',
+                'name' => 'Cihaz kilidi (izinli cihazlar)',
+                'description' => 'Terminal/kiosk ekranlarını fiziksel cihaza kilitler: bir cihaz bağlantısını (token) İLK açan tarayıcı o cihaza kilitlenir; aynı bağlantı başka bir cihazdan açılmaya çalışılırsa reddedilir. Kilidi yönetmek (boşa düşür / başka cihaza aktar / izni kaldır) için "İzinli Cihazlar" ekranı kullanılır. Kapalıyken (varsayılan) hiçbir kilit uygulanmaz; token her cihazda açılır (mevcut davranış).',
+                'default' => false,
+            ],
         ];
     }
 

@@ -151,6 +151,15 @@ function methodLabel(m: string | null): string {
     if (!m) return '';
     return { pin: 'PIN', device: 'Cihaz', manual: 'Manuel', qr: 'QR', nfc: 'NFC' }[m] ?? m;
 }
+
+/** Native mobil vardiya kartı için gün adı (ör. "Pazartesi"). */
+function fmtWeekday(iso: string): string {
+    try {
+        return new Intl.DateTimeFormat('tr-TR', { weekday: 'long' }).format(new Date(iso));
+    } catch {
+        return '';
+    }
+}
 </script>
 
 <template>
@@ -174,7 +183,89 @@ function methodLabel(m: string | null): string {
                     title="Mesai kaydı yok"
                     description="Seçili aralıkta giriş/çıkış kaydı bulunmuyor."
                 />
-                <div v-else class="overflow-x-auto">
+                <template v-else>
+                    <!-- Native mobil: gruplu vardiya listesi (yatay kaydırma YOK).
+                         Prompt anatomisi: gün + tarih · durum rozeti · giriş/çıkış/
+                         mola/çalışılan · geç/erken/FM etiketleri · aksiyonlar. -->
+                    <div class="lg:hidden [&>*:not(:last-child)]:border-b [&>*:not(:last-child)]:border-default/70">
+                        <article v-for="row in rows" :key="row.id" class="flex flex-col gap-2.5 px-4 py-3.5">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p v-if="canViewAll" class="truncate text-[15px] font-semibold text-body">
+                                        {{ row.user?.name ?? '—' }}
+                                    </p>
+                                    <p class="text-[13px] text-muted">
+                                        <span class="font-medium text-body">{{ fmtWeekday(row.clock_in_at) }}</span>
+                                        · {{ fmtDate(row.clock_in_at) }}
+                                    </p>
+                                </div>
+                                <div class="flex shrink-0 flex-col items-end gap-1">
+                                    <BaseBadge v-if="row.status === 'open'" variant="info">Mesaide</BaseBadge>
+                                    <BaseBadge v-else-if="row.approved_at" variant="success">Onaylı</BaseBadge>
+                                    <BaseBadge v-else variant="neutral" no-icon>Onay bekliyor</BaseBadge>
+                                    <BaseBadge v-if="row.edited_at" variant="warning" :title="row.edit_reason ?? ''">
+                                        Düzeltildi
+                                    </BaseBadge>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-inset/50 px-3 py-2.5">
+                                <div>
+                                    <p class="text-[12px] text-subtle">Giriş</p>
+                                    <p class="text-[14px] font-semibold text-body tabular-nums">
+                                        {{ fmtTime(row.clock_in_at) }}
+                                        <span v-if="row.late_min > 0" class="ml-1 text-[12px] font-normal text-warning">
+                                            +{{ row.late_min }}dk geç
+                                        </span>
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="text-[12px] text-subtle">Çıkış</p>
+                                    <p class="text-[14px] font-semibold text-body tabular-nums">
+                                        {{ row.clock_out_at ? fmtTime(row.clock_out_at) : '—' }}
+                                        <span v-if="row.early_leave_min > 0" class="ml-1 text-[12px] font-normal text-warning">
+                                            {{ row.early_leave_min }}dk erken
+                                        </span>
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="text-[12px] text-subtle">Mola</p>
+                                    <p class="text-[14px] text-body tabular-nums">{{ fmtMin(row.break_total_min) }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-[12px] text-subtle">Çalışılan</p>
+                                    <p class="text-[14px] font-semibold text-body tabular-nums">
+                                        {{ fmtMin(row.worked_min) }}
+                                        <span v-if="row.overtime_min > 0" class="ml-1 text-[12px] font-normal text-success">
+                                            +{{ fmtMin(row.overtime_min) }} FM
+                                        </span>
+                                        <span v-else-if="row.missing_min > 0" class="ml-1 text-[12px] font-normal text-danger">
+                                            −{{ fmtMin(row.missing_min) }} eksik
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p v-if="row.method_in" class="text-[12px] text-subtle">
+                                {{ methodLabel(row.method_in) }}<template v-if="row.device"> · {{ row.device.name }}</template>
+                            </p>
+
+                            <div v-if="canManage" class="flex items-center justify-end gap-2 border-t border-default/70 pt-2">
+                                <BaseButton size="sm" variant="ghost" @click="openEdit(row)">Düzelt</BaseButton>
+                                <BaseButton
+                                    v-if="row.status === 'closed' && !row.approved_at"
+                                    size="sm"
+                                    variant="secondary"
+                                    @click="approve(row)"
+                                >
+                                    Onayla
+                                </BaseButton>
+                            </div>
+                        </article>
+                    </div>
+
+                    <!-- Masaüstü: tam tablo (kendi overflow'unda kayar) -->
+                    <div class="hidden overflow-x-auto lg:block">
                     <table class="w-full min-w-[900px] text-sm">
                         <thead>
                             <tr class="border-b border-default text-left text-xs text-muted">
@@ -242,7 +333,8 @@ function methodLabel(m: string | null): string {
                             </tr>
                         </tbody>
                     </table>
-                </div>
+                    </div>
+                </template>
             </BaseCard>
 
             <BasePagination v-if="lastPage > 1" v-model:page="pageNo" :last-page="lastPage" />

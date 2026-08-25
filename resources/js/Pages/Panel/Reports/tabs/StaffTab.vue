@@ -34,6 +34,7 @@ const report = useReport<{ rows: Record<string, unknown>[] }>('staff-performance
                     { key: 'avg_service_minutes', label: 'Ort. servis', align: 'right', format: 'minutes' },
                     { key: 'discount_minor', label: 'İndirim', align: 'right', format: 'minor' },
                     { key: 'comp_count', label: 'İkram', align: 'right', format: 'number' },
+                    { key: 'comp_minor', label: 'İkram tutarı', align: 'right', format: 'minor' },
                     { key: 'cancelled', label: 'İptal', align: 'right', format: 'number' },
                     { key: 'cancel_rate', label: 'İptal oranı', align: 'right', format: 'percent' },
                     { key: 'requests_handled', label: 'Talep', align: 'right', format: 'number' },

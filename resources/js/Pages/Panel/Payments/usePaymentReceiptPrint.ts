@@ -189,20 +189,28 @@ export function renderPaymentTicketBody(data: PaymentReceiptData): string {
         })
         .join('');
 
-    /* ---- Tutar özeti ---- */
-    const summaryRows: string[] = [];
-    summaryRows.push(summaryRow('Ara toplam', fmtMoney(data.itemsTotalMinor)));
-    if (data.compTotalMinor > 0) summaryRows.push(summaryRow('İkram', fmtMoney(data.compTotalMinor), { sign: '−', muted: true }));
-    if (data.discountMinor > 0) summaryRows.push(summaryRow('İndirim', fmtMoney(data.discountMinor), { sign: '−', muted: true }));
-    if (data.serviceChargeMinor > 0) summaryRows.push(summaryRow('Servis', fmtMoney(data.serviceChargeMinor)));
+    /* ---- Tutar özeti (TOPLAM'dan ÖNCEKİ satırlar) ---- */
+    const preRows: string[] = [];
+    preRows.push(summaryRow('Ara toplam', fmtMoney(data.itemsTotalMinor)));
+    if (data.compTotalMinor > 0) preRows.push(summaryRow('İkram', fmtMoney(data.compTotalMinor), { sign: '−', muted: true }));
+    if (data.discountMinor > 0) preRows.push(summaryRow('İndirim', fmtMoney(data.discountMinor), { sign: '−', muted: true }));
+    if (data.serviceChargeMinor > 0) preRows.push(summaryRow('Servis bedeli', fmtMoney(data.serviceChargeMinor)));
     if (data.roundingMinor !== 0)
-        summaryRows.push(summaryRow('Yuvarlama', fmtMoney(Math.abs(data.roundingMinor)), { sign: data.roundingMinor > 0 ? '+' : '−', muted: true }));
-    summaryRows.push(summaryRow('TOPLAM', fmtMoney(data.totalMinor), { bold: true, big: true }));
+        preRows.push(summaryRow('Yuvarlama', fmtMoney(Math.abs(data.roundingMinor)), { sign: data.roundingMinor > 0 ? '+' : '−', muted: true }));
+
+    // TOPLAM — ters renk (siyah zemin/beyaz), fişin en baskın satırı.
+    const totalBlock =
+        '<div style="display:flex;justify-content:space-between;gap:8px;background:#000;color:#fff;' +
+        'font-size:18px;font-weight:800;padding:5px 6px;margin:6px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
+        `<span>TOPLAM</span><span style="white-space:nowrap;">${fmtMoney(data.totalMinor)} ₺</span></div>`;
+
+    // KDV bilgisi (dahil) + oran kırılımı.
+    const vatRows: string[] = [];
     if (data.vatTotalMinor > 0) {
-        summaryRows.push(summaryRow('KDV (dahil)', fmtMoney(data.vatTotalMinor), { muted: true }));
+        vatRows.push(summaryRow('Toplam KDV (dahil)', fmtMoney(data.vatTotalMinor), { muted: true }));
         if (data.vatByRate && data.vatByRate.length) {
             for (const r of data.vatByRate) {
-                summaryRows.push(
+                vatRows.push(
                     `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#333;line-height:1.4;">` +
                         `<span style="padding-left:10px;">KDV ${ratePct(r.rate)} (matrah ${fmtMoney(r.base_minor)} ₺)</span>` +
                         `<span style="white-space:nowrap;">${fmtMoney(r.vat_minor)} ₺</span></div>`,
@@ -210,6 +218,7 @@ export function renderPaymentTicketBody(data: PaymentReceiptData): string {
             }
         }
     }
+    const itemCount = data.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0);
 
     /* ---- Ödeme bölümü (yalnız kapanış fişi) ---- */
     let paymentBlock = '';
@@ -237,33 +246,45 @@ export function renderPaymentTicketBody(data: PaymentReceiptData): string {
               )}</div>`
             : '';
 
-    const kindLabel = data.kind === 'bill' ? 'HESAP FİŞİ' : 'ADİSYON FİŞİ';
+    const kindLabel = data.kind === 'bill' ? 'HESAP FİŞİ (ÖN-HESAP)' : 'ADİSYON FİŞİ';
 
     return (
         '<div style="font-family:\'Courier New\',ui-monospace,monospace;color:#000;background:#fff;' +
         'width:100%;box-sizing:border-box;padding:2px 4px;">' +
-        // Başlık: işletme + şube
-        `<div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:.3px;">${esc(data.business)}</div>` +
-        (data.branch ? `<div style="text-align:center;font-size:12px;margin-top:1px;">${esc(data.branch)}</div>` : '') +
-        `<div style="text-align:center;font-size:12px;font-weight:700;margin-top:2px;letter-spacing:1px;">${kindLabel}</div>` +
-        solidRule +
-        // Hedef (masa / müşteri) + no
-        `<div style="display:flex;justify-content:space-between;gap:8px;font-size:15px;font-weight:800;line-height:1.2;">` +
+        // Başlık: işletme + şube + fiş türü rozeti
+        `<div style="text-align:center;font-size:17px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;">${esc(data.business)}</div>` +
+        (data.branch ? `<div style="text-align:center;font-size:11px;margin-top:1px;">${esc(data.branch)}</div>` : '') +
+        `<div style="text-align:center;font-size:12px;font-weight:800;letter-spacing:1.5px;border:1.5px solid #000;padding:2px 0;margin:6px 0;">${kindLabel}</div>` +
+        // Hedef (masa / müşteri) + adisyon no
+        `<div style="display:flex;justify-content:space-between;gap:8px;font-size:16px;font-weight:800;line-height:1.2;">` +
         `<span>${esc(data.destination)}</span><span>#${esc(data.orderNo)}</span></div>` +
         serviceLine +
         (data.time ? `<div style="font-size:11px;margin-top:2px;color:#333;">${esc(data.time)}</div>` : '') +
+        solidRule +
+        // Sütun başlığı (netlik)
+        '<div style="display:flex;justify-content:space-between;font-size:10px;letter-spacing:.5px;color:#333;">' +
+        '<span>ÜRÜN</span><span>TUTAR</span></div>' +
         rule +
         // Kalemler
         (lines || '<div style="font-size:12px;color:#333;">(kalem dökümü yok)</div>') +
+        // Kalem adedi
+        `<div style="font-size:11px;color:#333;margin-top:2px;">${esc(data.lines.length)} çeşit · ${esc(itemCount)} adet ürün</div>` +
         rule +
-        // Tutar özeti
-        summaryRows.join('') +
+        // Tutar özeti (TOPLAM öncesi) + ters-renk TOPLAM + KDV
+        preRows.join('') +
+        totalBlock +
+        vatRows.join('') +
         // Ödeme (kapanış)
         paymentBlock +
         solidRule +
-        `<div style="text-align:center;font-size:11px;color:#333;">${data.kind === 'bill' ? 'Bu fiş ön-hesaptır' : 'Adisyon kapanışı'} · #${esc(
+        // Alt bilgi: teşekkür + mali-değer notu (bu bir mali fiş DEĞİL) + no
+        (data.kind === 'payment'
+            ? '<div style="text-align:center;font-size:14px;font-weight:800;margin-bottom:2px;">Bizi tercih ettiğiniz için teşekkürler</div>'
+            : '<div style="text-align:center;font-size:11px;margin-bottom:2px;">Bu fiş ön-hesaptır — ödeme kasada alınır.</div>') +
+        `<div style="text-align:center;font-size:9px;color:#333;line-height:1.4;">Bu belge bilgi amaçlıdır, mali değeri yoktur.<br>${data.kind === 'bill' ? 'Ön-hesap' : 'Adisyon kapanışı'} · #${esc(
             data.orderNo,
-        )}</div>` +
+        )} · ${esc(data.time)}</div>` +
+        `<div style="text-align:center;font-size:16px;margin-top:2px;">✂ - - - - - - - - - - - -</div>` +
         '</div>'
     );
 }

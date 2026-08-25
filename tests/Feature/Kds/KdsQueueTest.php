@@ -152,4 +152,71 @@ class KdsQueueTest extends KdsTestCase
         $this->assertSame($cursor, (int) $res->json('cursor'));
         $this->assertNotEmpty($res->json('orders'));
     }
+
+    /**
+     * Panel denetim notu (2026-08-06, "KDS şube-seçici"): Runner/Kitchen üst
+     * çubuğundaki şube seçici eskiden `branch_id` sorgu parametresi
+     * gönderiyordu ama bu uç onu HİÇ okumuyordu — dropdown sessizce hiçbir
+     * şey değiştirmiyordu (yanlış şube gösterme riski). Düzeltme backend'e
+     * DOKUNMADI: ekran artık gerçek `POST /api/v1/auth/active-branch`
+     * ucuyla oturumdaki aktif şubeyi değiştiriyor. Bu test iki şeyi birden
+     * kilitler: (1) `branch_id` sorgu parametresi HÂLÂ ve HER ZAMAN yok
+     * sayılır (ŞUBE KAPSAMI istekten asla alınmaz), (2) gerçek aktif-şube
+     * geçişi kuyruğu GERÇEKTEN değiştirir.
+     */
+    public function test_kuyruk_branch_id_parametresini_yok_sayar_yalniz_aktif_sube_gecisini_izler(): void
+    {
+        $branchB = $this->asTenant(
+            $this->a['tenant'],
+            fn () => \App\Modules\Tenancy\Models\Branch::factory()->create([
+                'tenant_id' => $this->a['tenant']->id,
+                'name' => 'B Şube',
+            ])
+        );
+
+        $manager = $this->a['user']; // sahip = tüm izinler = yönetici (canSwitch)
+        $this->actingAs($manager);
+
+        // A şubesinde (varsayılan aktif) mutfak kalemi.
+        $tableA = $this->makeTable($this->a);
+        $productA = $this->makeProduct($this->a, ['station' => 'kitchen', 'name' => 'A-Yemek']);
+        $orderA = $this->postJson('/api/v1/orders', [
+            'branch_id' => $this->a['branch']->id, 'channel' => 'table', 'table_id' => $tableA->id,
+        ])->assertCreated()->json('order.id');
+        $this->postJson("/api/v1/orders/{$orderA}/items", ['product_id' => $productA->id, 'qty' => 1])->assertCreated();
+        $this->postJson("/api/v1/orders/{$orderA}/send-to-kitchen")->assertOk();
+
+        // B'ye geç, B şubesinde de mutfak kalemi oluştur, sonra A'ya geri dön.
+        $this->postJson('/api/v1/auth/active-branch', ['branch_id' => $branchB->id])->assertOk();
+        $ctxB = ['tenant' => $this->a['tenant'], 'branch' => $branchB];
+        $tableB = $this->makeTable($ctxB);
+        $productB = $this->makeProduct($ctxB, ['station' => 'kitchen', 'name' => 'B-Yemek']);
+        $orderB = $this->postJson('/api/v1/orders', [
+            'branch_id' => $branchB->id, 'channel' => 'table', 'table_id' => $tableB->id,
+        ])->assertCreated()->json('order.id');
+        $this->postJson("/api/v1/orders/{$orderB}/items", ['product_id' => $productB->id, 'qty' => 1])->assertCreated();
+        $this->postJson("/api/v1/orders/{$orderB}/send-to-kitchen")->assertOk();
+        $this->postJson('/api/v1/auth/active-branch', ['branch_id' => $this->a['branch']->id])->assertOk();
+
+        $namesOf = fn ($res) => collect($res->json('orders'))
+            ->flatMap(fn ($o) => collect($o['items'])->pluck('name'));
+
+        // Aktif şube A: yalnız A'nın kalemi görünür.
+        $res = $this->getJson('/api/v1/kds/queue')->assertOk();
+        $this->assertTrue($namesOf($res)->contains('A-Yemek'));
+        $this->assertFalse($namesOf($res)->contains('B-Yemek'));
+
+        // İstekte branch_id=B geçirilse BİLE (eski, kaldırılan davranış) —
+        // sunucu bunu yok sayar, hâlâ A'nın kalemi döner. Bu satır regresyonu
+        // (backend'in isteğe güvenmeye başlaması) yakalar.
+        $res = $this->getJson("/api/v1/kds/queue?branch_id={$branchB->id}")->assertOk();
+        $this->assertTrue($namesOf($res)->contains('A-Yemek'));
+        $this->assertFalse($namesOf($res)->contains('B-Yemek'));
+
+        // Gerçek geçiş: aktif şubeyi B yap → şimdi yalnız B'nin kalemi görünür.
+        $this->postJson('/api/v1/auth/active-branch', ['branch_id' => $branchB->id])->assertOk();
+        $res = $this->getJson('/api/v1/kds/queue')->assertOk();
+        $this->assertTrue($namesOf($res)->contains('B-Yemek'));
+        $this->assertFalse($namesOf($res)->contains('A-Yemek'));
+    }
 }

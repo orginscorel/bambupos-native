@@ -31,6 +31,18 @@ class KioskScreenController extends Controller
 
     public function show(Request $request, string $token): Response
     {
+        // DİL: ?lang=tr|en|de ile hata/kilit sayfası dili (QR tarafı
+        // PublicMenuController ile aynı desen). Token/kayıt daha çözülmeden
+        // dönen error/locked view'ları için erken çözülür — aksi halde her
+        // zaman TR kalırlardı. Ana kiosk ekranı (kiosk.screen) kendi TR/EN
+        // dock'unu istemci tarafında yönetir; bu sadece o yüklenmeden ÖNCEki
+        // sunucu-render sayfaları kapsar.
+        $locale = strtolower((string) $request->query('lang', ''));
+        if (! in_array($locale, ['tr', 'en', 'de'], true)) {
+            $locale = 'tr';
+        }
+        app()->setLocale($locale);
+
         // Tarama girişimine karşı emniyet supabı (kiosk tek cihazdır; cömert).
         $limiterKey = 'kiosk-screen:'.sha1((string) $request->ip());
 

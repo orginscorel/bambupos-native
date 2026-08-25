@@ -3,17 +3,25 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { useVersionWatch } from '@/composables/useVersionWatch';
 import ToastHost from '@/Components/ui/ToastHost.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseButton from '@/Components/ui/BaseButton.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import KdsIcon from './KdsIcon.vue';
+import ImageLightbox from '@/Components/ui/ImageLightbox.vue';
 import KdsItemImage from './KdsItemImage.vue';
 import KdsNavDrawer from './KdsNavDrawer.vue';
 import KdsTicket from './KdsTicket.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
 import { useReceiptPrint, formatReceiptTime, type ReceiptData } from './useReceiptPrint';
+import { useTerminalHeartbeat } from '@/composables/useTerminalHeartbeat';
+import { useTerminalIdleLock } from '@/composables/useTerminalIdleLock';
+import { useTerminalOperator } from '@/composables/useTerminalOperator';
+import TerminalOperatorGate from '@/Components/panel/TerminalOperatorGate.vue';
+import LockOverlay from '@/Components/panel/LockOverlay.vue';
+import TerminalTopBar from '@/Components/panel/TerminalTopBar.vue';
 import {
     createKdsSound,
     createPollingFeed,
@@ -43,6 +51,7 @@ import {
 const page = usePage();
 const meta = metaFromKdsProps(page.props as Record<string, unknown>);
 const { success, danger, warning } = useToast();
+useVersionWatch();
 
 const auth = page.props.auth as {
     branches?: { id: number; name: string }[];
@@ -84,6 +93,7 @@ const items = ref<RunnerItem[]>([]);
 const serverSkewMs = ref(0);
 const knownItemIds = new Set<number>();
 const newItemIds = ref<Set<number>>(new Set());
+let newHighlightTimer: ReturnType<typeof setTimeout> | null = null;
 let feed: KdsFeed | null = null;
 
 const sound = createKdsSound('kds_runner_sound');
@@ -104,16 +114,18 @@ function applyPayload(payload: RunnerPayload, silent = false): void {
     if (!silent && fresh.size > 0) {
         newItemIds.value = fresh;
         sound.beep(2);
-        setTimeout(() => (newItemIds.value = new Set()), 10000);
+        if (newHighlightTimer) clearTimeout(newHighlightTimer);
+        newHighlightTimer = setTimeout(() => (newItemIds.value = new Set()), 10000);
     }
 }
 
 function buildFeed(): KdsFeed {
     let first = true;
     return createPollingFeed<RunnerPayload>({
-        fetchFull: () => api<RunnerPayload>(`/api/v1/kds/queue?mode=runner&branch_id=${branchId.value}`),
-        fetchDelta: (cursor) =>
-            getOrNull<RunnerPayload>(`/api/v1/kds/updates?mode=runner&branch_id=${branchId.value}&cursor=${cursor}`),
+        // ŞUBE KAPSAMI backend'de OTURUMDAN çözülür (BranchContext), istekten
+        // ASLA alınmaz — branch_id burada bilerek GÖNDERİLMEZ (bkz. selectBranch).
+        fetchFull: () => api<RunnerPayload>(`/api/v1/kds/queue?mode=runner`),
+        fetchDelta: (cursor) => getOrNull<RunnerPayload>(`/api/v1/kds/updates?mode=runner&cursor=${cursor}`),
         onData: (payload) => {
             applyPayload(payload, first);
             first = false;
@@ -142,6 +154,9 @@ async function restartFeed(): Promise<void> {
 const kdsTheme = useKdsTheme();
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 const clockTick = ref(Date.now());
+
+// Terminal cihazsa: last_seen_at canlı (panel "Çevrimiçi" doğru) — Kitchen ile eşit.
+useTerminalHeartbeat();
 
 onMounted(() => {
     void restartFeed();
@@ -174,13 +189,16 @@ function waitLevel(item: RunnerItem): SlaLevel {
 
 const busy = ref(false);
 
-async function runAction(fn: () => Promise<unknown>, okMsg: string): Promise<void> {
-    if (busy.value) return;
+/** Başarıysa true döner → çağıran yalnız BAŞARIDA yan-etki uygular (ör. "son
+ *  götürülenler"e ekleme). Hata yutulur ama false ile bildirilir. */
+async function runAction(fn: () => Promise<unknown>, okMsg: string): Promise<boolean> {
+    if (busy.value) return false;
     busy.value = true;
     try {
         await fn();
         if (okMsg) success(okMsg, '');
         await feed?.refresh();
+        return true;
     } catch (e) {
         if (e instanceof ApiError && e.status === 409) {
             warning('Eşzamanlı değişiklik', 'Sipariş başka ekrandan değişti; liste tazelendi.');
@@ -188,6 +206,7 @@ async function runAction(fn: () => Promise<unknown>, okMsg: string): Promise<voi
         } else {
             danger('İşlem tamamlanamadı', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen hata.');
         }
+        return false;
     } finally {
         busy.value = false;
     }
@@ -212,7 +231,8 @@ function delivered(item: RunnerItem): void {
                 body: { to: 'served', expected_version: item.order_version },
             }),
         'Masaya götürüldü',
-    ).then(() => {
+    ).then((ok) => {
+        if (!ok) return; // teslim başarısızsa "son götürülenler"e EKLEME
         recentDelivered.value = [
             { id: item.id, label: `${item.qty}× ${item.name} → ${item.table_name ?? item.channel_label}`, at: Date.now() },
             ...recentDelivered.value.filter((r) => r.id !== item.id),
@@ -222,7 +242,7 @@ function delivered(item: RunnerItem): void {
 
 function undoServe(id: number): void {
     void runAction(() => api(`/api/v1/kds/items/${id}/undo`, { method: 'POST', body: {} }), 'Servis işareti geri alındı').then(
-        () => (recentDelivered.value = recentDelivered.value.filter((r) => r.id !== id)),
+        (ok) => ok && (recentDelivered.value = recentDelivered.value.filter((r) => r.id !== id)),
     );
 }
 
@@ -233,47 +253,47 @@ function toggleSound(): void {
     if (soundOn.value) sound.beep(1);
 }
 
-const isFullscreen = ref(false);
-function toggleFullscreen(): void {
-    if (document.fullscreenElement) {
-        void document.exitFullscreen();
-        isFullscreen.value = false;
-    } else {
-        void document.documentElement.requestFullscreen?.();
-        isFullscreen.value = true;
-    }
-}
-
 // Nav çekmecesi (soldan overlay) — diğer panel bölümlerine kaçış-kapısı.
 const showNav = ref(false);
 
 // §13 Terminal kilitli mod: cihaz oturumunda nav çekmecesi GİZLENİR + rozet.
 const isTerminal = computed(() => Boolean((page.props.auth as { is_terminal?: boolean } | null)?.is_terminal));
-const terminalStationLabel = computed(() => {
-    const key = (page.props.auth as { terminal_station?: string | null } | null)?.terminal_station ?? '';
-    if (key === 'barista') return 'Barista';
-    if (key === 'komi') return 'Komi';
-    if (key === 'kitchen') return 'Mutfak';
-    return key;
-});
 
-/* §13 Terminal oturumunu kapat (yöneticiye dönüş): POST /terminal/logout → /giris. */
-const terminalLoggingOut = ref(false);
-async function terminalLogout(): Promise<void> {
-    if (terminalLoggingOut.value) return;
-    terminalLoggingOut.value = true;
-    try {
-        await api('/terminal/logout', { method: 'POST' });
-    } catch {
-        /* oturum düşmüş olabilir; her durumda giriş ekranına dön */
-    }
-    window.location.href = '/giris';
-}
+/* §13 Faz D (FAZ3 entegrasyon): boşta-kalma kilidi — PanelLayout/Cashier.vue/
+ * Board.vue/Kitchen.vue ile BİREBİR AYNI desen (yalnız aktif operatör varken
+ * izlenir). `activeOperator` AYNI kaynaktan (useTerminalOperator) — kopya
+ * mantık yok. */
+const { current: activeOperator } = useTerminalOperator();
+const idleLockEnabled = computed(() => isTerminal.value && Boolean(activeOperator.value));
+const { locked: idleLocked, unlock: unlockIdle } = useTerminalIdleLock({ enabled: idleLockEnabled });
 
 const branchOptions = computed(() => branches.map((b) => ({ value: String(b.id), label: b.name })));
-function selectBranch(id: string): void {
-    branchId.value = Number(id);
-    void restartFeed();
+
+/*
+ * Şube değiştirici (yalnız çok-şubeli yönetici, >1 şubede görünür — bkz.
+ * template). Denetim notu: bu, KDS sorgu ucuna branch_id GEÇİRMİYORDU — o
+ * parametre backend'de (KdsQueueController) BİLEREK yok sayılır, çünkü
+ * ŞUBE KAPSAMI güvenlik sınırıdır ve istekten ASLA alınmaz (bkz.
+ * BranchContext). Doğru/tek güvenli yol: panelin geri kalanının (PanelShell
+ * şube değiştirici) kullandığı GERÇEK uç — POST /api/v1/auth/active-branch —
+ * ile oturumdaki aktif şubeyi bizzat değiştirmek, ardından akışı o yeni
+ * şubeyle yeniden başlatmak. Böylece KdsQueueController hiç değişmeden
+ * (currentBranchId() zaten oturumu okur) seçim gerçekten etkili olur.
+ */
+const switchingBranch = ref(false);
+async function selectBranch(id: string): Promise<void> {
+    const nextId = Number(id);
+    if (nextId === branchId.value || switchingBranch.value) return;
+    switchingBranch.value = true;
+    try {
+        await api('/api/v1/auth/active-branch', { method: 'POST', body: { branch_id: nextId } });
+        branchId.value = nextId;
+        await restartFeed();
+    } catch (e) {
+        danger('Şube değiştirilemedi', e instanceof ApiError ? e.displayMessage : 'Lütfen tekrar deneyin.');
+    } finally {
+        switchingBranch.value = false;
+    }
 }
 </script>
 
@@ -281,55 +301,33 @@ function selectBranch(id: string): void {
     <Head title="Komi Ekranı" />
 
     <div class="kds-canvas fixed inset-0 flex flex-col overflow-hidden text-body">
-        <!-- ================= Üst çubuk (mutfakla aynı dil) ================= -->
-        <header
-            class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-default bg-raised px-3 py-2 shadow-[0_6px_16px_-12px_rgba(0,0,0,0.6)]"
+        <!-- ================= Üst çubuk (ortak terminal deseni) ================= -->
+        <TerminalTopBar
+            screen-label="Komi · Servis Ekranı"
+            :theme="kdsTheme.theme.value"
+            @toggle-theme="kdsTheme.toggle()"
+            @open-nav="showNav = true"
         >
-            <BaseButton v-if="!isTerminal" variant="ghost" size="lg" icon-only label="Panele dön" href="/panel">
-                <AppIcon name="arrow-left" :size="20" />
-            </BaseButton>
+            <template #status>
+                <span class="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-default bg-inset px-2.5 py-1 text-xs font-semibold text-muted tabular-nums">
+                    {{ items.length }} hazır ürün
+                </span>
+            </template>
 
-            <BaseButton v-if="!isTerminal" variant="ghost" size="lg" icon-only label="Menüyü aç" @click="showNav = true">
-                <AppIcon name="menu" :size="20" />
-            </BaseButton>
-
-            <!-- §13 Terminal kilit rozeti (cihaz oturumu) -->
-            <span
-                v-if="isTerminal"
-                class="inline-flex items-center gap-1.5 rounded-full border border-default bg-inset px-2.5 py-1 text-xs font-semibold text-muted"
-                title="Bu cihaz istasyon terminaline kilitlidir"
-            >
-                <AppIcon name="tablet" :size="13" />
-                Terminal · {{ terminalStationLabel }}
-            </span>
-            <BaseButton
-                v-if="isTerminal"
-                variant="ghost"
-                size="sm"
-                :loading="terminalLoggingOut"
-                label="Terminal oturumunu kapat (yöneticiye dön)"
-                @click="terminalLogout"
-            >
-                <AppIcon name="logout" :size="15" />
-                Çıkış
-            </BaseButton>
-
-            <h1 class="text-lg font-semibold">Komi Ekranı</h1>
-
-            <span class="text-sm text-muted tabular-nums">{{ items.length }} hazır ürün</span>
-
-            <div class="ml-auto flex flex-wrap items-center gap-1.5">
-                <div v-if="branchOptions.length > 1" class="w-44">
+            <template #actions>
+                <div v-if="branchOptions.length > 1" class="w-40">
                     <BaseSelect
                         :model-value="String(branchId)"
                         :options="branchOptions"
+                        size="sm"
+                        :disabled="switchingBranch"
                         @update:model-value="selectBranch(String($event))"
                     />
                 </div>
 
                 <BaseButton
                     variant="ghost"
-                    size="lg"
+                    size="md"
                     icon-only
                     :label="soundOn ? 'Yeni ürün sesi: açık' : 'Yeni ürün sesi: kapalı'"
                     :class="soundOn ? '' : 'text-subtle'"
@@ -337,28 +335,8 @@ function selectBranch(id: string): void {
                 >
                     <KdsIcon :name="soundOn ? 'volume-on' : 'volume-off'" :size="20" />
                 </BaseButton>
-
-                <BaseButton
-                    variant="ghost"
-                    size="lg"
-                    icon-only
-                    :label="kdsTheme.theme.value === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'"
-                    @click="kdsTheme.toggle()"
-                >
-                    <KdsIcon :name="kdsTheme.theme.value === 'dark' ? 'sun' : 'moon'" :size="20" />
-                </BaseButton>
-
-                <BaseButton
-                    variant="ghost"
-                    size="lg"
-                    icon-only
-                    :label="isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'"
-                    @click="toggleFullscreen"
-                >
-                    <KdsIcon :name="isFullscreen ? 'compress' : 'expand'" :size="20" />
-                </BaseButton>
-            </div>
-        </header>
+            </template>
+        </TerminalTopBar>
 
         <!-- ================= Servis kuyruğu ================= -->
         <main class="flex-1 overflow-y-auto p-4">
@@ -501,7 +479,14 @@ function selectBranch(id: string): void {
     <!-- ================= Nav çekmecesi (soldan overlay) ================= -->
     <KdsNavDrawer v-if="!isTerminal" :open="showNav" @close="showNav = false" />
 
+    <!-- Terminalde: zorunlu personel giriş gate'i + operatör barı (Kitchen ile eşit) -->
+    <TerminalOperatorGate />
+
+    <!-- §13 Faz D: boşta-kalma sonrası ekran kilidi (yalnız aktif operatör varken) -->
+    <LockOverlay v-if="idleLocked" @unlocked="unlockIdle" />
+
     <ToastHost />
+    <ImageLightbox />
 </template>
 
 <style scoped>

@@ -78,6 +78,12 @@ abstract class KdsTestCase extends TestCase
             $itemIds[] = (int) collect($res->json('order.items'))->last()['id'];
         }
 
+        // Yeni akış: eklenen kalemler "placed" (gönderilmemiş taslak) doğar ve KDS'e
+        // DÜŞMEZ; mutfağa görünmesi için önce "Mutfağa gönder" (sent_to_station).
+        if ($items !== []) {
+            $this->postJson("/api/v1/orders/{$orderId}/send-to-kitchen")->assertOk();
+        }
+
         $version = (int) $this->getJson("/api/v1/orders/{$orderId}")->json('order.version');
 
         auth('web')->logout();

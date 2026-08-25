@@ -82,11 +82,12 @@ class OrderLifecycleTest extends TestCase
         $this->assertSame('partially_paid', $res->json('order.status'));
         $this->assertSame('partially_paid', Table::withoutTenancy()->find($table->id)->status->value);
 
-        // 8) Kalan ödeme → "Ödendi", masa "Temizleniyor" (açık adisyon kalmadı)
+        // 8) Kalan ödeme → "Ödendi"; masa OTOMATİK "Boş" (ödeme sonrası oto-boşalma;
+        //    eskiden "Temizleniyor"da takılıyordu — kullanıcı isteğiyle değişti).
         $res = $this->postJson("/api/v1/orders/{$orderId}/pay", ['amount_minor' => 25000, 'method' => 'card'])->assertOk();
         $this->assertSame('paid', $res->json('order.status'));
         $this->assertSame(0, $res->json('order.remaining_minor'));
-        $this->assertSame('cleaning', Table::withoutTenancy()->find($table->id)->status->value);
+        $this->assertSame('available', Table::withoutTenancy()->find($table->id)->status->value);
     }
 
     public function test_gecersiz_durum_gecisleri_reddedilir(): void

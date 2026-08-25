@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Support;
 
 use App\Modules\Catalog\Support\Money;
 use App\Modules\Orders\Enums\OrderItemStatus;
+use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Models\OrderEvent;
 use App\Modules\Orders\Models\OrderItem;
@@ -44,6 +45,15 @@ final class OrderPresenter
         return [
             'id' => $order->id,
             'branch_id' => $order->branch_id,
+            // BİRLEŞİK MASALAR: bu adisyona sonradan bağlanmış masaların adları.
+            // Kasa ve sipariş ekranı "Masa 4 + Masa 5" diye gösterir; hesabın
+            // hangi masaları kapsadığı tek bakışta bellidir.
+            'linked_table_names' => \App\Modules\Orders\Models\OrderLinkedTable::query()
+                ->where('order_id', $order->getKey())
+                ->join('tables', 'tables.id', '=', 'order_linked_tables.table_id')
+                ->orderBy('tables.number')
+                ->pluck('tables.name')
+                ->all(),
             'table_id' => $order->table_id,
             'table_name' => $order->table?->name,
             'channel' => $channel->value,
@@ -146,6 +156,10 @@ final class OrderPresenter
             'cancel_reason' => $item->cancel_reason,
             'options' => $item->options->map(fn ($o) => [
                 'id' => $o->id,
+                // Katalog seçenek referansı (nullable) — kalem düzenleme ekranı
+                // mevcut seçimleri İŞARETLEYEBİLSİN diye eklendi; ada göre
+                // eşleştirme kırılgandı. Yalnız EK alan, mevcutlar değişmedi.
+                'option_id' => $o->option_id,
                 'group_name' => $o->group_name,
                 'option_name' => $o->option_name,
                 'price_minor' => (int) $o->price_minor,
@@ -176,7 +190,7 @@ final class OrderPresenter
         return [
             'public_token' => $order->public_token,
             'status' => $status->value,
-            'status_label' => $status->label(),
+            'status_label' => static::publicStatusLabel($status),
             'total_minor' => (int) $order->total_minor,
             'total_display' => Money::toDecimalString((int) $order->total_minor),
             'items' => $order->items->map(fn (OrderItem $i) => [
@@ -189,5 +203,21 @@ final class OrderPresenter
             ])->values()->all(),
             'created_at' => $order->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * QR müşterisine gösterilen durum etiketi — TR/EN/DE (public menü ?lang=
+     * ile app locale'ı değiştirir; PublicMenuController::show). `OrderStatus::
+     * label()` BİLİNÇLİ olarak TR sabit bırakılır (panel/KDS/Vue hep buna
+     * dayanır, personel arayüzü tek dilli) — o yüzden burada AYRI, yalnız
+     * public görünüme özgü bir çeviri katmanı var. Anahtar `lang/*\/menu.php`
+     * → `order_status.*`'te enum değerleriyle birebir tutulur; çeviri
+     * eksikse (parite bozulursa) sessizce TR'ye düşer, sayfa asla kırılmaz.
+     */
+    private static function publicStatusLabel(OrderStatus $status): string
+    {
+        $key = 'menu.order_status.'.$status->value;
+
+        return \Illuminate\Support\Facades\Lang::has($key) ? __($key) : $status->label();
     }
 }

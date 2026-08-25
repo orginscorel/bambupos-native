@@ -10,11 +10,14 @@ import BaseDropdown from '@/Components/ui/BaseDropdown.vue';
 import BaseModal from '@/Components/ui/BaseModal.vue';
 import BasePagination from '@/Components/ui/BasePagination.vue';
 import BaseSelect from '@/Components/ui/BaseSelect.vue';
-import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import BaseSwitch from '@/Components/ui/BaseSwitch.vue';
+import DataTable, { type TableColumn } from '@/Components/ui/DataTable.vue';
 import DropdownItem from '@/Components/ui/DropdownItem.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
+import TableToolbar from '@/Components/ui/TableToolbar.vue';
+import FilterChip from '@/Components/ui/FilterChip.vue';
+import BottomSheet from '@/Components/ui/BottomSheet.vue';
 import StaffShell from './components/StaffShell.vue';
 import StaffFormDrawer from './components/StaffFormDrawer.vue';
 import OverridesDrawer from './components/OverridesDrawer.vue';
@@ -64,6 +67,27 @@ const statusOptions = [
 ];
 
 const canManage = computed(() => meta.value?.actor.can_manage_staff ?? false);
+
+/* ---- Native mobil filtre (chip + bottom sheet) ---- */
+const filterSheet = ref(false);
+/** Şube/rol seçili mi (durum mobilde chip; sheet rozetine sayılmaz). */
+const mobileFilterCount = computed(() => (branchId.value ? 1 : 0) + (roleId.value ? 1 : 0));
+function clearMobileFilters(): void {
+    branchId.value = '';
+    roleId.value = '';
+    status.value = '';
+}
+
+/* Kolonlar: 'name' kart başlığı; ikincil kolonlar dar ekranda karta iner;
+ * 'actions' sağa yapışık kalır (kırpılmaz). */
+const columns: TableColumn[] = [
+    { key: 'name', label: 'Personel', priority: 'primary' },
+    { key: 'branch', label: 'Şube', hideBelow: 'lg' },
+    { key: 'roles', label: 'Roller', hideBelow: 'md' },
+    { key: 'last_login', label: 'Son giriş', hideBelow: 'lg' },
+    { key: 'is_active', label: 'Aktif', align: 'center', widthClass: 'w-20' },
+    { key: 'actions', label: 'İşlemler', align: 'right', action: true },
+];
 
 async function load(): Promise<void> {
     loading.value = true;
@@ -222,138 +246,180 @@ function formatDate(value: string | null): string {
     <Head title="Personel" />
     <StaffShell title="Personel">
         <div class="flex flex-col gap-4">
-            <!-- Araç çubuğu -->
-            <div class="flex flex-wrap items-center gap-2">
-                <SearchInput v-model="q" placeholder="Ad, e-posta, kod veya telefon ara" class="w-full sm:w-64" />
-                <BaseSelect v-model="branchId" :options="branchOptions" size="sm" class="w-40" />
-                <BaseSelect v-model="roleId" :options="roleOptions" size="sm" class="w-40" />
-                <BaseSelect v-model="status" :options="statusOptions" size="sm" class="w-44" />
-                <span class="grow" />
-                <BaseButton v-if="canManage" @click="openCreate">
-                    <AppIcon name="plus" :size="16" />
-                    Yeni Personel
-                </BaseButton>
+            <!-- Araç çubuğu (masaüstü): tüm filtreler tek satırda -->
+            <div class="hidden md:block">
+                <TableToolbar>
+                    <SearchInput v-model="q" placeholder="Ad, e-posta, kod veya telefon ara" class="w-full sm:w-64" />
+                    <BaseSelect v-model="branchId" :options="branchOptions" size="sm" class="w-full sm:w-40" />
+                    <BaseSelect v-model="roleId" :options="roleOptions" size="sm" class="w-full sm:w-40" />
+                    <BaseSelect v-model="status" :options="statusOptions" size="sm" class="w-full sm:w-44" />
+                    <template #action>
+                        <BaseButton v-if="canManage" class="w-full sm:w-auto" @click="openCreate">
+                            <AppIcon name="plus" :size="16" />
+                            Yeni Personel
+                        </BaseButton>
+                    </template>
+                </TableToolbar>
             </div>
 
+            <!-- Native mobil filtre: arama + durum chip'leri + "Filtrele" sheet -->
+            <div class="flex flex-col gap-3 md:hidden">
+                <SearchInput v-model="q" placeholder="Ad, e-posta, kod ara" class="w-full" />
+                <div class="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-0.5">
+                    <FilterChip
+                        v-for="opt in statusOptions"
+                        :key="opt.value"
+                        :label="opt.label"
+                        :active="status === opt.value"
+                        @click="status = opt.value"
+                    />
+                </div>
+                <div class="flex gap-2">
+                    <BaseButton variant="secondary" class="flex-1" @click="filterSheet = true">
+                        <AppIcon name="filter" :size="15" />
+                        Filtrele
+                        <span
+                            v-if="mobileFilterCount"
+                            class="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-on-primary tabular-nums"
+                        >{{ mobileFilterCount }}</span>
+                    </BaseButton>
+                    <BaseButton v-if="canManage" class="flex-1" @click="openCreate">
+                        <AppIcon name="plus" :size="16" />
+                        Yeni
+                    </BaseButton>
+                </div>
+            </div>
+
+            <!-- Mobil filtre bottom sheet: şube + rol + durum -->
+            <BottomSheet v-model="filterSheet" title="Filtrele">
+                <div class="flex flex-col gap-4">
+                    <label class="flex flex-col gap-1.5">
+                        <span class="text-[13px] font-medium text-muted">Şube</span>
+                        <BaseSelect v-model="branchId" :options="branchOptions" />
+                    </label>
+                    <label class="flex flex-col gap-1.5">
+                        <span class="text-[13px] font-medium text-muted">Rol</span>
+                        <BaseSelect v-model="roleId" :options="roleOptions" />
+                    </label>
+                    <label class="flex flex-col gap-1.5">
+                        <span class="text-[13px] font-medium text-muted">Durum</span>
+                        <BaseSelect v-model="status" :options="statusOptions" />
+                    </label>
+                </div>
+                <template #footer>
+                    <BaseButton variant="ghost" @click="clearMobileFilters">Temizle</BaseButton>
+                    <BaseButton @click="filterSheet = false">Uygula</BaseButton>
+                </template>
+            </BottomSheet>
+
             <!-- Liste -->
-            <div class="overflow-x-auto rounded-lg border border-default bg-raised">
-                <table class="w-full min-w-[860px] text-sm">
-                    <thead>
-                        <tr class="border-b border-default text-left text-xs text-subtle uppercase">
-                            <th class="px-3 py-2.5 font-medium">Personel</th>
-                            <th class="px-3 py-2.5 font-medium">Şube</th>
-                            <th class="px-3 py-2.5 font-medium">Roller</th>
-                            <th class="px-3 py-2.5 font-medium">Son giriş</th>
-                            <th class="px-3 py-2.5 font-medium">Aktif</th>
-                            <th class="px-3 py-2.5 text-right font-medium">İşlemler</th>
-                        </tr>
-                    </thead>
-                    <tbody v-if="loading">
-                        <tr v-for="i in 5" :key="i" class="border-b border-default">
-                            <td v-for="c in 6" :key="c" class="px-3 py-3"><BaseSkeleton class="h-5 w-full" /></td>
-                        </tr>
-                    </tbody>
-                    <tbody v-else-if="rows.length > 0">
-                        <tr v-for="row in rows" :key="row.id" class="border-b border-default last:border-0" :class="row.is_active ? '' : 'opacity-60'">
-                            <td class="px-3 py-2.5">
-                                <span class="flex flex-col">
-                                    <span class="font-medium text-body">{{ row.name }}</span>
-                                    <span class="flex flex-wrap gap-x-2 text-xs text-subtle">
-                                        <span>{{ row.email }}</span>
-                                        <span v-if="row.staff_code">Kod: {{ row.staff_code }}</span>
-                                        <span v-if="row.position">{{ row.position }}</span>
-                                    </span>
-                                </span>
-                            </td>
-                            <td class="px-3 py-2.5 text-muted">{{ row.branch?.name ?? '—' }}</td>
-                            <td class="px-3 py-2.5">
-                                <span class="flex flex-wrap gap-1">
-                                    <BaseBadge v-for="role in row.roles" :key="role.id" :variant="role.is_system ? 'primary' : 'neutral'" no-icon>
-                                        {{ role.name }}
-                                    </BaseBadge>
-                                    <BaseBadge v-if="(row.personal_overrides_count ?? 0) > 0" variant="info" no-icon>
-                                        {{ row.personal_overrides_count }} istisna
-                                    </BaseBadge>
-                                </span>
-                            </td>
-                            <td class="px-3 py-2.5 text-muted">{{ formatDate(row.last_login_at) }}</td>
-                            <td class="px-3 py-2.5">
-                                <BaseSwitch
-                                    size="sm"
-                                    :model-value="row.is_active"
-                                    :aria-label="`${row.name} aktif/pasif`"
-                                    :disabled="!canManage || row.id === actorId"
-                                    :busy="togglingId === row.id"
-                                    @update:model-value="toggleActive(row, $event)"
-                                />
-                            </td>
-                            <td class="px-3 py-2.5">
-                                <span class="flex items-center justify-end gap-1">
-                                    <BaseButton
-                                        v-if="canManage"
-                                        size="sm"
-                                        variant="ghost"
-                                        icon-only
-                                        :label="`${row.name} düzenle`"
-                                        @click="openEdit(row)"
-                                    >
-                                        <AppIcon name="pencil" :size="15" />
-                                    </BaseButton>
-                                    <BaseDropdown v-if="canManage" menu-label="Personel işlemleri">
-                                        <template #trigger="{ toggle, ariaAttrs }">
-                                            <button
-                                                type="button"
-                                                v-bind="ariaAttrs"
-                                                class="flex size-8 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
-                                                :aria-label="`${row.name} diğer işlemler`"
-                                                @click="toggle"
-                                            >
-                                                <AppIcon name="dots-vertical" :size="16" />
-                                            </button>
-                                        </template>
-                                        <DropdownItem icon="users" @select="openOverrides(row)">Yetki istisnaları</DropdownItem>
-                                        <DropdownItem icon="label" @select="openPin(row)">
-                                            {{ row.has_pin ? 'PIN sıfırla / kaldır' : 'PIN belirle' }}
-                                        </DropdownItem>
-                                        <DropdownItem icon="inbox" @select="sendResetLink(row)">Parola sıfırlama bağlantısı gönder</DropdownItem>
-                                        <DropdownItem v-if="canImpersonate(row)" icon="user" @select="impersonateTarget = row">
-                                            Test için giriş yap
-                                        </DropdownItem>
-                                        <DropdownItem
-                                            v-if="row.is_active && row.id !== actorId"
-                                            icon="logout"
-                                            danger
-                                            @select="terminateTarget = row"
-                                        >
-                                            İşten çıkar (pasife al)
-                                        </DropdownItem>
-                                        <DropdownItem v-if="!row.is_active" icon="check" @select="reactivate(row)">
-                                            Yeniden aktifleştir
-                                        </DropdownItem>
-                                    </BaseDropdown>
-                                </span>
-                            </td>
-                        </tr>
-                    </tbody>
-                    <tbody v-else>
-                        <tr>
-                            <td colspan="6">
-                                <EmptyState
-                                    icon="users"
-                                    title="Personel bulunamadı"
-                                    :description="q || branchId || roleId || status ? 'Filtrelerle eşleşen personel yok.' : 'İlk personel hesabını açın.'"
+            <div class="overflow-hidden rounded-lg border border-default bg-raised">
+                <DataTable
+                    :columns="columns"
+                    :rows="(rows as unknown as Record<string, unknown>[])"
+                    :loading="loading"
+                    caption="Personel listesi"
+                >
+                    <template #cell-name="{ row }">
+                        <span class="flex flex-col">
+                            <span class="font-medium text-body">{{ (row as unknown as StaffRow).name }}</span>
+                            <span class="flex flex-wrap gap-x-2 text-xs text-subtle">
+                                <span class="truncate">{{ (row as unknown as StaffRow).email }}</span>
+                                <span v-if="(row as unknown as StaffRow).staff_code">Kod: {{ (row as unknown as StaffRow).staff_code }}</span>
+                                <span v-if="(row as unknown as StaffRow).position">{{ (row as unknown as StaffRow).position }}</span>
+                            </span>
+                        </span>
+                    </template>
+                    <template #cell-branch="{ row }">
+                        <span class="text-muted">{{ (row as unknown as StaffRow).branch?.name ?? '—' }}</span>
+                    </template>
+                    <template #cell-roles="{ row }">
+                        <span class="flex flex-wrap gap-1">
+                            <BaseBadge
+                                v-for="role in (row as unknown as StaffRow).roles"
+                                :key="role.id"
+                                :variant="role.is_system ? 'primary' : 'neutral'"
+                                no-icon
+                            >
+                                {{ role.name }}
+                            </BaseBadge>
+                            <BaseBadge v-if="((row as unknown as StaffRow).personal_overrides_count ?? 0) > 0" variant="info" no-icon>
+                                {{ (row as unknown as StaffRow).personal_overrides_count }} istisna
+                            </BaseBadge>
+                        </span>
+                    </template>
+                    <template #cell-last_login="{ row }">
+                        <span class="text-muted tabular-nums">{{ formatDate((row as unknown as StaffRow).last_login_at) }}</span>
+                    </template>
+                    <template #cell-is_active="{ row }">
+                        <BaseSwitch
+                            size="sm"
+                            :model-value="(row as unknown as StaffRow).is_active"
+                            :aria-label="`${(row as unknown as StaffRow).name} aktif/pasif`"
+                            :disabled="!canManage || (row as unknown as StaffRow).id === actorId"
+                            :busy="togglingId === (row as unknown as StaffRow).id"
+                            @update:model-value="toggleActive(row as unknown as StaffRow, $event)"
+                        />
+                    </template>
+                    <template #cell-actions="{ row }">
+                        <BaseButton
+                            v-if="canManage"
+                            size="sm"
+                            variant="ghost"
+                            icon-only
+                            :label="`${(row as unknown as StaffRow).name} düzenle`"
+                            @click="openEdit(row as unknown as StaffRow)"
+                        >
+                            <AppIcon name="pencil" :size="15" />
+                        </BaseButton>
+                        <BaseDropdown v-if="canManage" menu-label="Personel işlemleri">
+                            <template #trigger="{ toggle, ariaAttrs }">
+                                <button
+                                    type="button"
+                                    v-bind="ariaAttrs"
+                                    class="flex size-8 items-center justify-center rounded-md text-muted transition-colors duration-(--dur-fast) hover:bg-inset hover:text-body"
+                                    :aria-label="`${(row as unknown as StaffRow).name} diğer işlemler`"
+                                    @click="toggle"
                                 >
-                                    <template #action>
-                                        <BaseButton v-if="canManage" @click="openCreate">
-                                            <AppIcon name="plus" :size="16" />
-                                            Yeni Personel
-                                        </BaseButton>
-                                    </template>
-                                </EmptyState>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                                    <AppIcon name="dots-vertical" :size="16" />
+                                </button>
+                            </template>
+                            <DropdownItem icon="users" @select="openOverrides(row as unknown as StaffRow)">Yetki istisnaları</DropdownItem>
+                            <DropdownItem icon="label" @select="openPin(row as unknown as StaffRow)">
+                                {{ (row as unknown as StaffRow).has_pin ? 'PIN sıfırla / kaldır' : 'PIN belirle' }}
+                            </DropdownItem>
+                            <DropdownItem icon="inbox" @select="sendResetLink(row as unknown as StaffRow)">Parola sıfırlama bağlantısı gönder</DropdownItem>
+                            <DropdownItem v-if="canImpersonate(row as unknown as StaffRow)" icon="user" @select="impersonateTarget = row as unknown as StaffRow">
+                                Test için giriş yap
+                            </DropdownItem>
+                            <DropdownItem
+                                v-if="(row as unknown as StaffRow).is_active && (row as unknown as StaffRow).id !== actorId"
+                                icon="logout"
+                                danger
+                                @select="terminateTarget = row as unknown as StaffRow"
+                            >
+                                İşten çıkar (pasife al)
+                            </DropdownItem>
+                            <DropdownItem v-if="!(row as unknown as StaffRow).is_active" icon="check" @select="reactivate(row as unknown as StaffRow)">
+                                Yeniden aktifleştir
+                            </DropdownItem>
+                        </BaseDropdown>
+                    </template>
+                    <template #empty>
+                        <EmptyState
+                            icon="users"
+                            title="Personel bulunamadı"
+                            :description="q || branchId || roleId || status ? 'Filtrelerle eşleşen personel yok.' : 'İlk personel hesabını açın.'"
+                        >
+                            <template #action>
+                                <BaseButton v-if="canManage" @click="openCreate">
+                                    <AppIcon name="plus" :size="16" />
+                                    Yeni Personel
+                                </BaseButton>
+                            </template>
+                        </EmptyState>
+                    </template>
+                </DataTable>
             </div>
 
             <div class="flex items-center justify-between">

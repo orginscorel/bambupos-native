@@ -9,7 +9,9 @@
 
     var L = window.QRM_L || {};
     var CFG = window.QRM_CFG || { orders: '', service: '' };
-    var TOKEN = location.pathname.split('/').pop();
+    // Sondaki eğik çizgi (/m/{token}/) boş segment verir → dolu son segmenti al.
+    var _pathSeg = location.pathname.split('/').filter(Boolean);
+    var TOKEN = _pathSeg.length ? _pathSeg[_pathSeg.length - 1] : '';
     var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     var dataEl = document.getElementById('qrm-data');
@@ -168,6 +170,10 @@
         var mx = parseInt(($('[data-f-pmax]') || {}).value, 10);
         F.pmin = isNaN(mn) ? null : mn * 100; // TL → kuruş
         F.pmax = isNaN(mx) ? null : mx * 100;
+        // min > max girilirse sessiz "sonuç yok" yerine değerleri değiştir.
+        if (F.pmin != null && F.pmax != null && F.pmin > F.pmax) {
+            var _sw = F.pmin; F.pmin = F.pmax; F.pmax = _sw;
+        }
     }
     function matches(p, catId) {
         if (F.q && norm(p.n + ' ' + (p.d || '')).indexOf(F.q) === -1) return false;
@@ -336,6 +342,7 @@
         // Meta rozetleri (porsiyon / hazırlık / kalori / acı) — ikonlu çip
         var meta = '';
         if (p.portion) meta += '<span class="m-meta__pill">' + ICN.portion + esc(p.portion) + '</span>';
+        if (p.wg != null) meta += '<span class="m-meta__pill">' + ICN.portion + p.wg + ' g</span>';
         if (p.prep != null) meta += '<span class="m-meta__pill">' + ICN.clock + p.prep + ' ' + t('prep') + '</span>';
         if (p.cal != null) meta += '<span class="m-meta__pill">' + ICN.flame + p.cal + ' ' + t('kcal') + '</span>';
         if (p.spicy > 0) meta += '<span class="m-meta__pill m-meta__pill--spicy">' + ICN.chili + t('spicy') + ' ' + Math.min(3, p.spicy) + '/3</span>';
@@ -390,6 +397,7 @@
             if (g.req) hints.push(t('choose_required'));
             if (g.min > 1) hints.push(t('choose_min', g.min));
             if (g.max != null && g.max > 1) hints.push(t('choose_max', g.max));
+            if (g.free && g.free > 0) hints.push(t('free_limit', g.free)); // ":n adedi ücretsiz"
             h += '<fieldset class="m-group" data-group="' + g.i + '" data-req="' + (g.req ? 1 : 0) + '" data-min="' + g.min + '" data-max="' + (g.max == null ? '' : g.max) + '">'
                 + '<legend class="m-group__title">' + esc(g.n) + '</legend>'
                 + (g.d ? '<p class="m-group__hint">' + esc(g.d) + '</p>' : '')
@@ -408,7 +416,7 @@
             h += '</fieldset>';
         });
         h += '<div class="m-group m-note"><label class="m-group__title" for="qrm-note">' + t('cart_note') + '</label>'
-            + '<textarea id="qrm-note" maxlength="300" placeholder="' + esc(t('cart_note_ph')) + '"></textarea></div>';
+            + '<textarea id="qrm-note" maxlength="255" placeholder="' + esc(t('cart_note_ph')) + '"></textarea></div>';
         h += '</div>';
         return h;
     }
@@ -477,7 +485,7 @@
             // NOT: sheet düğümleri kalıcı — dinleyiciler birikmesin diye property ataması
             foot.onclick = (function (e) {
                 if (e.target.closest('[data-dec]')) { qty = Math.max(p.minq, qty - 1); refresh(); }
-                else if (e.target.closest('[data-inc]')) { if (p.maxq == null || qty < p.maxq) { qty++; refresh(); } }
+                else if (e.target.closest('[data-inc]')) { var _cap = Math.min(p.maxq == null ? 50 : p.maxq, 50); if (qty < _cap) { qty++; refresh(); } } // sunucu adet üst sınırı = 50
                 else if (e.target.closest('[data-confirm-add]')) {
                     if (!validGroups(body)) return;
                     var sel = readSelection(body, p);
@@ -567,11 +575,13 @@
         var msg = $('[data-order-msg]');
         btn.disabled = true;
         btn.textContent = t('cart_submitting');
-        Api.submitOrder(items, cart.idem).then(function () {
+        Api.submitOrder(items, cart.idem).then(function (res) {
             writeCart({ lines: [] });
             renderCartSheet();
             closeSheet();
             toast(t('order_sent'));
+            // Sipariş durumu takibini başlat (müşteri "Hazırlanıyor → Hazır" görür).
+            if (res && res.order && res.order.public_token) startTracking(res.order);
         }).catch(function (err) {
             btn.disabled = false;
             btn.textContent = t('cart_submit');
@@ -588,7 +598,8 @@
         if (!btn || btn.disabled) return;
         var kind = btn.getAttribute('data-service');
         var q = { waiter: 'confirm_waiter', bill: 'confirm_bill', water: 'confirm_water' }[kind];
-        if (!window.confirm(t(q))) return;
+        var confirmMsg = kind === 'sarjmatik' ? t('confirm_sarjmatik') : t(q);
+        if (!window.confirm(confirmMsg)) return;
         btn.disabled = true;
         Api.serviceRequest(kind).then(function () {
             toast(t('service_sent'));
@@ -596,6 +607,89 @@
             toast(err && err.notReady ? t('api_not_ready') : t('api_error'), true);
         }).then(function () { btn.disabled = false; });
     });
+
+    /* ---------- sipariş durumu takibi (canlı: 10 sn polling) ----------
+       Müşteri sipariş verince "Onay bekliyor → Hazırlanıyor → Hazır → Servis"
+       kartı gösterilir. Uç hazır: GET {CFG.orders}/{public_token}?token=. Aktif
+       token localStorage'da; sayfa yenilense de takip sürer, bitince temizlenir. */
+    var OSTATUS_KEY = 'qrmenu.order.v1.' + TOKEN;
+    var ostatusEl = $('[data-order-status]');
+    var ostatusTimer = null;
+    // partially_ready sunucu etiketiyle (OrderStatus::label()) AYNI grupta: "Hazırlanıyor"
+    // adımı (1) — Ready/AwaitingService ("Garson & Komi bekliyor") ile değil. Metin/ilerleme
+    // çubuğu çelişkisini önlemek için burada da 1.
+    var OSTEP = { pending_approval: 0, placed: 1, sent_to_station: 1, accepted: 1, preparing: 1, partially_ready: 1, ready: 2, awaiting_service: 2, served: 3, bill_requested: 3, partially_paid: 3, paid: 3 };
+    var ODONE = { served: 1, paid: 1, cancelled: 1, refunded: 1, closed: 1, debt_transferred: 1 };
+    // i18n: durum ipuçları lang sözlüğünden (EN/DE'de de doğru dilde).
+    var OHINT = {
+        pending_approval: 'ostatus_pending',
+        ready: 'ostatus_ready',
+        awaiting_service: 'ostatus_ready'
+    };
+    function ostatusUrl(pt) {
+        if (!CFG.orders || !pt) return '';
+        return CFG.orders.replace(/\/+$/, '') + '/' + encodeURIComponent(pt) + '?token=' + encodeURIComponent(TOKEN);
+    }
+    function renderOStatus(order) {
+        if (!ostatusEl || !order) return;
+        var st = order.status || '';
+        var step = OSTEP[st]; if (step == null) step = 1;
+        var steps = '';
+        for (var i = 0; i < 4; i++) steps += '<span class="m-ostatus__step' + (i <= step ? ' is-on' : '') + '"></span>';
+        var hint = OHINT[st] ? t(OHINT[st]) : (ODONE[st] ? t('ostatus_done') : t('ostatus_progress'));
+        ostatusEl.innerHTML =
+            '<div class="m-ostatus__top"><span class="m-ostatus__badge"><span class="m-ostatus__dot"></span>' +
+            esc(order.status_label || t('ostatus_title')) + '</span>' +
+            '<button type="button" class="m-ostatus__close" data-ostatus-close aria-label="' + esc(t('close')) + '">×</button></div>' +
+            '<div class="m-ostatus__steps">' + steps + '</div>' +
+            '<div class="m-ostatus__hint">' + esc(hint) + '</div>';
+        ostatusEl.hidden = false;
+    }
+    function stopTracking(clear) {
+        if (ostatusTimer) { clearInterval(ostatusTimer); ostatusTimer = null; }
+        if (clear) { try { localStorage.removeItem(OSTATUS_KEY); } catch (e) {} }
+    }
+    var ostatusFails = 0;
+    function pollOStatus(pt) {
+        var url = ostatusUrl(pt);
+        if (!url) return;
+        fetch(url, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) {
+                // Sipariş yoksa/geçersizse (404/410) takibi bitir — bayat token
+                // ile sonsuza dek polling yapma (pil/istek israfı).
+                if (r.status === 404 || r.status === 410) { stopTracking(true); if (ostatusEl) ostatusEl.hidden = true; return null; }
+                return r.ok ? r.json() : null;
+            })
+            .then(function (d) {
+                if (!d || !d.order) { if (++ostatusFails >= 5) { stopTracking(true); } return; }
+                ostatusFails = 0;
+                renderOStatus(d.order);
+                if (ODONE[d.order.status]) {
+                    stopTracking(true);
+                    setTimeout(function () { if (ostatusEl) ostatusEl.hidden = true; }, 15000);
+                }
+            })
+            .catch(function () { if (++ostatusFails >= 5) { stopTracking(true); } });
+    }
+    function startTracking(order) {
+        if (!order || !order.public_token) return;
+        try { localStorage.setItem(OSTATUS_KEY, order.public_token); } catch (e) {}
+        renderOStatus(order);
+        stopTracking(false);
+        ostatusTimer = setInterval(function () { pollOStatus(order.public_token); }, 10000);
+        setTimeout(function () { pollOStatus(order.public_token); }, 4000);
+    }
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('[data-ostatus-close]')) {
+            stopTracking(true);
+            if (ostatusEl) ostatusEl.hidden = true;
+        }
+    });
+    (function resumeTracking() {
+        var pt = null;
+        try { pt = localStorage.getItem(OSTATUS_KEY); } catch (e) {}
+        if (pt) { ostatusTimer = setInterval(function () { pollOStatus(pt); }, 10000); pollOStatus(pt); }
+    })();
 
     /* ---------- görsel büyütme (lightbox) ----------
        Kart görselinin tam boyutlusu ZATEN indirilen dosya (~800px WebP) —

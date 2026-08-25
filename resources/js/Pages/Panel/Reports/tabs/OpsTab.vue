@@ -7,7 +7,7 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import ChartColumn from '../components/ChartColumn.vue';
 import ReportTable from '../components/ReportTable.vue';
 import ExportButtons from '../components/ExportButtons.vue';
-import { shortDay, useReport, type ReportFilterState } from '../reports';
+import { shortDay, useReport, type DeliverySlaReport, type ReportFilterState } from '../reports';
 
 const props = defineProps<{ filters: ReportFilterState }>();
 const filters = toRef(props, 'filters');
@@ -25,6 +25,7 @@ const usage = useReport<{
     channels: { channel: string; label: string; orders: number; share: number }[];
     scans: { date: string; total: number; ok: number }[];
 }>('ops-channel-usage', filters);
+const delivery = useReport<DeliverySlaReport>('ops-delivery-sla', filters);
 
 const scanPoints = computed(() =>
     (usage.data.value?.scans ?? []).map((s) => ({ label: shortDay(s.date), title: `${s.date} · ${s.ok} başarılı`, value: s.total })),
@@ -63,6 +64,73 @@ const qrShare = computed(() => {
                 ]"
                 :rows="delayed.data.value?.rows ?? []"
                 empty-text="Şu an geciken sipariş yok."
+            />
+        </BaseCard>
+
+        <!-- Komi Teslim SLA (§11): teslim alma → masaya verme logu + ihlaller -->
+        <BaseCard flush>
+            <template #header>
+                <h2 class="text-sm font-semibold text-body">
+                    Komi teslim SLA
+                    <span class="ml-1 font-normal text-subtle">
+                        (hedef: {{ delivery.data.value?.target_minutes ?? 2 }} dk)
+                    </span>
+                </h2>
+            </template>
+            <template #actions>
+                <ExportButtons report="ops-delivery-sla" :filters="filters" />
+            </template>
+            <div class="mb-3 flex flex-wrap gap-2 px-1">
+                <BaseBadge variant="neutral">
+                    Toplam teslim: {{ formatNumber(delivery.data.value?.total ?? 0) }}
+                </BaseBadge>
+                <BaseBadge :variant="(delivery.data.value?.breached_count ?? 0) > 0 ? 'danger' : 'success'">
+                    SLA ihlali: {{ formatNumber(delivery.data.value?.breached_count ?? 0) }}
+                    <template v-if="delivery.data.value && delivery.data.value.total > 0">
+                        (%{{ delivery.data.value.breach_rate.toFixed(1).replace('.', ',') }})
+                    </template>
+                </BaseBadge>
+                <BaseBadge v-if="(delivery.data.value?.open_breach_count ?? 0) > 0" variant="warning">
+                    Hâlâ masaya verilmedi: {{ formatNumber(delivery.data.value?.open_breach_count ?? 0) }}
+                </BaseBadge>
+                <BaseBadge v-if="delivery.data.value?.avg_duration_minutes != null" variant="neutral">
+                    Ortalama süre: {{ delivery.data.value.avg_duration_minutes.toFixed(1).replace('.', ',') }} dk
+                </BaseBadge>
+            </div>
+            <ReportTable
+                :columns="[
+                    { key: 'staff', label: 'Komi' },
+                    { key: 'item', label: 'Ürün' },
+                    { key: 'table', label: 'Masa' },
+                    { key: 'picked_up_at', label: 'Teslim alındı', format: 'raw' },
+                    { key: 'served_at', label: 'Masaya verildi', format: 'raw' },
+                    { key: 'duration_minutes', label: 'Süre', align: 'right', format: 'minutes' },
+                    { key: 'status', label: 'Durum' },
+                ]"
+                :rows="delivery.data.value?.rows ?? []"
+                empty-text="Henüz teslim kaydı yok."
+            >
+                <template #cell-picked_up_at="{ value }">{{ value ? new Date(String(value)).toLocaleString('tr-TR') : '—' }}</template>
+                <template #cell-served_at="{ value }">{{ value ? new Date(String(value)).toLocaleString('tr-TR') : '—' }}</template>
+                <template #cell-status="{ row }">
+                    <BaseBadge :variant="(row as { breached: boolean }).breached ? 'danger' : 'success'" no-icon>
+                        {{ (row as { status: string }).status }}
+                    </BaseBadge>
+                </template>
+            </ReportTable>
+        </BaseCard>
+
+        <BaseCard title="Komi bazında kırılım">
+            <ReportTable
+                :columns="[
+                    { key: 'name', label: 'Komi' },
+                    { key: 'deliveries', label: 'Teslim', align: 'right', format: 'number' },
+                    { key: 'breaches', label: 'İhlal', align: 'right', format: 'number' },
+                    { key: 'breach_rate', label: 'İhlal Oranı', align: 'right', format: 'percent' },
+                    { key: 'avg_duration_minutes', label: 'Ort. Süre', align: 'right', format: 'minutes' },
+                ]"
+                :rows="delivery.data.value?.by_staff ?? []"
+                empty-text="Henüz teslim kaydı yok."
             />
         </BaseCard>
 

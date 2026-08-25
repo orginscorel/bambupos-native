@@ -6,6 +6,10 @@ use App\Modules\Identity\Concerns\Auditable;
 use App\Modules\Identity\Support\Totp;
 use App\Modules\Tenancy\Concerns\BelongsToTenant;
 use App\Modules\Tenancy\Models\Branch;
+use chillerlan\QRCode\Common\EccLevel;
+use chillerlan\QRCode\Output\QROutputInterface;
+use chillerlan\QRCode\QRCode;
+use chillerlan\QRCode\QROptions;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -85,6 +89,20 @@ class KioskDevice extends Model
     public function screenUrl(): string
     {
         return rtrim((string) config('app.url'), '/').'/kiosk/'.$this->token;
+    }
+
+    /** Cihazda gösterilecek QR (giriş adresi) — SVG data URI (terminal deseni). */
+    public function qrDataUri(): string
+    {
+        $options = new QROptions([
+            'outputType' => QROutputInterface::MARKUP_SVG,
+            'eccLevel' => EccLevel::M,
+            'addQuietzone' => true,
+            'quietzoneSize' => 2,
+            'outputBase64' => true,
+        ]);
+
+        return (new QRCode($options))->render($this->screenUrl());
     }
 
     public function branch(): BelongsTo

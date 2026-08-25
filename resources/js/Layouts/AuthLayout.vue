@@ -30,18 +30,23 @@ const { theme, toggleTheme } = useTheme();
 
         <main class="flex grow items-start justify-center px-4 pt-6 pb-10 sm:items-center sm:pt-0">
             <div class="w-full" :class="wide ? 'max-w-md' : 'max-w-sm'">
-                <!-- Marka: ürün-nötr (müşteri adı/logosu yok) -->
-                <div class="mb-6 flex flex-col items-center gap-3">
-                    <span class="flex size-12 items-center justify-center rounded-xl bg-primary text-on-primary">
-                        <AppIcon name="qr-code" :size="26" />
+                <!-- Ürün kimliği: BamBumPOS (kiracıdan bağımsız, sabit) -->
+                <div class="mb-7 flex flex-col items-center gap-3 text-center">
+                    <span class="flex size-14 items-center justify-center rounded-2xl bg-primary text-on-primary shadow-lg ring-1 ring-black/5">
+                        <AppIcon name="qr-code" :size="28" />
                     </span>
-                    <div class="text-center">
-                        <h1 class="text-lg font-semibold text-body">{{ heading }}</h1>
-                        <p v-if="subheading" class="mt-1 text-sm text-muted">{{ subheading }}</p>
+                    <div>
+                        <p class="text-2xl font-extrabold tracking-tight text-body">BamBumPOS</p>
+                        <p class="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Restoran &amp; Kafe Yönetimi</p>
                     </div>
                 </div>
 
-                <div class="rounded-lg border border-default bg-raised p-6 shadow-card">
+                <!-- Kart: NET başlık + form -->
+                <div class="rounded-2xl border border-default bg-raised p-6 shadow-card sm:p-7">
+                    <div class="mb-5">
+                        <h1 class="text-xl font-bold tracking-tight text-body">{{ heading }}</h1>
+                        <p v-if="subheading" class="mt-1.5 text-sm leading-relaxed text-muted">{{ subheading }}</p>
+                    </div>
                     <slot />
                 </div>
 
@@ -51,6 +56,8 @@ const { theme, toggleTheme } = useTheme();
             </div>
         </main>
 
-        <footer class="pb-5 text-center text-xs text-subtle">powered by bogahost</footer>
+        <footer class="pb-5 text-center text-xs text-subtle">
+            powered by <a href="https://bogahost.com" target="_blank" rel="noopener" class="font-semibold text-muted hover:text-body">bogahost.com</a>
+        </footer>
     </div>
 </template>

@@ -26,17 +26,39 @@ class WebPushSender
     }
 
     /**
-     * @param  array<string, mixed>  $payload  service worker'ın göstereceği veri
+     * Tek kullanıcı — toplu yola delege eder (geriye dönük uyum).
+     *
+     * @param  array<string, mixed>  $payload
      */
     public function sendToUser(User $user, array $payload): void
+    {
+        $this->sendToUsers([$user], $payload);
+    }
+
+    /**
+     * ÇOK kullanıcıya TEK payload — tüm aboneliklerin curl'leri TEK flush()'ta
+     * PARALEL gönderilir (kullanıcı-başına ayrı tur YOK → hızlı). Dispatcher
+     * bunu `defer()` ile yanıttan SONRA çağırır → istek bloke olmaz (hız).
+     * ÖLÜ abonelik (404/410) budanır; hiçbir hata çağıran akışı düşürmez.
+     *
+     * @param  iterable<int, User|int>  $users
+     * @param  array<string, mixed>  $payload
+     */
+    public function sendToUsers(iterable $users, array $payload): void
     {
         if (! $this->enabled()) {
             return;
         }
 
-        $subscriptions = PushSubscription::query()
-            ->where('user_id', $user->getKey())
-            ->get();
+        $userIds = collect($users)
+            ->map(fn ($u) => $u instanceof User ? (int) $u->getKey() : (int) $u)
+            ->filter()->unique()->values()->all();
+
+        if ($userIds === []) {
+            return;
+        }
+
+        $subscriptions = PushSubscription::query()->whereIn('user_id', $userIds)->get();
 
         if ($subscriptions->isEmpty()) {
             return;
@@ -45,6 +67,7 @@ class WebPushSender
         try {
             $webPush = $this->client();
             $byEndpoint = [];
+            $json = json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '{}';
 
             foreach ($subscriptions as $sub) {
                 $byEndpoint[$sub->endpoint] = $sub;
@@ -53,13 +76,13 @@ class WebPushSender
                         'endpoint' => $sub->endpoint,
                         'keys' => ['p256dh' => $sub->p256dh, 'auth' => $sub->auth],
                     ]),
-                    json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '{}',
+                    $json,
                 );
             }
 
+            // Tek flush → tüm endpoint'ler paralel (curl_multi).
             foreach ($webPush->flush() as $report) {
-                $endpoint = $report->getEndpoint();
-                $sub = $byEndpoint[$endpoint] ?? null;
+                $sub = $byEndpoint[$report->getEndpoint()] ?? null;
 
                 if ($sub === null) {
                     continue;
@@ -74,7 +97,7 @@ class WebPushSender
             }
         } catch (\Throwable $e) {
             // Push best-effort: ağ/kütüphane hatası bildirimin geri kalanını bozmaz.
-            Log::warning('WebPush gönderimi başarısız', ['user_id' => $user->getKey(), 'error' => $e->getMessage()]);
+            Log::warning('WebPush gönderimi başarısız', ['users' => count($userIds), 'error' => $e->getMessage()]);
         }
     }
 

@@ -8,6 +8,7 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Tenancy\Models\Branch;
 use App\Modules\Tenancy\TenantContext;
 use App\Modules\Tenancy\TenantIsolationException;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -86,7 +87,19 @@ class StaffService
         $staff->save();
 
         if ($roleIds !== null) {
-            $staff->roles()->sync($this->assertRoles($roleIds));
+            // Önce rolleri doğrula (yabancı-kiracı → 422, yetki-yükseltme → 403).
+            $resolved = $this->assertRoles($roleIds);
+
+            // Sonra: kişi KENDİ rollerini değiştiremez (setPersonalPermissions'taki
+            // self-engelin karşılığı; kendine "Sahip" ekleme yolunu kapatır).
+            $actor = Auth::user();
+            if ($actor !== null && $actor->is($staff)) {
+                throw ValidationException::withMessages([
+                    'roles' => ['Kendi rollerinizi değiştiremezsiniz.'],
+                ])->status(403);
+            }
+
+            $staff->roles()->sync($resolved);
             $staff->flushPermissionCache();
         }
 
@@ -240,6 +253,52 @@ class StaffService
             ]);
         }
 
+        $this->assertRolesGrantable($resolved);
+
         return $resolved;
+    }
+
+    /**
+     * YETKİ YÜKSELTME ENGELİ (K-1): rol atama yolu, setPersonalPermissions ve
+     * RoleService'in uyguladığı korumalara tabidir. Aktör = giriş yapan kullanıcı
+     * (seed/konsol bağlamında null → sistem, tam güven):
+     *  - Atanan rollerin BİRLEŞİK izin kümesi, aktörün izinlerinin ALT KÜMESİ olmalı
+     *    (kimse sahip olmadığı yetkiyi bir rol aracılığıyla dağıtamaz/kendine alamaz).
+     *  - is_system (ör. Sahip) rolü yalnızca zaten sistem rolü taşıyan aktör atayabilir.
+     *
+     * @param  array<int, int>  $resolvedIds
+     */
+    private function assertRolesGrantable(array $resolvedIds): void
+    {
+        if ($resolvedIds === []) {
+            return;
+        }
+
+        /** @var User|null $actor */
+        $actor = Auth::user();
+
+        // Sistem/seed bağlamı (HTTP dışı): aktör yok → güvenli iç yol.
+        if ($actor === null) {
+            return;
+        }
+
+        $roles = Role::query()->whereIn('id', $resolvedIds)->with('permissions:id,key')->get();
+
+        // is_system rol yalnız sistem-rollü aktör tarafından atanabilir.
+        if ($roles->contains(fn (Role $r): bool => (bool) $r->is_system) && ! $this->holdsSystemRole($actor)) {
+            throw ValidationException::withMessages([
+                'roles' => ['Sistem rolü (ör. Sahip) yalnızca aynı düzeyde bir yetkili tarafından atanabilir.'],
+            ])->status(403);
+        }
+
+        // Rollerin birleşik izinleri aktörün izinlerinin alt kümesi olmalı.
+        $roleKeys = $roles->flatMap(fn (Role $r) => $r->permissions->pluck('key'))->unique()->all();
+        $forbidden = array_diff($roleKeys, $actor->permissionKeys());
+
+        if ($forbidden !== []) {
+            throw ValidationException::withMessages([
+                'roles' => ['Sahip olmadığınız yetkileri içeren bir rol atayamazsınız: '.implode(', ', $forbidden)],
+            ])->status(403);
+        }
     }
 }

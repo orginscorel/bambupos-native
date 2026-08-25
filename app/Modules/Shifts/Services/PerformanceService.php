@@ -19,10 +19,12 @@ class PerformanceService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function staffMetrics(CarbonImmutable $from, CarbonImmutable $to): array
+    public function staffMetrics(CarbonImmutable $from, CarbonImmutable $to, ?int $branchId = null): array
     {
         $users = User::ofCurrentTenant()
             ->where('is_active', true)
+            // ŞUBE KAPSAMI: yönetici yalnız geçerli şubenin personelini görür.
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->orderBy('name')
             ->get(['id', 'name', 'position']);
 
@@ -30,6 +32,8 @@ class PerformanceService
             ->whereNotNull('opened_by_id')
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $to)
+            // ŞUBE KAPSAMI: yalnız geçerli şubenin siparişleri.
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->get([
                 'id', 'opened_by_id', 'status', 'channel', 'total_minor',
                 'discount_minor', 'comp_total_minor',

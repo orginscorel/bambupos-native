@@ -97,6 +97,24 @@ return Application::configure(basePath: dirname(__DIR__))
             // alan adına bağlıdır (Route::domain) → yalnız portal host'unda
             // eşleşir; panel + qrmenu.* host DAVRANIŞI DEĞİŞMEZ.
             \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/portal.php');
+
+            // Teslimat/Paket (feature: delivery) + Prim/Komisyon (feature: commission).
+            // Grup middleware'i içlerinde feature-gate uygular ("kapalı = yok").
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/delivery.php');
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/commission.php');
+
+            // BOSS yönetim kokpiti (yetki: boss.view).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/boss.php');
+
+            // Entegrasyonlar (takılabilir çerçeve): ödeme/teslimat/e-fatura/muhasebe
+            // aç-kapa + yapılandırma API'si (yetki: integrations.manage).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/integrations.php');
+
+            // SaaS abonelik/faturalama genel bakış (süper-admin, /yonetim/faturalama).
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/billing_saas.php');
+
+            // İzinli cihazlar (KDS/kiosk/masaüstü cihaz kilidi) — yönetim API'si.
+            \Illuminate\Support\Facades\Route::group([], __DIR__.'/../routes/devices.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -114,6 +132,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'tenant' => \App\Modules\Tenancy\Http\Middleware\EnsureTenantContext::class,
+            // Rota düzeyi özellik kapısı: `feature:delivery` → kapalıysa 404.
+            'feature' => \App\Modules\Settings\Http\Middleware\EnsureFeatureEnabled::class,
+            // SaaS süper-admin (kiracı-üstü ürün yöneticisi).
+            'superadmin' => \App\Modules\Marketing\Http\Middleware\EnsureSuperAdmin::class,
+            // Cihaz kilidi: `device:kds` → link/QR ile bağlanan cihaza kilitler (izinli cihazlar).
+            'device' => \App\Modules\Devices\Http\Middleware\EnsureDeviceAuthorized::class,
         ]);
 
         // Kimliksiz API isteği: YÖNLENDİRME YOK, 401 JSON.
@@ -130,8 +154,14 @@ return Application::configure(basePath: dirname(__DIR__))
                 : '/giris',
         );
 
-        // Oturumu olan kullanıcı misafir sayfalarına (giriş vb.) gelirse panele.
-        $middleware->redirectUsersTo('/panel');
+        // Oturumu olan kullanıcı misafir sayfalarına (giriş vb.) gelirse panele —
+        // ANCAK portal host'unda personel portalına (/mesaim). HandlePortalHost
+        // zaten panele düşen yolları yakalar; bu, çift-atlamayı önler.
+        $middleware->redirectUsersTo(
+            fn (Request $request) => \App\Modules\Portal\Support\Portal::isPortalHost($request)
+                ? '/panelim'
+                : '/panel',
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

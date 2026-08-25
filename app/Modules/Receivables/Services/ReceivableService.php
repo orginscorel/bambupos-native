@@ -6,8 +6,11 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Services\AuditLogger;
 use App\Modules\Orders\Models\Order;
 use App\Modules\Orders\Services\OrderService;
+use App\Modules\Payments\Enums\PaymentMethod;
+use App\Modules\Payments\Services\CashSessionService;
 use App\Modules\Receivables\Models\Receivable;
 use App\Modules\Receivables\Models\ReceivableTransaction;
+use App\Modules\Tenancy\BranchContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -19,7 +22,11 @@ use Illuminate\Validation\ValidationException;
  *    OrderService::markDebtTransferred ile terminal 'debt_transferred'
  *    durumuna geçer (masa BOŞALIR — TableStatusSynchronizer).
  *  - Tahsilat: cari borcu tam/kısmi kapatılır. AŞIRI TAHSİLAT REDDEDİLİR
- *    (para değişmezi) — bakiye asla negatife düşmez.
+ *    (para değişmezi) — bakiye asla negatife düşmez. NAKİT tahsilat AYNI
+ *    transaction içinde CashSessionService'e bir kasa-giriş hareketi yazar
+ *    (denetim §5 FAZ2) — böylece gün sonu kasa sayımı/Z raporu, cari
+ *    tahsilatını da içerir (kart/havale/diğer POS'taki gibi fiziksel
+ *    çekmeceyi etkilemez, kasa defterine yazılmaz).
  *  - `receivables.balance_minor` = receivable_transactions defterinin
  *    TOPLAMI; her mutasyon SATIR KİLİDİYLE + transaction içinde yazılır
  *    (CashSessionService ile aynı desen — kuruş kaybı yok).
@@ -29,6 +36,8 @@ class ReceivableService
     public function __construct(
         private readonly OrderService $orders,
         private readonly AuditLogger $audit,
+        private readonly CashSessionService $cash,
+        private readonly BranchContext $branchContext,
     ) {
     }
 
@@ -186,12 +195,35 @@ class ReceivableService
             $ledger->tenant_id = $locked->tenant_id;
             $ledger->save();
 
+            // Kasa defteri (denetim §5 FAZ2): yalnız NAKİT tahsilat fiziksel
+            // çekmeceyi etkiler (PaymentMethod::affectsCashDrawer() ile AYNI
+            // kural — kart/havale/diğer POS akışında da kasa hareketi doğurmaz).
+            // TEK hareket: bu closure DB::transaction içinde bir kez çalışır,
+            // $ledger da tek satır — çift-yazım/çift-sayım mümkün değildir.
+            $cashMovementId = null;
+
+            if ($method === PaymentMethod::Cash->value) {
+                $branchId = $this->branchContext->currentBranchId($actor);
+                $session = $branchId !== null
+                    ? $this->cash->resolveOpenSessionForBranch((int) $locked->tenant_id, $branchId)
+                    : null;
+
+                if ($session !== null) {
+                    $reason = 'Cari tahsilat: '.$locked->name.($note !== null && $note !== '' ? ' ('.$note.')' : '');
+                    $movement = $this->cash->recordReceivableCollectionMovement($session, $amountMinor, $reason, $actor);
+                    $cashMovementId = $movement->getKey();
+                }
+                // Açık oturum yoksa/belirsizse: PaymentService::payInstant ile AYNI
+                // dürüst davranış — tahsilat reddedilmez, yalnız çekmece izi kalmaz.
+            }
+
             $this->audit->log('receivables.payment_collected', $locked, ['balance_minor' => $balance], [
                 'amount_minor' => $amountMinor,
                 'method' => $method,
                 'note' => $note,
                 'balance_minor' => $newBalance,
                 'performed_by' => $actor->getKey(),
+                'cash_movement_id' => $cashMovementId,
             ]);
 
             return $ledger;

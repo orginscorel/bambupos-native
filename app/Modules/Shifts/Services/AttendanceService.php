@@ -22,11 +22,13 @@ class AttendanceService
     /**
      * @return array<int, array<string, mixed>> personel başına özet
      */
-    public function summary(CarbonImmutable $from, CarbonImmutable $to, ?int $onlyUserId = null): array
+    public function summary(CarbonImmutable $from, CarbonImmutable $to, ?int $onlyUserId = null, ?int $branchId = null): array
     {
         $users = User::ofCurrentTenant()
             ->where('is_active', true)
             ->when($onlyUserId !== null, fn ($q) => $q->where('id', $onlyUserId))
+            // ŞUBE KAPSAMI: yönetici yalnız geçerli şubenin personelini görür.
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->orderBy('name')
             ->get(['id', 'name', 'position', 'branch_id']);
 
@@ -34,12 +36,16 @@ class AttendanceService
             ->where('clock_in_at', '>=', $from)
             ->where('clock_in_at', '<', $to)
             ->where('status', TimeEntry::STATUS_CLOSED)
+            // ŞUBE KAPSAMI: yalnız geçerli şubenin mesai kayıtları.
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->get()
             ->groupBy('user_id');
 
         $shifts = Shift::query()
             ->where('starts_at', '>=', $from)
             ->where('starts_at', '<', $to)
+            // ŞUBE KAPSAMI: yalnız geçerli şubenin planlı vardiyaları.
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->get()
             ->groupBy('user_id');
 
@@ -47,6 +53,8 @@ class AttendanceService
             ->where('status', LeaveRequest::STATUS_APPROVED)
             ->whereDate('starts_on', '<=', $to->toDateString())
             ->whereDate('ends_on', '>=', $from->toDateString())
+            // ŞUBE KAPSAMI: yalnız geçerli şubenin izinleri.
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->get()
             ->groupBy('user_id');
 

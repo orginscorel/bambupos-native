@@ -47,10 +47,11 @@ class KdsStationRoutingTest extends KdsTestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Panel/Kds/Kitchen', false)
-                ->where('initialStation', 'barista'));
+                ->where('lane', 'barista')
+                ->where('initialStation', '')); // varsayılan "Tümü" — hiçbir kalem gizlenmez
     }
 
-    public function test_mutfak_rotasi_varsayilan_mutfak_suzgeciyle_gelir(): void
+    public function test_mutfak_rotasi_varsayilan_tumu_ile_gelir(): void
     {
         $this->actingAs($this->makeUserInA(['kds.view']));
 
@@ -58,7 +59,8 @@ class KdsStationRoutingTest extends KdsTestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Panel/Kds/Kitchen', false)
-                ->where('initialStation', 'kitchen'));
+                ->where('lane', 'kitchen')
+                ->where('initialStation', '')); // varsayılan "Tümü" (Izgara/Tatlı/Fırın dahil)
     }
 
     /** §12 rota koruması: mutfak-atanmış kullanıcı Barista'ya giremez → kendi ekranına döner. */
@@ -181,6 +183,101 @@ class KdsStationRoutingTest extends KdsTestCase
 
         $this->assertSame('ready', $statuses['Köfte']);         // mutfak kulvarı → hazır
         $this->assertNotSame('ready', $statuses['Latte']);      // barista kulvarı → dokunulmadı
+    }
+
+    /**
+     * DENETİM 2026-08-06: genel adisyon ucu (PUT orders/{order}/items/{item}/status,
+     * 'orders.update' — garson dahil) KdsActionController'ın izin (kds.view/kds.deliver)
+     * VE istasyon-kapsamı (assertItemInScope) kontrolünü atlıyordu. Yalnız 'orders.update'i
+     * olan (kds izni YOK) bir kullanıcı bu uçtan kalemi doğrudan hazır/servis işaretleyebiliyordu.
+     */
+    public function test_genel_adisyon_ucu_kds_izni_olmayan_kullaniciyi_reddeder(): void
+    {
+        $setup = $this->createOrderWithItems([['station' => 'kitchen', 'name' => 'Köfte']]);
+
+        $garson = $this->makeUserInA(['orders.view', 'orders.update']);
+        $this->actingAs($garson);
+
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'ready',
+        ])->assertForbidden();
+
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'served',
+        ])->assertForbidden();
+
+        $this->assertSame('sent_to_station', \App\Modules\Orders\Models\OrderItem::withoutTenancy()
+            ->whereKey($setup['item_ids'][0])->value('status'));
+    }
+
+    /** Aynı genel uç: kds.view olsa da başka istasyona atanmış kullanıcı yabancı istasyonun kalemini işaretleyemez. */
+    public function test_genel_adisyon_ucu_istasyon_disi_kalemi_reddeder(): void
+    {
+        $setup = $this->createOrderWithItems([['station' => 'barista', 'name' => 'Latte']]);
+
+        // orders.update DE var (garson+mutfak karışık personel) — yine de istasyon
+        // kapsamı ('kitchen') dışındaki kaleme (barista) bu uçtan dokunamaz.
+        $mutfakci = $this->makeUserInA(['orders.update', 'kds.view']);
+        $this->assignStation($mutfakci, 'kitchen');
+        $this->actingAs($mutfakci);
+
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'accepted',
+        ])->assertForbidden();
+    }
+
+    /** Doğru izin + doğru istasyonda genel uç yine çalışır (davranış korunur). */
+    public function test_genel_adisyon_ucu_dogru_izin_ve_istasyonda_calisir(): void
+    {
+        $setup = $this->createOrderWithItems([['station' => 'kitchen', 'name' => 'Köfte']]);
+
+        $mutfakci = $this->makeUserInA(['orders.update', 'kds.view']);
+        $this->assignStation($mutfakci, 'kitchen');
+        $this->actingAs($mutfakci);
+
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'accepted',
+        ])->assertOk();
+
+        $this->assertSame('accepted', \App\Modules\Orders\Models\OrderItem::withoutTenancy()
+            ->whereKey($setup['item_ids'][0])->value('status'));
+    }
+
+    /**
+     * BULGU #3 (2026-08-06): garson (kds.view YOK, yalnız kds.deliver — komi'deki
+     * gibi config/authz.php'ye eklendi) genel adisyon ucundan 'hazır' bir kalemi
+     * 'served' yapabilmeli; ama 'ready/accepted/preparing' gibi kds.view gerektiren
+     * ARA adımlara hâlâ dokunamamalı (bu mutfağın işi kalır).
+     */
+    public function test_kds_deliver_izinli_garson_hazir_kalemi_servis_edebilir(): void
+    {
+        $setup = $this->createOrderWithItems([['station' => 'kitchen', 'name' => 'Köfte']]);
+
+        // Kalemi 'ready'e getir (mutfak personeli, kds.view).
+        $mutfakci = $this->makeUserInA(['orders.update', 'kds.view']);
+        $this->assignStation($mutfakci, 'kitchen');
+        $this->actingAs($mutfakci);
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'ready',
+        ])->assertOk();
+        auth('web')->logout();
+
+        // Garson: yalnız orders.* + kds.deliver (komi'deki AYNI izin, kds.view YOK).
+        $garson = $this->makeUserInA(['orders.view', 'orders.update', 'kds.deliver']);
+        $this->actingAs($garson);
+
+        // Ara adımlara (kds.view gerektirir) hâlâ dokunamaz.
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'accepted',
+        ])->assertForbidden();
+
+        // Ama 'hazır' kalemi servis edebilir.
+        $this->putJson("/api/v1/orders/{$setup['order_id']}/items/{$setup['item_ids'][0]}/status", [
+            'status' => 'served',
+        ])->assertOk();
+
+        $this->assertSame('served', \App\Modules\Orders\Models\OrderItem::withoutTenancy()
+            ->whereKey($setup['item_ids'][0])->value('status'));
     }
 
     private function assignStation(\App\Modules\Identity\Models\User $user, string $stationKey): void

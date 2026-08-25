@@ -8,12 +8,13 @@ use App\Modules\Tenancy\Models\Branch;
 /**
  * §8 Servis çağrısı bildirimi — masadan gelen garson/su/hesap çağrısı public
  * QR ucundan (ServiceRequestController) dispatch edilir; o ŞUBENİN garsonları
- * (orders.create) + yönetici in-app bildirim alır. Mutfak/kasiyer almaz;
- * başka şube personeli almaz; aynı masa+tür kısa pencerede tek bildirim.
+ * (orders.create) + KASA (payments.take, özellikle "hesap iste") + yönetici
+ * in-app bildirim alır. MUTFAK almaz; başka şube personeli almaz; aynı masa+tür
+ * kısa pencerede tek bildirim.
  */
 class ServiceCallNotificationTest extends NotifyTestCase
 {
-    public function test_garson_ve_yonetici_bildirim_alir_kasiyer_ve_mutfak_almaz(): void
+    public function test_garson_kasa_ve_yonetici_bildirim_alir_mutfak_almaz(): void
     {
         $waiter = $this->makeUserInA(['orders.create', 'orders.view']);
         $cashier = $this->makeUserInA(['orders.view', 'payments.take']);
@@ -33,8 +34,10 @@ class ServiceCallNotificationTest extends NotifyTestCase
         // Yönetici (sahip = a['user']) de alır.
         $this->assertCount(1, $this->notificationsFor($this->a['user']->id, NotificationType::ServiceCall->value));
 
-        // Kasiyer (yalnız orders.view) ve mutfak almaz.
-        $this->assertCount(0, $this->notificationsFor($cashier->id, NotificationType::ServiceCall->value));
+        // KASA (payments.take) ARTIK alır — özellikle "hesap iste" kasaya ulaşsın.
+        $this->assertCount(1, $this->notificationsFor($cashier->id, NotificationType::ServiceCall->value));
+
+        // Mutfak (yalnız kds.view) almaz.
         $this->assertCount(0, $this->notificationsFor($kitchen->id, NotificationType::ServiceCall->value));
     }
 
@@ -80,5 +83,21 @@ class ServiceCallNotificationTest extends NotifyTestCase
             ->assertStatus(403);
 
         $this->assertCount(0, $this->notificationsFor($waiter->id, NotificationType::ServiceCall->value));
+    }
+
+    /** Adisyon "ödemeye gönderilince" (request-bill) KASA "ödeme bekliyor" alır. */
+    public function test_odemeye_gonderince_kasa_bildirim_alir(): void
+    {
+        $cashier = $this->makeUserInA(['orders.view', 'payments.take']);
+        $order = $this->createOrderWithItems([['name' => 'Çay']]);
+
+        // Yönetici (orders.update) adisyonu ödemeye gönderir.
+        $this->actingAs($this->a['user']);
+        $this->postJson("/api/v1/orders/{$order['order_id']}/request-bill", [
+            'expected_version' => $order['version'],
+        ])->assertOk();
+        auth('web')->logout();
+
+        $this->assertCount(1, $this->notificationsFor($cashier->id, NotificationType::AwaitingPayment->value));
     }
 }

@@ -6,6 +6,7 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Kds\Models\UserStation;
 use App\Modules\Terminal\Models\TerminalDevice;
 use App\Modules\Terminal\Services\TerminalProvisioner;
+use App\Modules\Terminal\Support\TerminalLicense;
 use App\Modules\Tenancy\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithTenancy;
@@ -258,5 +259,99 @@ class TerminalDeviceTest extends TestCase
 
         $this->assertStringNotContainsString($old, $new);
         $this->get('/terminal/'.$old)->assertStatus(410);
+    }
+
+    /* ---------------- Lisans limiti (§13 Faz 3) ---------------- */
+
+    public function test_yeni_kiracinin_varsayilan_lisans_limiti_makul_degerdir(): void
+    {
+        // TenantFactory terminal_license_limit vermiyor → migration'daki DB
+        // varsayılanı (config('terminal.license.default_limit')) devreye girer.
+        $this->assertSame(
+            (int) config('terminal.license.default_limit'),
+            (int) $this->a['tenant']->fresh()->terminal_license_limit,
+        );
+    }
+
+    public function test_index_ucu_lisans_gostergesini_doner(): void
+    {
+        $manager = $this->makeTenantWithUser(['terminals.view']);
+        $this->makeDevice($manager, 'kitchen');
+        $this->makeDevice($manager, 'barista');
+
+        $this->actingAs($manager['user']);
+
+        $res = $this->getJson('/api/v1/terminals/devices')->assertOk();
+
+        $this->assertSame(TerminalLicense::defaultLimit(), $res->json('license.limit'));
+        $this->assertSame(2, $res->json('license.used'));
+        $this->assertFalse($res->json('license.unlimited'));
+        $this->assertSame(TerminalLicense::defaultLimit() - 2, $res->json('license.remaining'));
+    }
+
+    public function test_lisans_limiti_asilinca_terminal_eklenemez(): void
+    {
+        $manager = $this->makeTenantWithUser(['terminals.manage', 'terminals.view']);
+        $limit = TerminalLicense::defaultLimit();
+
+        for ($i = 0; $i < $limit; $i++) {
+            $this->makeDevice($manager, 'kitchen', "Terminal {$i}");
+        }
+
+        $this->actingAs($manager['user']);
+
+        $res = $this->postJson('/api/v1/terminals/devices', [
+            'name' => 'Limit Aşan Terminal',
+            'branch_id' => $manager['branch']->id,
+            'station' => 'kitchen',
+        ])->assertStatus(422);
+
+        $res->assertJsonPath('errors.license.0', function (string $msg) use ($limit) {
+            return str_contains($msg, "({$limit}/{$limit})") && str_contains($msg, 'Terminal lisans limitiniz doldu');
+        });
+
+        // Limit dolunca gerçekten ekLENMEMİŞ olmalı.
+        $this->assertSame($limit, TerminalDevice::withoutTenancy()->count());
+    }
+
+    public function test_lisans_limiti_null_ise_sinirsizdir(): void
+    {
+        $manager = $this->makeTenantWithUser(['terminals.manage', 'terminals.view']);
+        $manager['tenant']->forceFill(['terminal_license_limit' => null])->save();
+
+        $limit = TerminalLicense::defaultLimit();
+        for ($i = 0; $i < $limit; $i++) {
+            $this->makeDevice($manager, 'kitchen', "Terminal {$i}");
+        }
+
+        $this->actingAs($manager['user']);
+
+        // Varsayılan limiti aşan sayıda cihaz olsa bile sınırsız kiracıda engellenmez.
+        $this->postJson('/api/v1/terminals/devices', [
+            'name' => 'Sınırsız Ek Terminal',
+            'branch_id' => $manager['branch']->id,
+            'station' => 'kitchen',
+        ])->assertCreated();
+
+        $res = $this->getJson('/api/v1/terminals/devices')->assertOk();
+        $this->assertTrue($res->json('license.unlimited'));
+        $this->assertNull($res->json('license.limit'));
+        $this->assertNull($res->json('license.remaining'));
+    }
+
+    public function test_kiraci_ozel_limiti_varsayilani_gecersiz_kilar(): void
+    {
+        $manager = $this->makeTenantWithUser(['terminals.manage', 'terminals.view']);
+        $manager['tenant']->forceFill(['terminal_license_limit' => 1])->save();
+
+        $this->makeDevice($manager, 'kitchen', 'Terminal 1');
+
+        $this->actingAs($manager['user']);
+
+        $this->postJson('/api/v1/terminals/devices', [
+            'name' => 'İkinci Terminal',
+            'branch_id' => $manager['branch']->id,
+            'station' => 'kitchen',
+        ])->assertStatus(422);
     }
 }

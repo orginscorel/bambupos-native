@@ -160,9 +160,13 @@ const canReceive = computed(() => detail.value && ['ordered', 'partially_receive
 
 <template>
     <Head title="Mal Kabul / Satın Alma" />
-    <PanelShell title="Stok">
-        <InventoryNav active="purchasing" />
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav active="purchasing" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <div class="mb-3 flex items-center justify-between">
             <p class="text-sm text-muted">Sipariş oluştur, mal kabulünde stok otomatik girer ve ortalama maliyet güncellenir.</p>
             <BaseButton v-if="meta.canAdjust" size="sm" @click="openCreate">
@@ -297,5 +301,7 @@ const canReceive = computed(() => detail.value && ['ordered', 'partially_receive
             </div>
             <div v-else class="p-6 text-center text-sm text-muted">Yükleniyor…</div>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

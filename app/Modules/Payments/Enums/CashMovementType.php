@@ -16,11 +16,12 @@ enum CashMovementType: string
     case Expense = 'expense';            // masraf (out)
     case Advance = 'advance';            // avans (out)
     case Correction = 'correction';      // ters kayıt (yönü ters çevrilen kaydın tersi)
+    case ReceivableCollection = 'receivable_collection'; // cari (borç) NAKİT tahsilatı (in)
 
     public function direction(): string
     {
         return match ($this) {
-            self::OpeningFloat, self::Payment, self::CashIn => 'in',
+            self::OpeningFloat, self::Payment, self::CashIn, self::ReceivableCollection => 'in',
             self::Refund, self::CashOut, self::Expense, self::Advance => 'out',
             self::Correction => 'in', // gerçek yön ters kayıtta hesaplanır
         };
@@ -43,6 +44,7 @@ enum CashMovementType: string
             self::Expense => 'Masraf',
             self::Advance => 'Avans',
             self::Correction => 'Düzeltme (ters kayıt)',
+            self::ReceivableCollection => 'Cari tahsilat',
         };
     }
 

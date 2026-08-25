@@ -24,17 +24,19 @@ class PortalProfileController extends Controller
     ) {
     }
 
-    /** Ad / iletişim bilgilerini günceller (name = first+last otomatik türer). */
+    /**
+     * İletişim bilgisini günceller. AD/SOYAD personel tarafından DEĞİŞTİRİLEMEZ
+     * (yalnız yönetici belirler) — burada yalnız telefon kabul edilir; istekte
+     * gelen first_name/last_name YOK SAYILIR.
+     */
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'first_name' => ['required', 'string', 'max:80'],
-            'last_name' => ['nullable', 'string', 'max:80'],
             'phone' => ['nullable', 'string', 'max:32'],
         ]);
 
         $user = $request->user();
-        $user->forceFill($data)->save();
+        $user->forceFill(['phone' => $data['phone'] ?? null])->save();
 
         $this->audit->log('portal.profile_updated', $user);
 

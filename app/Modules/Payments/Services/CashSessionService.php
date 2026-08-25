@@ -213,6 +213,18 @@ class CashSessionService
         return $movement;
     }
 
+    /**
+     * Sistem hareketi: cari (borç) NAKİT tahsilatının çekmece girişi
+     * (ReceivableService::collect — Payments modülüne bağımlı değil, tek
+     * kayıt kaynağı burasıdır; PaymentService::recordPaymentMovement ile
+     * AYNI desen). Yalnız nakit tahsilatlarda çağrılır — kart/havale/diğer
+     * yöntemler fiziksel çekmeceyi etkilemez (POS kart ödemesiyle AYNI kural).
+     */
+    public function recordReceivableCollectionMovement(CashSession $session, int $amountMinor, string $reason, ?User $actor): CashMovement
+    {
+        return $this->writeMovement($session, CashMovementType::ReceivableCollection, 'in', $amountMinor, $reason, $actor);
+    }
+
     /** Void edilen nakit ödemenin çekmece çıkışı (ters kayıt biçiminde). */
     public function recordPaymentReversal(Payment $payment, ?User $actor, string $reason): ?CashMovement
     {
@@ -260,9 +272,91 @@ class CashSessionService
      */
     public function resolveOpenSession(Order $order, ?int $registerId): ?CashSession
     {
+        return $this->resolveOpenSessionForBranch((int) $order->tenant_id, $order->branch_id, $registerId);
+    }
+
+    /**
+     * KASA HER ZAMAN VARDIR (otomatik oturum).
+     *
+     * Eskiden kasiyerin ödeme almadan ÖNCE kasa oluşturup oturum açması
+     * gerekiyordu; unutulunca tahsilat sessizce oturumsuz kalıyor ve Z
+     * raporunun DIŞINDA kalıyordu (para kaybı değil ama defter deliği).
+     * Kasa açmak/bağlamak kasiyerin işi değil: açık oturum yoksa şubenin
+     * varsayılan kasası (yoksa oluşturulur) 0 açılış tutarıyla OTOMATİK
+     * açılır ve tahsilat oraya düşer.
+     *
+     * Elle açılmış oturuma DOKUNULMAZ — otomatik açılış yalnız hiç açık
+     * oturum yokken devreye girer. Kapanış/Z hâlâ elle yapılır (sayım
+     * insan işidir); yalnız "açma" zorunluluğu kalktı.
+     */
+    public function ensureOpenSession(int $tenantId, ?int $branchId, ?int $registerId, User $actor): ?CashSession
+    {
+        $existing = $this->resolveOpenSessionForBranch($tenantId, $branchId, $registerId);
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        // İstenen kasa açık değilse bile şubede başka açık oturum varsa YENİ
+        // oturum açma (çift oturum karmaşası) — mevcut olana düş.
+        if ($registerId !== null) {
+            $anyOpen = $this->resolveOpenSessionForBranch($tenantId, $branchId, null);
+            if ($anyOpen !== null) {
+                return $anyOpen;
+            }
+        }
+
+        // cash_registers.branch_id NOT NULL → şubesiz bağlamda otomatik kasa
+        // kurulamaz; bugünkü davranış (oturumsuz ödeme) aynen sürer.
+        if ($branchId === null) {
+            return null;
+        }
+
+        $register = CashRegister::withoutTenancy()
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->when($registerId !== null, fn ($q) => $q->where('id', $registerId))
+            ->orderBy('id')
+            ->first();
+
+        if ($register === null) {
+            $register = new CashRegister(['name' => 'Kasa', 'is_active' => true]);
+            $register->tenant_id = $tenantId;
+            $register->branch_id = $branchId;
+            $register->save();
+
+            $this->audit->log('cash.register_auto_created', $register, null, [
+                'branch_id' => $branchId,
+                'performed_by' => $actor->getKey(),
+            ]);
+        }
+
+        try {
+            return $this->open($register, 0, $actor);
+        } catch (ValidationException) {
+            // Yarış: aynı anda başka istek açtıysa onun oturumunu kullan.
+            return $this->resolveOpenSessionForBranch($tenantId, $branchId, (int) $register->getKey())
+                ?? $this->resolveOpenSessionForBranch($tenantId, $branchId, null);
+        }
+    }
+
+    /** Sipariş bağlamlı kısayol (ensureOpenSession ile aynı kural). */
+    public function ensureOpenSessionForOrder(Order $order, ?int $registerId, User $actor): ?CashSession
+    {
+        return $this->ensureOpenSession((int) $order->tenant_id, $order->branch_id, $registerId, $actor);
+    }
+
+    /**
+     * `resolveOpenSession` ile AYNI eşleme mantığı, ama sipariş bağlamı
+     * olmayan akışlar için (ör. cari/borç tahsilatı — Receivables modülü
+     * Order'a bağlı değildir). İstenen kasa verilmişse onun açık oturumu;
+     * verilmemişse şubede TEK açık oturum varsa o (belirsizlikte null).
+     */
+    public function resolveOpenSessionForBranch(int $tenantId, ?int $branchId, ?int $registerId = null): ?CashSession
+    {
         $query = CashSession::withoutTenancy()
-            ->where('tenant_id', $order->tenant_id)
-            ->where('branch_id', $order->branch_id)
+            ->where('tenant_id', $tenantId)
+            ->where('branch_id', $branchId)
             ->where('status', 'open');
 
         if ($registerId !== null) {

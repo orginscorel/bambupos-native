@@ -6,18 +6,45 @@ use Inertia\Inertia;
 
 /*
 |--------------------------------------------------------------------------
-| Giriş noktası: karşılama sayfası yok.
-| Oturum varsa panel, yoksa giriş ekranı.
+| Giriş noktası: BamBumPOS kurumsal tanıtım (landing) ana sayfası.
+| Oturum varsa doğrudan uygulamaya (panel/istasyon) yönlenir.
 |--------------------------------------------------------------------------
 */
-Route::get('/', function () {
-    $user = Auth::guard('web')->user();
+Route::get('/', [\App\Modules\Marketing\Http\Controllers\MarketingController::class, 'home'])->name('home');
+Route::post('/demo-talep', [\App\Modules\Marketing\Http\Controllers\MarketingController::class, 'storeDemo'])->name('marketing.demo');
 
-    return $user instanceof \App\Modules\Identity\Models\User
-        // Role özel açılış ekranı (Personel-Yetki): tercih > otomatik profil.
-        ? redirect(\App\Modules\Identity\Support\HomeScreen::resolve($user))
-        : redirect()->route('login');
-})->name('home');
+// Fiyatlandırma (sabit sayfa — slug catch-all'lardan önce tanımlanır).
+Route::get('/fiyatlandirma', [\App\Modules\Marketing\Http\Controllers\PageController::class, 'pricing'])
+    ->name('marketing.pricing');
+
+// Tek /{slug} dispatcher: kurumsal + sektör + çözüm sayfaları.
+// DİKKAT: Aynı URI+method'lu birden fazla Route::get('/{slug}') Laravel'de
+// birbirini EZER (yalnız sonuncusu kalır) → hepsi tek route + tek handler'da
+// toplanır. where-constraint yalnız bilinen slug'ları yakalar; /giris, /panel
+// gibi diğer rotaları gölgelemez.
+Route::get('/{slug}', [\App\Modules\Marketing\Http\Controllers\PageController::class, 'dispatch'])
+    ->where('slug', implode('|', array_map('preg_quote', array_merge(
+        array_keys((array) config('corporate', [])),
+        array_keys((array) config('sectors', [])),
+        array_keys((array) config('solutions', [])),
+    ))))
+    ->name('marketing.page');
+
+/*
+|--------------------------------------------------------------------------
+| SaaS SÜPER-ADMIN (kiracı-üstü) — /yonetim. `tenant` middleware YOK.
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:web', 'superadmin'])->prefix('yonetim')->name('superadmin.')->group(function (): void {
+    $c = \App\Modules\Marketing\Http\Controllers\SuperAdminController::class;
+    Route::get('/', [$c, 'dashboard'])->name('dashboard');
+    Route::get('/isletmeler', [$c, 'tenants'])->name('tenants');
+    Route::post('/isletmeler', [$c, 'tenantStore'])->name('tenants.store');
+    Route::put('/isletmeler/{id}', [$c, 'tenantUpdate'])->whereNumber('id')->name('tenants.update');
+    Route::post('/isletmeler/{id}/durum', [$c, 'tenantSetStatus'])->whereNumber('id')->name('tenants.status');
+    Route::get('/demo-talepleri', [$c, 'demoRequests'])->name('demos');
+    Route::put('/demo-talepleri/{id}', [$c, 'demoUpdate'])->whereNumber('id')->name('demos.update');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -45,6 +72,28 @@ Route::middleware('guest')->group(function (): void {
 | Panel ekranları (oturum + kiracı bağlamı zorunlu)
 |--------------------------------------------------------------------------
 */
+// Askıdaki işletmenin kullanıcısı buraya yönlenir (kiracı middleware'i YOK; oturum korunur).
+Route::middleware('auth:web')->get('/hesap-askida', function () {
+    $tenant = request()->user()?->tenant;
+
+    // "Şimdi Öde" butonu için: işletmenin en güncel ödenmemiş faturası +
+    // aktif ödeme sağlayıcısı manuel mi (öyleyse buton gösterilmez — bkz.
+    // routes/saas_payment.php, App\Modules\Billing\Payments\SaasPaymentRegistry).
+    $unpaidInvoice = $tenant
+        ? \App\Modules\Billing\Models\SaasInvoice::query()
+            ->where('tenant_id', $tenant->id)
+            ->where('status', \App\Modules\Billing\Models\SaasInvoice::STATUS_UNPAID)
+            ->orderByDesc('id')
+            ->first()
+        : null;
+
+    return view('tenant.suspended', [
+        'tenantName' => $tenant?->name,
+        'unpaidInvoice' => $unpaidInvoice,
+        'paymentProviderManual' => app(\App\Modules\Billing\Payments\SaasPaymentRegistry::class)->current()->key() === 'manual',
+    ]);
+})->name('tenant.suspended');
+
 Route::middleware(['auth:web', 'tenant'])->prefix('panel')->group(function (): void {
     Route::get('/', function () {
         $user = request()->user();

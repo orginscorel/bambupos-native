@@ -24,7 +24,9 @@ use Illuminate\Support\Facades\Route;
 |   olmadan koordinat saklanmaz (TimeClockService süzgeci).
 */
 
-Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
+// feature:shifts (denetim #7): "Vardiya/Mesai" eklentisi kapalıysa TÜM grup 404 —
+// eskiden yalnız Inertia sayfaları gate'liydi, API (schedule CRUD/clock/izin) açıktı.
+Route::middleware(['web', 'auth:web', 'tenant', 'feature:shifts'])->group(function (): void {
 
     /* ---- Inertia sayfaları ---- */
     Route::get('/panel/vardiya', [ShiftPageController::class, 'schedule'])->name('panel.shifts.schedule');
@@ -34,6 +36,7 @@ Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
         Route::get('/izinler', [ShiftPageController::class, 'leaves'])->name('panel.shifts.leaves');
         Route::get('/talepler', [ShiftPageController::class, 'approvals'])->name('panel.shifts.approvals');
         Route::get('/performans', [ShiftPageController::class, 'performance'])->name('panel.shifts.performance');
+        Route::get('/maaslar', [ShiftPageController::class, 'payroll'])->name('panel.shifts.payroll');
         Route::get('/ayarlar', [ShiftPageController::class, 'settings'])->name('panel.shifts.settings');
     });
 
@@ -57,6 +60,10 @@ Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
         // Kiosk giriş/çıkış (oturumlu ekran; kimlik PIN'den çözülür)
         Route::get('clock/meta', [ClockController::class, 'clockMeta'])->name('shifts.clock.meta');
         Route::post('clock', [ClockController::class, 'clock'])->name('shifts.clock');
+
+        // Maaş / Bordro (staff.manage)
+        Route::get('payroll', [\App\Modules\Shifts\Http\Controllers\PayrollController::class, 'index'])->name('shifts.payroll.index');
+        Route::put('payroll/{user}', [\App\Modules\Shifts\Http\Controllers\PayrollController::class, 'update'])->whereNumber('user')->name('shifts.payroll.update');
 
         // Mesai kayıtları
         Route::get('time-entries', [TimeEntryController::class, 'index'])->name('shifts.entries.index');

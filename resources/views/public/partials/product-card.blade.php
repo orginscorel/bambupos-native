@@ -8,8 +8,19 @@
         'description' => null, 'old_price_minor' => null, 'image' => null,
         'sold_out' => !empty($product['unavailable']), 'is_new' => false,
         'is_chef_pick' => false, 'is_bestseller' => false, 'spiciness' => 0,
+        'weight_grams' => null, 'calories' => null,
         'diets' => [], 'has_config' => false, 'out_reason' => 'stock',
     ];
+
+    // Gramaj/kalori ince satırı: değer VARSA "≈ 320 g · 780 kcal" biçiminde,
+    // parça parça birleştirilir (yalnız biri doluysa yalnız o gösterilir).
+    $nutriBits = [];
+    if ($product['weight_grams'] !== null) {
+        $nutriBits[] = number_format((int) $product['weight_grams'], 0, ',', '.').' g';
+    }
+    if ($product['calories'] !== null) {
+        $nutriBits[] = number_format((int) $product['calories'], 0, ',', '.').' kcal';
+    }
 @endphp
 <article class="m-product {{ $product['sold_out'] ? 'is-unavailable' : '' }}" data-pid="{{ $product['id'] }}">
     <div class="m-product__body">
@@ -33,6 +44,11 @@
 
         @if (!empty($product['description']))
             <p class="m-product__desc">{{ $product['description'] }}</p>
+        @endif
+
+        @if ($nutriBits !== [])
+            {{-- Ince ikincil satır; ör. "≈ 320 g · 780 kcal" (tahmini değerler) --}}
+            <p class="m-product__nutri">≈ {{ implode(' · ', $nutriBits) }}</p>
         @endif
 
         <p class="m-product__price">
@@ -64,7 +80,7 @@
 
     {{-- Kartın tamamı detay açar (yüzeyi kaplayan erişilebilir buton) --}}
     <button type="button" class="m-product__open" data-detail="{{ $product['id'] }}">
-        <span class="sr-only">{{ $product['name'] }} — detayları gör</span>
+        <span class="sr-only">{{ $product['name'] }} — {{ __('menu.product_details') }}</span>
     </button>
 
     <button

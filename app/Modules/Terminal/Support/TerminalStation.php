@@ -31,6 +31,9 @@ final class TerminalStation
 
     public const BARISTA = 'barista';
 
+    /** Nargile eklentisi: nargileci hazırlık terminali (Nargile KDS kulvarı). */
+    public const NARGILE = 'nargile';
+
     public const KOMI = 'komi';
 
     /** Faz B: kasa terminali (kasiyer ekranı — ödeme/iade/ikram, PIN'li). */
@@ -59,6 +62,14 @@ final class TerminalStation
                 'subpaths' => false,
                 'permissions' => ['kds.view'],
                 'stationKeys' => ['barista'],
+                'money' => false,
+            ],
+            self::NARGILE => [
+                'label' => 'Nargile',
+                'screen' => '/panel/nargile',
+                'subpaths' => false,
+                'permissions' => ['kds.view'],
+                'stationKeys' => ['hookah'],
                 'money' => false,
             ],
             self::KOMI => [

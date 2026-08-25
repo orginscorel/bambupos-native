@@ -62,8 +62,11 @@ class TableStatusSynchronizer
                 return;
             }
 
-            $target = $justClosed === OrderStatus::Paid ? TableStatus::Cleaning : TableStatus::Available;
-            $this->apply($table, $target);
+            // Ödeme tamamlanınca masa OTOMATİK boşalır (Available). Önceden
+            // "Cleaning/Temizleniyor" durumuna geçip manuel temizleme bekliyordu →
+            // masa "ödendi" olsa da dolu görünüyordu. Personel dilerse masayı
+            // yine de manuel "Temizleniyor" işaretleyebilir; ödeme artık kilitlemez.
+            $this->apply($table, TableStatus::Available);
 
             return;
         }

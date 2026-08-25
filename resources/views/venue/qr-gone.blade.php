@@ -1,10 +1,12 @@
-{{-- ADR-008: rotasyonla geçersiz kılınan / kullanım dışı QR → 410 + açıklama. --}}
+{{-- ADR-008: rotasyonla geçersiz kılınan / kullanım dışı QR → 410 + açıklama.
+     Dil: PublicMenuController::show ?lang= parametresini bu view'lardan ÖNCE
+     çözer (aksi halde token daha çözülmeden dönen bu sayfa hep TR kalırdı). --}}
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="{{ app()->getLocale() }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>QR kod geçerli değil</title>
+    <title>{{ __('menu.qr_gone_title') }}</title>
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; background: #f7f5f2; color: #1f2937; display: grid; place-items: center; min-height: 100dvh; margin: 0; padding: 24px; }
         .card { background: #fff; border-radius: 16px; padding: 32px 28px; max-width: 420px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,.06); }
@@ -16,14 +18,14 @@
 <body>
     <div class="card" role="alert">
         <div class="icon" aria-hidden="true">&#9888;&#65039;</div>
-        <h1>Bu QR kod artık geçerli değil</h1>
+        <h1>{{ __('menu.qr_gone_heading') }}</h1>
         <p>
             @if (($reason ?? '') === 'inactive')
-                Bu masa veya menü şu anda kullanım dışı.
+                {{ __('menu.qr_gone_reason_inactive') }}
             @else
-                İşletme bu masanın QR kodunu yeniledi.
+                {{ __('menu.qr_gone_reason_revoked') }}
             @endif
-            Lütfen masadaki güncel QR kodu okutun veya personelden yardım isteyin.
+            {{ __('menu.qr_gone_footer') }}
         </p>
     </div>
 </body>

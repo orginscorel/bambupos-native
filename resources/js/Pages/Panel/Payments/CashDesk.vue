@@ -224,7 +224,10 @@ async function closeSession(): Promise<void> {
 
 <template>
     <Head title="Kasa yönetimi" />
-    <PanelShell title="Kasa yönetimi">
+    <PanelShell title="Kasa yönetimi" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
+
         <div class="flex flex-col gap-4">
             <!-- Kasalar -->
             <BaseCard title="Kasalar" flush>
@@ -473,5 +476,7 @@ async function closeSession(): Promise<void> {
                 </div>
             </div>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

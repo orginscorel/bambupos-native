@@ -273,6 +273,160 @@ class OpsReportService
         ];
     }
 
+    /**
+     * §11 Komi Teslim SLA raporu: teslim ALINAN (kds_item_pickups) kalemlerin
+     * alma → masaya verme (order_events to_status=served) süresi + hedefi
+     * (config('notify.delivery_sla_minutes')) aşan ihlaller + komi bazında
+     * kırılım. `notify:check-sla` cron'unun ANLIK bildirdiği aynı olayların
+     * GERİYE DÖNÜK logudur (bildirim tarafı NotifyEmitter::deliverySlaBreach).
+     *
+     * Henüz masaya verilmemiş (served olayı yok) ama alma zamanı hedefi
+     * aşmış kalemler "açık ihlal" sayılır (status=Beklemede, breached=true,
+     * süre=ŞU ANA kadar geçen dakika) — kayıt yoksa süre UYDURULMAZ, sadece
+     * bu tek durumda "hâlâ devam eden" süre gösterilir (dürüst, tıpkı
+     * ops-delayed'in "şu an geciken" mantığı gibi).
+     *
+     * Şube: kds_item_pickups branch_id TAŞIMAZ → orders.branch_id üzerinden
+     * süzülür (ReportFilters::apply kullanılmaz, elle where).
+     */
+    public function deliverySla(ReportFilters $f): array
+    {
+        $targetMinutes = (int) config('notify.delivery_sla_minutes', 2);
+
+        $pickups = DB::table('kds_item_pickups')
+            ->join('order_items', 'order_items.id', '=', 'kds_item_pickups.order_item_id')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->leftJoin('tables', 'tables.id', '=', 'orders.table_id')
+            ->leftJoin('users', 'users.id', '=', 'kds_item_pickups.user_id')
+            ->where('kds_item_pickups.tenant_id', $f->tenantId)
+            ->where('kds_item_pickups.created_at', '>=', $f->fromUtc)
+            ->where('kds_item_pickups.created_at', '<', $f->toUtc)
+            ->when($f->branchId !== null, fn ($q) => $q->where('orders.branch_id', $f->branchId))
+            ->orderByDesc('kds_item_pickups.created_at')
+            // Uç sınır: rapor ekranı boğulmasın (ops-delayed ile aynı düzen büyüklüğü).
+            ->limit(300)
+            ->get([
+                'kds_item_pickups.id AS pickup_id',
+                'kds_item_pickups.order_item_id AS item_id',
+                'kds_item_pickups.user_id AS staff_id',
+                'kds_item_pickups.created_at AS picked_up_at',
+                'order_items.name AS item_name',
+                'orders.id AS order_id',
+                'tables.name AS table_name',
+                'users.name AS staff_name',
+            ]);
+
+        if ($pickups->isEmpty()) {
+            return [
+                'target_minutes' => $targetMinutes,
+                'total' => 0,
+                'breached_count' => 0,
+                'breach_rate' => 0.0,
+                'avg_duration_minutes' => null,
+                'open_breach_count' => 0,
+                'rows' => [],
+                'by_staff' => [],
+            ];
+        }
+
+        $itemIds = $pickups->pluck('item_id')->unique()->values();
+
+        // Aynı kalemin served olayları (kim servis etmiş olursa olsun); pickup'tan
+        // SONRAKİ ilk served eşleştirilir (undo→yeniden servis edilmişse eski
+        // olay YOK sayılır) — PortalPerformanceService::avgDeliveryMinutes ile
+        // aynı desen.
+        $servedByItem = DB::table('order_events')
+            ->where('to_status', 'served')
+            ->whereIn('order_item_id', $itemIds)
+            ->orderBy('created_at')
+            ->get(['order_item_id', 'created_at'])
+            ->groupBy('order_item_id');
+
+        $now = now();
+        $rows = [];
+        $durations = [];
+        $breached = 0;
+        $openBreach = 0;
+        /** @var array<int, array{name: string, deliveries: int, breaches: int, total_minutes: int, known: int}> */
+        $byStaff = [];
+
+        foreach ($pickups as $p) {
+            $pickedUpAt = \Illuminate\Support\Carbon::parse($p->picked_up_at);
+            $served = ($servedByItem[$p->item_id] ?? collect())
+                ->map(fn ($e) => \Illuminate\Support\Carbon::parse($e->created_at))
+                ->first(fn ($c) => $c->gte($pickedUpAt));
+
+            $isOpen = $served === null;
+            $durationMinutes = $isOpen
+                ? (int) $pickedUpAt->diffInMinutes($now)
+                : (int) $pickedUpAt->diffInMinutes($served);
+            $isBreach = $durationMinutes > $targetMinutes;
+
+            if (! $isOpen) {
+                $durations[] = $durationMinutes;
+            }
+            if ($isBreach) {
+                $breached++;
+                if ($isOpen) {
+                    $openBreach++;
+                }
+            }
+
+            $staffKey = $p->staff_id !== null ? (int) $p->staff_id : 0;
+            $staffName = $p->staff_name ?? '(atanmamış)';
+            if (! isset($byStaff[$staffKey])) {
+                $byStaff[$staffKey] = ['name' => $staffName, 'deliveries' => 0, 'breaches' => 0, 'total_minutes' => 0, 'known' => 0];
+            }
+            $byStaff[$staffKey]['deliveries']++;
+            if ($isBreach) {
+                $byStaff[$staffKey]['breaches']++;
+            }
+            if (! $isOpen) {
+                $byStaff[$staffKey]['total_minutes'] += $durationMinutes;
+                $byStaff[$staffKey]['known']++;
+            }
+
+            $rows[] = [
+                'id' => (int) $p->pickup_id,
+                'order_id' => (int) $p->order_id,
+                'item' => (string) $p->item_name,
+                'table' => $p->table_name !== null ? (string) $p->table_name : null,
+                'staff' => $staffName,
+                'picked_up_at' => $pickedUpAt->toIso8601String(),
+                'served_at' => $served?->toIso8601String(),
+                'duration_minutes' => $durationMinutes,
+                'status' => $isOpen ? 'Beklemede' : 'Teslim edildi',
+                'breached' => $isBreach,
+            ];
+        }
+
+        $total = count($rows);
+        $avg = $durations === [] ? null : round(array_sum($durations) / count($durations), 1);
+
+        $byStaffRows = collect($byStaff)
+            ->map(fn (array $s) => [
+                'name' => $s['name'],
+                'deliveries' => $s['deliveries'],
+                'breaches' => $s['breaches'],
+                'breach_rate' => $s['deliveries'] > 0 ? round($s['breaches'] * 100 / $s['deliveries'], 1) : 0.0,
+                'avg_duration_minutes' => $s['known'] > 0 ? round($s['total_minutes'] / $s['known'], 1) : null,
+            ])
+            ->sortByDesc('breaches')
+            ->values()
+            ->all();
+
+        return [
+            'target_minutes' => $targetMinutes,
+            'total' => $total,
+            'breached_count' => $breached,
+            'breach_rate' => $total > 0 ? round($breached * 100 / $total, 1) : 0.0,
+            'avg_duration_minutes' => $avg,
+            'open_breach_count' => $openBreach,
+            'rows' => $rows,
+            'by_staff' => $byStaffRows,
+        ];
+    }
+
     /** QR/kiosk kullanımı: kanal payları + günlük QR okutma sayısı. */
     public function channelUsage(ReportFilters $f): array
     {

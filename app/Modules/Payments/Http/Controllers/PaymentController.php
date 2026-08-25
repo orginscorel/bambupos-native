@@ -90,8 +90,12 @@ class PaymentController extends Controller
     /** Ödeme al (anında ya da terminal başlatma). Idempotency-Key desteklenir. */
     public function store(Request $request, Order $order): JsonResponse
     {
-        // Terminal (kasa) oturumda: PIN → personel; normal oturumda: policy.
-        $actor = $this->pinGate->actor($request, 'payments.take', 'payment.take',
+        // ATIF (§13, Faz C): TERMINAL (kasa) oturumda ödeme AKTİF OPERATÖRE
+        // atfedilir (paylaşımlı cihazda "kim aldı" belli olsun) — operatör
+        // yoksa 422, operatörün payments.take izni yeniden doğrulanır. Gövdede
+        // PIN gelirse mevcut PIN kapısı çalışır (geriye dönük uyumluluk + hassas
+        // eylem akışı BOZULMAZ). NORMAL oturumda: policy + oturum kullanıcısı.
+        $actor = $this->pinGate->actorOrOperator($request, 'payments.take', 'payment.take',
             fn () => $this->authorize('take', Payment::class));
 
         // Kiracı eşitliği (katman 2 — scope'tan bağımsız yeniden doğrulama).
@@ -197,7 +201,13 @@ class PaymentController extends Controller
     {
         $this->authorize('viewAny', Payment::class);
 
-        $providerKey = (string) $request->query('provider', (string) config('payments.default_terminal_provider', 'mock'));
+        // Sağlayıcı belirtilmezse işletmenin yapılandırdığı POS'a çöz (keyForMethod:
+        // requested → tenant entegratörü → global varsayılan). Kasa/terminal ekranı
+        // böylece gerçek cihazın durumunu gösterir.
+        $providerKey = $this->providers->keyForMethod(
+            \App\Modules\Payments\Enums\PaymentMethod::CreditCard,
+            $request->query('provider'),
+        );
 
         if (! $this->providers->has($providerKey)) {
             return response()->json(['online' => false, 'message' => 'Bilinmeyen sağlayıcı.'], 422);
@@ -205,10 +215,19 @@ class PaymentController extends Controller
 
         $status = $this->providers->get($providerKey)->getTerminalStatus($request->query('terminal_id'));
 
+        // FAZ2 (kasa POS-durum göstergesi): hangi sağlayıcının fiilen aktif olduğunu
+        // ve gerçek donanıma mı yoksa test/sunum iskeletine mi bağlı olduğunu kasiyer
+        // ekranına taşı. Katalogda işaretlenmemiş/bilinmeyen sağlayıcı GÜVENLİ tarafta
+        // kalır: simulated=true varsayılır (yanlışlıkla "gerçek bağlı" denmesin).
+        $catalog = (array) config("payments.catalog.{$providerKey}", []);
+
         return response()->json([
             'online' => $status->online,
             'terminal_id' => $status->terminalId,
             'message' => $status->message,
+            'provider' => $providerKey,
+            'provider_label' => (string) ($catalog['label'] ?? $providerKey),
+            'simulated' => (bool) ($catalog['simulated'] ?? true),
         ]);
     }
 

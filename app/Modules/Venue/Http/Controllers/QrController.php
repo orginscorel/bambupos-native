@@ -347,13 +347,31 @@ class QrController extends Controller
             $logoAbsolute = Storage::disk('local')->path($settings->logo_path);
         }
 
+        // CANLI ÖNİZLEME: ?preview=1 iken kaydedilmemiş şablon değerleri query'den
+        // gelir → tasarımcı kaydetmeden anında görür. YALNIZ görüntü; kayıt değişmez.
+        // İndirme/baskı yolunda (preview yok) DAİMA kayıtlı ayar kullanılır.
+        $preview = $request->boolean('preview');
+        $hex = static fn (?string $v): ?string => is_string($v) && preg_match('/^#[0-9A-Fa-f]{6}$/', $v) ? $v : null;
+
+        $color = ($preview ? $hex($request->query('color')) : null) ?? $settings->color ?? '#111111';
+        $bg = ($preview ? $hex($request->query('bg_color')) : null) ?? $settings->bg_color ?? '#FFFFFF';
+        $frame = $preview && in_array($request->query('frame'), ['none', 'simple', 'rounded'], true)
+            ? (string) $request->query('frame')
+            : ($settings->frame ?? 'simple');
+        $header = $preview && $request->filled('header')
+            ? mb_substr((string) $request->query('header'), 0, 60)
+            : ($settings->header_text ?: (string) ($tenant?->name ?? 'Menü'));
+        $description = $preview && $request->has('description')
+            ? mb_substr((string) $request->query('description'), 0, 120)
+            : ($settings->description ?? 'Menü için QR kodu okutun');
+
         return [
-            $settings->header_text ?: (string) ($tenant?->name ?? 'Menü'),
-            $settings->description ?? 'Menü için QR kodu okutun',
+            $header,
+            $description,
             [
-                'color' => $settings->color ?? '#111111',
-                'bg_color' => $settings->bg_color ?? '#FFFFFF',
-                'frame' => $settings->frame ?? 'simple',
+                'color' => $color,
+                'bg_color' => $bg,
+                'frame' => $frame,
                 'logo_path' => $logoAbsolute,
             ],
         ];

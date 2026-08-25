@@ -1,9 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Modules\Shifts\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Identity\Models\User;
+use App\Modules\Notify\Enums\NotificationType;
+use App\Modules\Notify\Services\NotificationDispatcher;
 use App\Modules\Shifts\Models\LeaveRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +19,13 @@ use Illuminate\Http\Request;
  */
 class LeaveRequestController extends Controller
 {
+    use \App\Modules\Tenancy\Concerns\ScopesToBranch;
+
+    public function __construct(
+        private readonly NotificationDispatcher $dispatcher,
+    ) {
+    }
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -23,6 +34,8 @@ class LeaveRequestController extends Controller
         $query = LeaveRequest::query()
             ->with(['user:id,name,position', 'decidedBy:id,name', 'createdBy:id,name'])
             ->when(! $canViewAll, fn ($q) => $q->where('user_id', $user->id))
+            // ŞUBE KAPSAMI (denetim #8): yönetici yalnız kendi şubesinin izinlerini görür.
+            ->when($canViewAll, fn ($q) => $q->where('branch_id', $this->currentBranchId()))
             ->when($canViewAll && $request->filled('user_id'), fn ($q) => $q->where('user_id', (int) $request->input('user_id')))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
             ->when($request->filled('type'), fn ($q) => $q->where('type', $request->string('type')))
@@ -74,7 +87,35 @@ class LeaveRequestController extends Controller
 
         $leave->save();
 
+        // §8 (denetim orta): personel kendi talebini açtıysa YÖNETİCİ haberdar edilir
+        // (LeaveRequested → targetPermissions=['staff.manage']). Yönetici zaten onaylı
+        // açtıysa bildirime gerek yok. Best-effort — talep kaydı bildirimsiz de geçerli.
+        if ($leave->status === LeaveRequest::STATUS_PENDING) {
+            $this->notifyRequested($leave);
+        }
+
         return response()->json(['leave' => $leave->load('user:id,name')], 201);
+    }
+
+    /** Yeni izin talebini şube yöneticilerine bildir (karar bekliyor). */
+    private function notifyRequested(LeaveRequest $leave): void
+    {
+        try {
+            $label = LeaveRequest::TYPE_LABELS[$leave->type] ?? $leave->type;
+            $range = $leave->starts_on->format('d.m.Y').' – '.$leave->ends_on->format('d.m.Y');
+            $who = $leave->user()->value('name') ?? 'Personel';
+
+            $this->dispatcher->notify(NotificationType::LeaveRequested, [
+                'tenant_id' => (int) $leave->tenant_id,
+                'branch_id' => $leave->branch_id !== null ? (int) $leave->branch_id : null,
+                'title' => 'Yeni izin talebi',
+                'body' => $who.' · '.$label.' · '.$range,
+                'data' => ['url' => '/panel/mesai/talepler'],
+                'dedup_key' => 'leave_requested:'.$leave->id,
+            ]);
+        } catch (\Throwable) {
+            // yut — talep bildirimsiz de geçerlidir
+        }
     }
 
     public function approve(Request $request, LeaveRequest $leave): JsonResponse
@@ -91,11 +132,11 @@ class LeaveRequestController extends Controller
     public function cancel(Request $request, LeaveRequest $leave): JsonResponse
     {
         $user = $request->user();
+        $isOwner = (int) $leave->user_id === (int) $user->id;
 
-        abort_unless(
-            (int) $leave->user_id === (int) $user->id || $user->hasPermission('staff.manage'),
-            403,
-        );
+        abort_unless($isOwner || $user->hasPermission('staff.manage'), 403);
+        // Sahibi kendi talebini iptal edebilir; yönetici YALNIZ kendi şubesinde (denetim #8).
+        abort_unless($isOwner || $leave->branch_id === $this->currentBranchId(), 404);
         abort_unless($leave->status === LeaveRequest::STATUS_PENDING, 422);
 
         $leave->forceFill([
@@ -110,6 +151,8 @@ class LeaveRequestController extends Controller
     private function decide(Request $request, LeaveRequest $leave, string $status): JsonResponse
     {
         abort_unless($request->user()->hasPermission('staff.manage'), 403);
+        // ŞUBE KAPSAMI (denetim #8): başka şubenin izin talebi karara bağlanamaz.
+        abort_unless($leave->branch_id === $this->currentBranchId(), 404);
         abort_unless($leave->status === LeaveRequest::STATUS_PENDING, 422);
 
         $data = $request->validate(['note' => ['nullable', 'string', 'max:255']]);
@@ -121,6 +164,35 @@ class LeaveRequestController extends Controller
             'decision_note' => $data['note'] ?? null,
         ])->save();
 
+        // §8: karar TALEP SAHİBİNE bildirilir — best-effort (karar akışı düşmez).
+        $this->notifyDecided($leave, $status);
+
         return response()->json(['leave' => $leave->fresh(['user:id,name', 'decidedBy:id,name'])]);
+    }
+
+    /**
+     * İzin kararını (onay/ret) yalnız TALEP SAHİBİNE bildir. LeaveDecided
+     * targetPermissions=[] + includeManagers=false → extra_user_ids ile hedeflenen
+     * talep sahibi dışında kimse almaz. Bildirim ek adımdır; hata yutulur.
+     */
+    private function notifyDecided(LeaveRequest $leave, string $status): void
+    {
+        try {
+            $approved = $status === LeaveRequest::STATUS_APPROVED;
+            $label = LeaveRequest::TYPE_LABELS[$leave->type] ?? $leave->type;
+            $range = $leave->starts_on->format('d.m.Y').' – '.$leave->ends_on->format('d.m.Y');
+
+            $this->dispatcher->notify(NotificationType::LeaveDecided, [
+                'tenant_id' => (int) $leave->tenant_id,
+                'branch_id' => $leave->branch_id !== null ? (int) $leave->branch_id : null,
+                'title' => $approved ? 'İzniniz onaylandı' : 'İzniniz reddedildi',
+                'body' => $label.' · '.$range,
+                'data' => ['url' => '/takvim'],
+                'extra_user_ids' => [(int) $leave->user_id],
+                'dedup_key' => 'leave_decided:'.$leave->id.':'.$status,
+            ]);
+        } catch (\Throwable) {
+            // yut — karar kaydı bildirimsiz de geçerlidir
+        }
     }
 }

@@ -78,6 +78,12 @@ class LoginController extends Controller
             $remember = true;
         }
 
+        // Patron Paneli (patron.*) da personel portalı gibi KALICI oturum kullanır.
+        if (\App\Modules\Boss\Support\BossHost::forcesRemember()
+            && \App\Modules\Boss\Support\BossHost::isBossHost($request)) {
+            $remember = true;
+        }
+
         if ($user->hasTwoFactorEnabled()) {
             $request->session()->put('auth.2fa.user_id', $user->getKey());
             $request->session()->put('auth.2fa.remember', $remember);
@@ -87,12 +93,17 @@ class LoginController extends Controller
 
         $this->completeLogin($request, $user, $remember);
 
+        // Patron host'unda (patron.*) giriş → Patron Paneli kökü (/). Aksi hâlde
+        // role özel açılış ekranı (garson→sipariş, kasiyer→kasa, mutfak→KDS,
+        // yönetici→panel — Personel-Yetki).
+        $redirectTo = \App\Modules\Boss\Support\BossHost::isBossHost($request)
+            ? '/'
+            : \App\Modules\Identity\Support\HomeScreen::resolve($user);
+
         return response()->json([
             'two_factor' => false,
             'user' => $user->only(['id', 'name', 'email', 'locale', 'theme']),
-            // Role özel açılış ekranı (Personel-Yetki): garson → sipariş,
-            // kasiyer → kasa, mutfak → KDS, yönetici → panel.
-            'redirect_to' => \App\Modules\Identity\Support\HomeScreen::resolve($user),
+            'redirect_to' => $redirectTo,
         ]);
     }
 

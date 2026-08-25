@@ -61,6 +61,13 @@ export function useTerminalPin() {
     });
 
     function promptPin(): Promise<{ pin: string; staff_code: string | null } | null> {
+        // Zaten bekleyen bir PIN isteği varsa onu İPTAL et (null ile çöz) — aksi
+        // halde eski resolver yetim kalır ve o eylem sonsuza dek askıda kalır.
+        if (resolver) {
+            const prev = resolver;
+            resolver = null;
+            prev(null);
+        }
         pin.value = '';
         staffCode.value = '';
         showStaffCode.value = false;
@@ -70,14 +77,22 @@ export function useTerminalPin() {
         });
     }
 
+    /** Terminalde aktif operatör (PIN'le giriş yapmış personel) var mı? */
+    const hasActiveOperator = computed(() =>
+        Boolean((page.props.auth as { terminal_operator?: { id: number } | null } | null)?.terminal_operator),
+    );
+
     /**
      * Hassas eyleme eklenecek gövde alanlarını döndürür.
      *  - Normal oturum → `{}` (PIN yok, mevcut davranış).
-     *  - Terminal oturum → PIN modalı; onaylanırsa `{ pin, staff_code }`,
+     *  - Terminal + AKTİF OPERATÖR → `{}` (yeniden PIN SORMA; backend eylemi aktif
+     *    operatöre atfeder — operatör zaten PIN'le giriş yaptı, kimliği bellidir).
+     *  - Terminal + operatör YOK → PIN modalı; onaylanırsa `{ pin, staff_code }`,
      *    iptal edilirse `null` (çağıran eylemi İPTAL etmeli).
      */
     async function collectPin(): Promise<Record<string, unknown> | null> {
         if (!isTerminal.value) return {};
+        if (hasActiveOperator.value) return {}; // operatör belli → PIN'siz atıf
         const res = await promptPin();
         if (!res) return null;
         return { pin: res.pin, staff_code: res.staff_code };

@@ -45,9 +45,25 @@ return [
         // token yenile, uzaktan kilit/aç (her cihaz gizli terminal kullanıcısı).
         'terminals' => ['view', 'manage'],
         'audit' => ['view'],
+        // Görevler: view = görev panosunu gör; assign = personele görev ata/
+        // düzenle/sil. Personel KENDİ görevlerini portalda izinsiz görür
+        // (self-servis); bu izinler YÖNETİCİ atama panosu içindir.
+        'tasks' => ['view', 'assign'],
+        // Teslimat/Paket: view = teslimat panosu; manage = kurye ata + durum;
+        // deliver = kurye kendi teslimatının durumunu günceller (portal).
+        'delivery' => ['view', 'manage', 'deliver'],
+        // Prim/Komisyon: view = prim raporu; manage = prim şeması/hedef tanımı.
+        'commission' => ['view', 'manage'],
+        // BOSS: yönetici kokpiti (ciro/performans/kasa/stok özeti) görüntüleme.
+        'boss' => ['view'],
+        // İzinli Cihazlar (A3): KDS/kiosk/terminal ekranlarının fiziksel
+        // cihaza kilitlenmesi. view = liste/durum (salt-okunur); manage =
+        // ekle/kaldır, izin kaldır/geri ver, boşa düşür, başka cihaza aktar.
+        'devices' => ['view', 'manage'],
     ],
 
     'labels' => [
+        'assign' => 'Görev ata',
         'view' => 'Görüntüle',
         'create' => 'Oluştur',
         'update' => 'Güncelle',
@@ -90,6 +106,11 @@ return [
         'kiosk' => 'Kiosk',
         'terminals' => 'İstasyon Terminalleri',
         'audit' => 'Denetim Kaydı',
+        'tasks' => 'Görevler',
+        'delivery' => 'Teslimat / Paket',
+        'commission' => 'Prim / Komisyon',
+        'boss' => 'Yönetim Kokpiti (BOSS)',
+        'devices' => 'İzinli Cihazlar',
     ],
 
     /*
@@ -115,6 +136,7 @@ return [
         'roles.manage' => 'Rol ve yetki setlerini değiştirir.',
         'audit.view' => 'Tüm denetim kayıtlarını görür.',
         'integrations.manage' => 'Dış sistem bağlantılarını yönetir.',
+        'devices.manage' => 'Ekran cihazlarının izinlerini kaldırır/aktarır; yanlış kullanımda ekranlar erişimi kaybedebilir.',
     ],
 
     /*
@@ -156,11 +178,16 @@ return [
                 'settings.view',
                 'kiosk.view', 'kiosk.manage',
                 'terminals.view', 'terminals.manage',
+                'devices.view', 'devices.manage',
+                'tasks.view', 'tasks.assign',
+                'delivery.view', 'delivery.manage',
+                'commission.view',
+                'boss.view',
             ],
         ],
         'garson' => [
             'name' => 'Garson',
-            'description' => 'Sipariş alır ve günceller; nedenli ikram ve indirim uygulayabilir; masa/adisyon birleştirebilir. Kasa, rapor ve personel kapalı.',
+            'description' => 'Sipariş alır ve günceller; nedenli ikram ve indirim uygulayabilir; masa/adisyon birleştirebilir; hazır kalemi servis eder. Kasa, rapor ve personel kapalı.',
             'permissions' => [
                 'catalog.view',
                 'orders.view', 'orders.create', 'orders.update', 'orders.discount', 'orders.comp', 'orders.merge_tables',
@@ -169,6 +196,12 @@ return [
                 'customers.view',
                 // Adisyonu borca taşıyabilir (masa boşalır); tahsilat YOK (kasiyer/yönetici işi).
                 'receivables.view', 'receivables.transfer',
+                // DENETİM 2026-08-06 (istasyon-yönlendirme): komi rolü yoksa (küçük
+                // işletme) garson HİÇBİR yerden "hazır" kalemi servis edilmiş
+                // işaretleyemiyordu. Komi'deki izinle AYNI (kds.deliver) — garson
+                // yalnız 'served'e ilerletebilir, kds.view YOK (accepted/preparing/
+                // ready'yi garson işaretleyemez, bu mutfağın işi kalır).
+                'kds.deliver',
             ],
         ],
         'kasiyer' => [
@@ -180,7 +213,8 @@ return [
                 'cash.view', 'cash.close',
                 'tables.view',
                 // Cari tahsilatı da kasiyer alır (aynı "ödeme alma" sorumluluğu).
-                'receivables.view', 'receivables.collect',
+                // Ödeme bekleyen adisyon tahsil edilemiyorsa BORCA yazabilir.
+                'receivables.view', 'receivables.collect', 'receivables.transfer',
             ],
         ],
         'mutfak' => [
@@ -192,6 +226,16 @@ return [
             'name' => 'Komi',
             'description' => 'Hazır siparişleri teslim alır ve masaya götürür.',
             'permissions' => ['kds.deliver', 'tables.view'],
+        ],
+        'kurye' => [
+            'name' => 'Kurye',
+            'description' => 'Kendine atanan paket teslimatlarını görür ve durumunu (yolda/teslim) günceller.',
+            'permissions' => ['delivery.deliver', 'orders.view'],
+        ],
+        'depo-sorumlusu' => [
+            'name' => 'Depo Sorumlusu',
+            'description' => 'Depo/stok yönetimi: mal kabul, sayım, düzeltme, tedarikçi. Kasa/ciro/personel görmez.',
+            'permissions' => ['stock.view', 'stock.adjust', 'catalog.view'],
         ],
     ],
 
@@ -219,5 +263,10 @@ return [
      * Barista ekranına, aksi halde (yemek/karışık) Mutfak ekranına düşer.
      */
     'barista_stations' => ['barista', 'coffee', 'bar'],
+
+    // NARGİLE kulvarı istasyonları — 'nargile' eklentisi AÇIKKEN ayrı bir KDS
+    // ekranına (Nargile) düşer; KAPALIYKEN bu istasyonlar Mutfak kulvarında kalır
+    // (kalemler kaybolmaz). Bkz. KdsService::laneStations / stationFamilies.
+    'hookah_stations' => ['hookah'],
 
 ];

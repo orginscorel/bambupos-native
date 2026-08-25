@@ -101,7 +101,10 @@ class TenantEscapeTest extends TestCase
         $this->deleteJson("/api/v1/customers/{$bCustomer->id}")->assertNotFound();
     }
 
-    /* ---------------- MASA ---------------- */
+    /* ---------------- MASA ----------------
+     * NOT: Faz-1'in ayrı/paralel "/api/v1/tables" ucu (denetim ORTA #3) hiç
+     * kullanılmadığı için kaldırıldı; masa yönetimi tek uçtan (VenueTableController,
+     * "/api/v1/venue/tables") yapılıyor — tenant-kaçış kanıtı o uç üzerinden. */
 
     public function test_a_kullanicisi_b_nin_masasina_erisemez_qr_rotasyonu_yapamaz(): void
     {
@@ -114,8 +117,8 @@ class TenantEscapeTest extends TestCase
 
         $this->actingAs($this->a['user']);
 
-        $this->getJson("/api/v1/tables/{$bTable->id}")->assertNotFound();
-        $this->postJson("/api/v1/tables/{$bTable->id}/rotate-qr")->assertNotFound();
+        $this->putJson("/api/v1/venue/tables/{$bTable->id}", ['name' => 'ele geçirildi'])->assertNotFound();
+        $this->postJson("/api/v1/venue/tables/{$bTable->id}/qr-rotate")->assertNotFound();
 
         $this->assertSame($oldToken, Table::withoutTenancy()->find($bTable->id)->qr_token);
     }

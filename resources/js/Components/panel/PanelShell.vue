@@ -6,6 +6,9 @@ import { authFromPage, type BranchOption } from '@/types/auth';
 import { useTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import { useNotifications, type NotificationItem } from '@/composables/useNotifications';
+import { useNotificationSound } from '@/composables/useNotificationSound';
+import { useVersionWatch } from '@/composables/useVersionWatch';
+import { usePush } from '@/composables/usePush';
 import { formatRelative } from '@/lib/format';
 import type { NavItem } from '@/types/nav';
 import { defaultNavigation } from '@/config/navigation';
@@ -26,6 +29,23 @@ defineProps<{
     /** Immersive (KDS/mutfak) mod: kenar çubuğu masaüstünde varsayılan kapalı,
      *  içerik tam genişlik. Siparişler & Kasa true verir; PanelLayout'a iletilir. */
     immersive?: boolean;
+    /** Sayfa-içi tutarlı başlık bloğu (opsiyonel). `heading` verilirse sayfanın
+     *  en üstünde standart başlık + açıklama + #actions bloğu render edilir.
+     *  Verilmezse blok HİÇ çıkmaz — kendi başlığını çizen mevcut sayfalar
+     *  etkilenmez (çift başlık olmaz). Yeni/elden geçen sayfalar opt-in eder. */
+    heading?: string;
+    /** `heading` bloğunun altındaki opsiyonel açıklama satırı. */
+    description?: string;
+    /**
+     * TAM KAPLAMA: sayfa, içerik alanının TAMAMINI kaplar ve kaydırmayı
+     * KENDİ yönetir (kolonlar kendi içinde kayar). Kasa/Siparişler gibi
+     * "uygulama" hissi veren ekranların düzeni budur; kart yığını yerine
+     * ekranı dolduran paneller kurulabilir.
+     * Varsayılan (false) davranış eskisiyle BİREBİR aynıdır.
+     */
+    flush?: boolean;
+    /** Tuval modu: sol menü çizilmez, gezinme çekmeceye taşınır (POS dili). */
+    canvas?: boolean;
 }>();
 
 const page = usePage();
@@ -37,10 +57,56 @@ const { success, danger } = useToast();
 /* ---- Bildirim zili (§8): okunmamış sayısı + liste + okundu işaretleme ---- */
 const { items: notifications, unreadCount, markRead, markAllRead } = useNotifications();
 
+/* ---- Sürüm gözcüsü: yeni sürüm yayınlanınca "yenile" toast'ı ---- */
+useVersionWatch();
+
 async function openNotification(item: NotificationItem): Promise<void> {
     await markRead(item.id);
     if (item.url) {
         router.visit(item.url);
+    }
+}
+
+/* ---- Bu cihazda ses (WebAudio bip) — zil menüsündeki aç/kapa switch'i ---- */
+const { enabled: soundEnabled, toggle: toggleSound } = useNotificationSound();
+
+/* ---- Push izni istemi (0 aboneliğin çözümü): hafif, kapatılabilir banner ----
+ * Notification.permission === 'default' && abone değilken bir kez CTA gösterilir;
+ * kapatılırsa localStorage'da hatırlanır (bir daha gösterme). Zil menüsünde de
+ * küçük "bu cihazda bildirimleri aç" erişimi bulunur. */
+const { supported: pushSupported, permission: pushPermission, subscribed: pushSubscribed, enable: pushEnable } = usePush();
+
+const PUSH_CTA_KEY = 'panel_push_cta_dismissed';
+const pushCtaDismissed = ref(false);
+onMounted(() => {
+    try {
+        pushCtaDismissed.value = localStorage.getItem(PUSH_CTA_KEY) === '1';
+    } catch {
+        /* erişilemezse banner gösterilebilir kalır */
+    }
+});
+
+const canPromptPush = computed(
+    () => pushSupported.value && pushPermission.value === 'default' && !pushSubscribed.value,
+);
+const showPushCta = computed(() => canPromptPush.value && !pushCtaDismissed.value);
+
+function dismissPushCta(): void {
+    pushCtaDismissed.value = true;
+    try {
+        localStorage.setItem(PUSH_CTA_KEY, '1');
+    } catch {
+        /* gizli mod — bu oturumda hatırlanır */
+    }
+}
+
+async function enablePush(): Promise<void> {
+    const ok = await pushEnable();
+    if (ok) {
+        success('Bildirimler açıldı', 'Bu cihaza anlık bildirim gönderilecek.');
+        dismissPushCta();
+    } else if (pushPermission.value === 'denied') {
+        danger('İzin verilmedi', 'Tarayıcı bildirim izni reddedildi; site ayarlarından açabilirsiniz.');
     }
 }
 
@@ -126,8 +192,8 @@ const nativeVersionLabel = computed(() =>
 </script>
 
 <template>
-    <PanelLayout :title="title" :nav="nav" :immersive="immersive">
-        <template #brand>QR Menü</template>
+    <PanelLayout :title="title" :nav="nav" :immersive="immersive" :flush="flush" :canvas="canvas">
+        <template #brand>BamBumPOS</template>
 
         <!-- Alt bilgi: sürüm rozetleri (Site + Uygulama) + marka bloğu — tek,
              rafine bir blok halinde. İkisi de /panel/surum-notlari'na bağlanır
@@ -165,41 +231,53 @@ const nativeVersionLabel = computed(() =>
                     </span>
                     <div class="flex min-w-0 flex-col">
                         <span v-if="auth?.tenant" class="truncate text-[13px] font-semibold text-body">{{ auth.tenant.name }}</span>
+                        <!-- Ürün + sağlayıcı damgası — GÖMÜLÜ, kiracı DEĞİŞTİREMEZ. -->
                         <span class="text-[11px] font-medium text-subtle">
-                            powered by <span class="font-semibold text-muted">bogahost</span>
+                            <span class="font-semibold text-muted">BamBumPOS</span> ·
+                            <a href="https://bogahost.com" target="_blank" rel="noopener" class="font-semibold text-muted hover:text-primary">bogahost.com</a>
                         </span>
                     </div>
                 </div>
             </div>
         </template>
 
-        <!-- Şube değiştirici: kiracının aktif şubeleri -->
+        <!-- Şube değiştirici: kiracının aktif şubeleri. Kenar çubuğu üstünde
+             (ve mobil çekmecede) belirgin bir "işletme/şube kartı" olarak durur.
+             v-if sarmalayıcı div'de → switcher yoksa HİÇ DOM üretilmez (PanelLayout
+             `contents` sarmalayıcısıyla boşluk oluşmaz). -->
         <template #branch-switcher>
-            <BaseDropdown v-if="canSwitchBranch && branches.length > 1" align="left" menu-label="Şube seçimi">
-                <template #trigger="{ toggle, ariaAttrs }">
-                    <button
-                        type="button"
-                        v-bind="ariaAttrs"
-                        class="flex h-10 max-w-52 items-center gap-2 rounded-md px-2.5 text-sm font-medium text-body transition-colors duration-(--dur-fast) hover:bg-inset"
-                        @click="toggle"
+            <div v-if="canSwitchBranch && branches.length > 1" class="mx-3 mt-3 mb-1">
+                <BaseDropdown align="left" menu-label="Şube seçimi" class="w-full">
+                    <template #trigger="{ toggle, ariaAttrs }">
+                        <button
+                            type="button"
+                            v-bind="ariaAttrs"
+                            class="flex w-full items-center gap-2.5 rounded-lg border border-default bg-surface px-2.5 py-2 text-left transition-colors duration-(--dur-fast) hover:border-strong hover:bg-inset"
+                            @click="toggle"
+                        >
+                            <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
+                                <AppIcon name="store" :size="17" />
+                            </span>
+                            <span class="flex min-w-0 grow flex-col">
+                                <span class="text-[10px] font-medium tracking-wide text-subtle uppercase">Şube</span>
+                                <span class="truncate text-[13px] font-semibold text-body">{{ currentBranch?.name ?? 'Şube seç' }}</span>
+                            </span>
+                            <AppIcon name="chevron-down" :size="16" class="shrink-0 text-subtle" />
+                        </button>
+                    </template>
+                    <DropdownItem
+                        v-for="branch in branches"
+                        :key="branch.id"
+                        :icon="branch.id === currentBranch?.id ? 'check' : 'store'"
+                        @select="selectBranch(branch)"
                     >
-                        <AppIcon name="store" :size="17" class="text-muted" />
-                        <span class="truncate">{{ currentBranch?.name ?? 'Şube' }}</span>
-                        <AppIcon v-if="branches.length > 1" name="chevron-down" :size="14" class="text-subtle" />
-                    </button>
-                </template>
-                <DropdownItem
-                    v-for="branch in branches"
-                    :key="branch.id"
-                    :icon="branch.id === currentBranch?.id ? 'check' : 'store'"
-                    @select="selectBranch(branch)"
-                >
-                    <span class="flex flex-col">
-                        <span>{{ branch.name }}</span>
-                        <span v-if="branch.code" class="text-xs text-subtle">{{ branch.code }}</span>
-                    </span>
-                </DropdownItem>
-            </BaseDropdown>
+                        <span class="flex flex-col">
+                            <span>{{ branch.name }}</span>
+                            <span v-if="branch.code" class="text-xs text-subtle">{{ branch.code }}</span>
+                        </span>
+                    </DropdownItem>
+                </BaseDropdown>
+            </div>
         </template>
 
         <!-- Bildirimler: panel-içi zil (§8) — okunmamış sayısı + liste -->
@@ -234,6 +312,38 @@ const nativeVersionLabel = computed(() =>
                             Tümünü okundu işaretle
                         </button>
                     </div>
+
+                    <!-- Bu cihazda ses (WebAudio bip) aç/kapa -->
+                    <button
+                        type="button"
+                        role="switch"
+                        :aria-checked="soundEnabled"
+                        class="flex min-h-11 w-full items-center justify-between gap-2 border-b border-default px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-inset"
+                        @click="toggleSound"
+                    >
+                        <span class="flex items-center gap-2 text-xs font-medium text-muted">
+                            <AppIcon name="bell" :size="14" /> Bu cihazda bildirim sesi
+                        </span>
+                        <span
+                            class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-(--dur-fast)"
+                            :class="soundEnabled ? 'bg-primary' : 'bg-inset'"
+                        >
+                            <span
+                                class="inline-block size-5 rounded-full bg-white shadow transition-transform duration-(--dur-fast)"
+                                :class="soundEnabled ? 'translate-x-[1.375rem]' : 'translate-x-0.5'"
+                            />
+                        </span>
+                    </button>
+
+                    <!-- Zil menüsünden push açma erişimi -->
+                    <button
+                        v-if="canPromptPush"
+                        type="button"
+                        class="flex min-h-11 w-full items-center gap-2 border-b border-default px-3 py-2 text-left text-xs font-semibold text-primary transition-colors duration-(--dur-fast) hover:bg-inset"
+                        @click="enablePush"
+                    >
+                        <AppIcon name="bell" :size="14" /> Bu cihazda bildirimleri aç
+                    </button>
 
                     <div v-if="notifications.length === 0" class="p-2">
                         <EmptyState
@@ -302,6 +412,49 @@ const nativeVersionLabel = computed(() =>
                 <DropdownItem icon="logout" danger @select="logout">Çıkış yap</DropdownItem>
             </BaseDropdown>
         </template>
+
+        <!-- Tutarlı sayfa başlığı bloğu — YALNIZ `heading` verildiğinde çıkar.
+             Kendi başlığını çizen mevcut sayfalar `heading` geçmez → çift başlık
+             olmaz. Başlık + opsiyonel açıklama solda; #actions sağda. -->
+        <header
+            v-if="heading"
+            class="mb-4 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between"
+        >
+            <div class="min-w-0">
+                <h1 class="truncate text-xl font-bold text-body sm:text-2xl">{{ heading }}</h1>
+                <p v-if="description" class="mt-1 text-sm text-muted">{{ description }}</p>
+            </div>
+            <div v-if="$slots.actions" class="flex shrink-0 flex-wrap items-center gap-2">
+                <slot name="actions" />
+            </div>
+        </header>
+
+        <!-- Push izni istemi: hafif, kapatılabilir banner (0 aboneliğin çözümü) -->
+        <!-- İnce push-izni şeridi (tek satır; dikey alan yemez). -->
+        <div
+            v-if="showPushCta"
+            class="mb-3 flex items-center gap-2 rounded-md border border-primary-soft-border bg-primary-soft/60 px-3 py-1.5 text-sm"
+        >
+            <AppIcon name="bell" :size="15" class="shrink-0 text-primary" />
+            <p class="min-w-0 grow truncate text-muted">
+                <span class="font-medium text-body">Bildirimleri açın</span> — bu cihazda anlık haber alın.
+            </p>
+            <button
+                type="button"
+                class="shrink-0 rounded px-2 py-1 text-sm font-semibold text-primary hover:bg-primary-soft"
+                @click="enablePush"
+            >
+                Aç
+            </button>
+            <button
+                type="button"
+                aria-label="Bu istemi kapat"
+                class="inline-flex size-7 shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-inset"
+                @click="dismissPushCta"
+            >
+                <AppIcon name="x" :size="14" />
+            </button>
+        </div>
 
         <!-- Personel taklidi şeridi artık GLOBAL (app.ts → ImpersonationBar);
              PanelShell'siz tam-ekran KDS ekranlarında da görünür. -->

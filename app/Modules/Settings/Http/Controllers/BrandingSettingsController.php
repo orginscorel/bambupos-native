@@ -71,6 +71,62 @@ class BrandingSettingsController extends Controller
     }
 
     /** @return array{name: string, logo_url: string|null} */
+    /** İzinli panel fontları (yeni dosya indirilmez — mevcut/sistem yığınları). */
+    private const FONTS = ['poppins', 'system', 'serif', 'mono', 'rounded'];
+
+    /** Tema varsayılanı (boşsa sistem teması). */
+    private const THEME_DEFAULT = ['primary' => '#2563eb', 'accent' => '', 'font' => 'poppins', 'mode' => 'system'];
+
+    public function updateTheme(Request $request): JsonResponse
+    {
+        $user = $this->authorizeManage($request);
+        $tenant = $this->tenantOf($user);
+
+        $data = $request->validate([
+            'primary' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'accent' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'font' => ['required', 'in:'.implode(',', self::FONTS)],
+            'mode' => ['required', 'in:system,light,dark'],
+        ]);
+
+        $tenant->theme = [
+            'primary' => strtolower($data['primary']),
+            'accent' => isset($data['accent']) ? strtolower((string) $data['accent']) : '',
+            'font' => $data['font'],
+            'mode' => $data['mode'],
+        ];
+        $tenant->save();
+
+        $this->audit->log('settings.theme.updated', $tenant, null, $tenant->theme, (int) $tenant->getKey());
+
+        return response()->json(['branding' => $this->dto($tenant)]);
+    }
+
+    /**
+     * İşletme adı güncelle — QR menü başlığında ve logo yoksa baş-harf
+     * dairesinde görünen isim budur. Kiracı adı başka hiçbir ekrandan
+     * düzenlenemiyordu (kurulumdan gelen "Demo İşletme" sabit kalıyordu);
+     * bu uç o boşluğu kapatır. Cache tag ile public menü anında güncellenir.
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $user = $this->authorizeManage($request);
+        $tenant = $this->tenantOf($user);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'min:2', 'max:120'],
+        ]);
+
+        $old = $tenant->name;
+        $tenant->name = trim($data['name']);
+        $tenant->save();
+
+        $this->audit->log('settings.branding.name_updated', $tenant,
+            ['name' => $old], ['name' => $tenant->name], (int) $tenant->getKey());
+
+        return $this->purging($tenant, response()->json(['branding' => $this->dto($tenant)]));
+    }
+
     private function dto(Tenant $tenant): array
     {
         return [
@@ -78,6 +134,8 @@ class BrandingSettingsController extends Controller
             'logo_url' => $tenant->logo_path !== null
                 ? Storage::disk('public')->url($tenant->logo_path)
                 : null,
+            'theme' => array_merge(self::THEME_DEFAULT, is_array($tenant->theme) ? $tenant->theme : []),
+            'fonts' => self::FONTS,
         ];
     }
 

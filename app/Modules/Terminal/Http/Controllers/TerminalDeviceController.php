@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Modules\Identity\Services\AuditLogger;
 use App\Modules\Terminal\Models\TerminalDevice;
 use App\Modules\Terminal\Services\TerminalProvisioner;
+use App\Modules\Terminal\Support\TerminalLicense;
 use App\Modules\Terminal\Support\TerminalStation;
 use App\Modules\Tenancy\Models\Branch;
+use App\Modules\Tenancy\Models\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -50,12 +52,26 @@ class TerminalDeviceController extends Controller
             'devices' => $devices,
             'branches' => $branches,
             'stations' => TerminalStation::options(),
+            // §13 Faz 3: panelde "3/5 terminal lisansı kullanıldı" göstergesi.
+            'license' => TerminalLicense::snapshot($this->tenantOf($request)),
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $this->authorizeManage($request);
+
+        $tenant = $this->tenantOf($request);
+
+        // §13 Faz 3: lisans limiti — aşılınca net, eylem çağıran 422.
+        if (! TerminalLicense::hasCapacity($tenant)) {
+            $message = TerminalLicense::limitReachedMessage($tenant);
+
+            return response()->json([
+                'message' => $message,
+                'errors' => ['license' => [$message]],
+            ], 422);
+        }
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
@@ -189,6 +205,12 @@ class TerminalDeviceController extends Controller
                 || $request->user()->hasPermission('terminals.manage'),
             403,
         );
+    }
+
+    /** Oturumdaki kiracı (lisans sütununun kaynağı; id istekten ASLA alınmaz). */
+    private function tenantOf(Request $request): Tenant
+    {
+        return Tenant::query()->findOrFail((int) $request->user()->tenant_id);
     }
 
     /** @return array<string, mixed> */

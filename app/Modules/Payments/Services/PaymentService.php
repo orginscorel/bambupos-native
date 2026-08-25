@@ -115,7 +115,10 @@ class PaymentService
                 $change = $tendered - $amount - $tip;
             }
 
-            $session = $this->cash->resolveOpenSession($locked, $data['cash_register_id'] ?? null);
+            // Kasa oturumu OTOMATİK: açık oturum yoksa şubenin varsayılan kasası
+            // kurulup açılır → tahsilat Z raporunun DIŞINDA kalmaz (kasiyerin
+            // ödeme öncesi kasa açması gerekmez).
+            $session = $this->cash->ensureOpenSessionForOrder($locked, $data['cash_register_id'] ?? null, $actor);
 
             $payment = new Payment([
                 'kind' => 'payment',
@@ -189,7 +192,10 @@ class PaymentService
                 ]]);
             }
 
-            $session = $this->cash->resolveOpenSession($locked, $data['cash_register_id'] ?? null);
+            // Kasa oturumu OTOMATİK: açık oturum yoksa şubenin varsayılan kasası
+            // kurulup açılır → tahsilat Z raporunun DIŞINDA kalmaz (kasiyerin
+            // ödeme öncesi kasa açması gerekmez).
+            $session = $this->cash->ensureOpenSessionForOrder($locked, $data['cash_register_id'] ?? null, $actor);
 
             $payment = new Payment([
                 'kind' => 'payment',

@@ -75,16 +75,23 @@ function applyPreset(key: PresetKey): void {
  * Gruplu 2 kademeli gezinme ReportsNav'da; burada yalnız aktif sekme tutulur.
  * Açılış "overview" (Genel Bakış landing) — bugüne bakar, filtre satırını gizler.
  */
-const tab = ref('overview');
+const VALID_TABS = ['overview', 'sales', 'profit', 'finance', 'eod', 'reconciliation', 'ops', 'staff', 'exports'];
+const initialTab = new URLSearchParams(page.url.split('?')[1] ?? '').get('sekme');
+const tab = ref(initialTab && VALID_TABS.includes(initialTab) ? initialTab : 'overview');
 </script>
 
 <template>
     <Head title="Raporlar" />
 
-    <PanelShell title="Raporlar">
-        <div class="flex flex-col gap-4">
-            <!-- Gruplu 2 kademeli gezinme + açıklama -->
+    <!-- TAM KAPLAMA: rapor gezinmesi SABİT şeritte kalır (uzun tablolarda
+         yukarı kaçmaz), yalnız rapor içeriği kendi içinde kayar. -->
+    <PanelShell title="Raporlar" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
             <ReportsNav :active="tab" @select="tab = $event" />
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
 
             <!-- Filtre satırı: içeriğin ÜSTÜNDE tek satır; her şeyi kapsar.
                  Genel Bakış daima bugüne baktığı için orada gizlenir. -->
@@ -121,6 +128,7 @@ const tab = ref('overview');
             <ReconciliationTab v-else-if="tab === 'reconciliation'" :filters="filters" />
             <StaffTab v-else-if="tab === 'staff'" :filters="filters" />
             <ExportsTab v-else-if="tab === 'exports'" />
+        </div>
         </div>
     </PanelShell>
 </template>

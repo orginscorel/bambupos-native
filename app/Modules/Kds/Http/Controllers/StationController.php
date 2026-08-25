@@ -87,7 +87,7 @@ class StationController extends Controller
             ->where('tenant_id', $request->user()->tenant_id)
             ->where('is_active', true)
             ->orderBy('first_name')->orderBy('last_name')
-            ->get(['id', 'first_name', 'last_name', 'position']);
+            ->get(['id', 'first_name', 'last_name', 'name', 'position']);
 
         $map = UserStation::query()->get()
             ->groupBy('user_id')

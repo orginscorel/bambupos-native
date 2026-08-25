@@ -8,6 +8,12 @@ export interface Toast {
     title: string;
     message?: string;
     duration: number;
+    /** Tıklanınca gidilecek yol (bildirim baloncuğu → ilgili sayfa). */
+    url?: string;
+    /** Tıklanınca sayfayı tam yenile (sürüm güncelleme toast'ı). */
+    reload?: boolean;
+    /** AppIcon adı; verilmezse variant ikonu kullanılır. */
+    icon?: string;
 }
 
 let nextId = 1;
@@ -18,13 +24,24 @@ function dismiss(id: number): void {
     if (i !== -1) toasts.splice(i, 1);
 }
 
-function push(input: { variant?: ToastVariant; title: string; message?: string; duration?: number }): number {
+function push(input: {
+    variant?: ToastVariant;
+    title: string;
+    message?: string;
+    duration?: number;
+    url?: string;
+    reload?: boolean;
+    icon?: string;
+}): number {
     const toast: Toast = {
         id: nextId++,
         variant: input.variant ?? 'info',
         title: input.title,
         message: input.message,
         duration: input.duration ?? 4500,
+        url: input.url,
+        reload: input.reload,
+        icon: input.icon,
     };
     toasts.push(toast);
     if (toast.duration > 0) {

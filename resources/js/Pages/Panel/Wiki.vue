@@ -55,7 +55,10 @@ const debtBranch: FlowStep[] = [
 <template>
     <Head title="Nasıl Çalışır" />
 
-    <PanelShell title="Nasıl Çalışır">
+    <PanelShell title="Nasıl Çalışır" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-8">
             <div class="flex flex-col gap-2">
                 <h1 class="text-2xl font-semibold text-body">Sipariş · Mutfak · Kasa · Masa · Cari nasıl bağlanır?</h1>
@@ -210,6 +213,61 @@ const debtBranch: FlowStep[] = [
                         müşteri tek hesap alır. Mutfak/Barista/Komi ekranları <strong class="text-body">para görmez</strong>.
                     </p>
                 </div>
+                <div class="mt-2.5 flex items-start gap-2.5 rounded-md border border-default bg-inset px-3 py-2.5 text-sm text-muted">
+                    <AppIcon name="nargile" :size="16" class="mt-0.5 shrink-0 text-subtle" />
+                    <p class="leading-relaxed">
+                        <strong class="text-body">Nargile</strong> eklentisi açıksa dördüncü bir kulvar eklenir:
+                        Nargile istasyonuna atanan ürünler Mutfak yerine ayrı <strong class="text-body">Nargile
+                        ekranına</strong> düşer ve nargileci kendi terminalinden yönetir. Eklenti kapalıyken bu
+                        ürünler Mutfak kulvarında kalır (Ayarlar › Eklentiler).
+                    </p>
+                </div>
+            </BaseCard>
+
+            <!-- ---- Terminal: cihaza kilitli istasyonlar ---- -->
+            <BaseCard title="Terminal — cihaza kilitli istasyonlar">
+                <p class="mb-5 max-w-3xl px-1 text-sm leading-relaxed text-muted">
+                    Mutfak/Barista/Komi ekranları ile Kasa ve Sipariş Girişi, isterseniz birer <strong class="text-body">terminal</strong>
+                    olarak kurulur: cihaz artık tam ekran yalnızca kendi istasyonunu gösterir, panelin geri kalanını görmez.
+                </p>
+                <dl class="grid grid-cols-1 gap-5 p-1 sm:grid-cols-2">
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                            <AppIcon name="monitor" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Lisanslı kurulum</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Ayarlar › Terminaller'den ("Terminal ekle") şube ve istasyon seçilir; sistem işletmenin
+                                terminal lisans hakkına göre (ör. "3 / 5 terminal lisansı kullanıldı" ya da sınırsız)
+                                benzersiz bir adres/QR üretir. Bu adres cihazın tarayıcısında tam ekran açılır ya da QR
+                                okutulur — cihaz o an o istasyona kilitlenir.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                            <AppIcon name="tablet" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Oto-kilit</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Cihaz kendi adresiyle otomatik oturum açar; personel şifre girmez ve yalnızca kendi
+                                istasyon ekranını görür. Yönetici istediği an cihazı uzaktan kilitleyebilir ya da
+                                adresini yenileyip eskisini anında geçersiz kılabilir.
+                            </dd>
+                        </div>
+                    </div>
+                </dl>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-default bg-inset px-3 py-2.5 text-sm text-muted">
+                    <AppIcon name="info" :size="16" class="mt-0.5 shrink-0 text-subtle" />
+                    <p class="leading-relaxed">
+                        Mutfak/Barista/Komi terminalleri <strong class="text-body">para görmez</strong>. Kasa ve Sipariş
+                        Girişi terminalleri para görür; bu ikisinde ödeme alma, iptal, iade/void ve ikram gibi hassas
+                        işlemler personel <strong class="text-body">PIN</strong>'i ister ve o kişiye kaydedilir (normal
+                        panel oturumunda PIN istenmez).
+                    </p>
+                </div>
             </BaseCard>
 
             <!-- ---- Kiosk & QR: müşteri kanalları ---- -->
@@ -223,8 +281,9 @@ const debtBranch: FlowStep[] = [
                             <dt class="text-sm font-semibold text-body">Kiosk (self-servis cihaz)</dt>
                             <dd class="mt-0.5 text-sm leading-relaxed text-muted">
                                 Müşteri, cihazdaki dokunmatik ekrandan ürün görselleriyle kendi siparişini verir ve
-                                (şimdilik deneme/mock) ödemesini yapar. Sipariş <strong class="text-body">Siparişler
-                                panosuna ve mutfağa</strong> düşer; kartta ödeme durumu görünür.
+                                bağlı <strong class="text-body">POS/ödeme sağlayıcısı</strong> üzerinden ödemesini yapar.
+                                Sipariş <strong class="text-body">Siparişler panosuna ve mutfağa</strong> düşer; kartta
+                                ödeme durumu görünür.
                             </dd>
                         </div>
                     </div>
@@ -245,6 +304,70 @@ const debtBranch: FlowStep[] = [
                     <p class="leading-relaxed">
                         Hangi kanaldan gelirse gelsin sipariş <strong>aynı yaşam döngüsüne</strong> girer: Hazırlanıyor →
                         Garson &amp; Komi bekliyor → Servis edildi. Kanal farkı yalnızca siparişin nasıl başladığını değiştirir.
+                    </p>
+                </div>
+            </BaseCard>
+
+            <!-- ---- Eklentiler & entegrasyonlar ---- -->
+            <BaseCard title="Eklentiler & entegrasyonlar">
+                <div class="grid grid-cols-1 gap-5 p-1 sm:grid-cols-2">
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                            <AppIcon name="wallet" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">POS / yazarkasa / ÖKC entegratörü</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Markadan bağımsız bir entegratör: kasadaki, terminaldeki ve kiosktaki ödemeler
+                                seçtiğiniz sağlayıcıya (banka POS, ÖKC/yazarkasa, ödeme kuruluşu) yönlenir.
+                                Ayarlar › Entegrasyonlar'dan sağlayıcı seçilip yapılandırılır; kurulmadıysa
+                                sistem sahte "tahsil edildi" göstermez.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+                            <AppIcon name="nargile" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Nargile</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Nargile mekânları için ayrı hazırlık ekranı + nargileci terminali. Açıkken Nargile
+                                istasyonuna atanan ürünler kendi kulvarına düşer.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                            <AppIcon name="plug" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Şarjmatik</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Açıkken müşteri QR menüden "Şarjmatik İste" der; talep personele bildirim olarak düşer.
+                                Kapalıyken buton hiç görünmez.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                            <AppIcon name="settings" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Tema & marka</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Ayarlar › Tema'dan marka rengi, vurgu rengi, yazı tipi ve açık/koyu mod; Ayarlar ›
+                                İşletme / Marka'dan işletme adı ve logo. QR menü ve panel bu ayarlara uyar.
+                            </dd>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-default bg-inset px-3 py-2.5 text-sm text-muted">
+                    <AppIcon name="info" :size="16" class="mt-0.5 shrink-0 text-subtle" />
+                    <p class="leading-relaxed">
+                        Eklentiler <strong class="text-body">Ayarlar › Eklentiler</strong> ekranından tek tıkla
+                        açılıp kapatılır. Kapalı bir eklentinin ekranları, butonları ve uçları tamamen gizlenir —
+                        işletme yalnızca kullandığı özellikleri görür.
                     </p>
                 </div>
             </BaseCard>
@@ -426,6 +549,80 @@ const debtBranch: FlowStep[] = [
                         öderse: Tahsilat 500 ₺'ye çıkar, Açık borç 0'a iner — Ciro hep 500 ₺ kalır.
                     </p>
                 </div>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-default bg-inset px-3 py-2.5 text-sm text-muted">
+                    <AppIcon name="info" :size="16" class="mt-0.5 shrink-0 text-subtle" />
+                    <p class="leading-relaxed">
+                        Bu 4 rakamın yanında <strong class="text-body">Raporlar</strong> (<code class="rounded bg-inset px-1 py-0.5 text-xs">/panel/raporlar</code>)
+                        ekranında satış (günlük/saatlik, kategori, ürün, masa, kanal), finans (KDV dağılımı, ödeme
+                        yöntemleri, kasa oturumları, POS/nakit mutabakatı), ürün kârlılığı, operasyon (gün sonu,
+                        geciken siparişler, istasyon hazırlama süreleri, komi teslim SLA, iptal/ikram nedenleri,
+                        QR/Kiosk kullanımı) ve personel performansı raporları da bulunur.
+                    </p>
+                </div>
+            </BaseCard>
+
+            <!-- ---- Roller: kim neyi görür ---- -->
+            <BaseCard title="Roller — kim neyi görür?">
+                <p class="mb-5 max-w-3xl px-1 text-sm leading-relaxed text-muted">
+                    Yetkiler role göre değişir; her rol yalnızca işine gerektiği kadarını görür.
+                </p>
+                <dl class="grid grid-cols-1 gap-5 p-1 sm:grid-cols-2">
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                            <AppIcon name="users" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Sahip & Müdür</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Tüm ekranlara erişir (kasa, raporlar, ayarlar, personel/rol yönetimi dahil). Şube
+                                Müdürü aynı operasyon ve rapor yetkilerine sahiptir; yalnızca rol/yetki tanımlaması
+                                onun dışındadır.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-inset text-muted">
+                            <AppIcon name="orders" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Garson</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Sipariş alır, masa/adisyon işler, rezervasyona bakar — kasayı ve raporları göremez.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
+                            <AppIcon name="wallet" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Kasiyer</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Yalnızca ödeme/kasa işlemlerini yapar; iade gibi ek yetkiler ayrıca açılabilir.
+                            </dd>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+                            <AppIcon name="chef-hat" :size="16" />
+                        </span>
+                        <div>
+                            <dt class="text-sm font-semibold text-body">Mutfak / Komi / Kurye / Depo Sorumlusu</dt>
+                            <dd class="mt-0.5 text-sm leading-relaxed text-muted">
+                                Her biri yalnızca kendi ekranını görür: istasyon (KDS) ekranı, teslim kuyruğu,
+                                kurye/teslimat listesi ya da depo/stok ekranı — panelin geri kalanı gizlidir.
+                            </dd>
+                        </div>
+                    </div>
+                </dl>
+                <div class="mt-4 flex items-start gap-2.5 rounded-md border border-default bg-inset px-3 py-2.5 text-sm text-muted">
+                    <AppIcon name="gauge" :size="16" class="mt-0.5 shrink-0 text-subtle" />
+                    <p class="leading-relaxed">
+                        <strong class="text-body">Patron Paneli</strong> bu panelin bir sekmesi değildir — ayrı bir
+                        alt alan adından (patron.*) girilen, bağımsız bir yönetici kontrol panelidir; işletme
+                        sahibine ciro/performans/kasa/stok özetini gösterir.
+                    </p>
+                </div>
             </BaseCard>
 
             <!-- ---- Kurallar ---- -->
@@ -461,6 +658,8 @@ const debtBranch: FlowStep[] = [
                     </li>
                 </ul>
             </BaseCard>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

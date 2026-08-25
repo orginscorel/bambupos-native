@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
+import { shiftTone, shiftPeriodLabel } from '@/lib/shift';
 import { useToast } from '@/composables/useToast';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
@@ -386,8 +387,9 @@ const positionOf = (s: ShiftRow): string => s.position || s.user?.position || ''
                                             :key="shift.id"
                                             type="button"
                                             :draggable="canManage"
-                                            class="group w-full cursor-pointer rounded border border-primary-soft-border bg-primary-soft px-1.5 py-1 text-left text-xs text-primary transition-shadow hover:shadow-card"
-                                            :class="draggingId === shift.id ? 'opacity-40' : ''"
+                                            class="group w-full cursor-pointer rounded border border-transparent px-1.5 py-1 text-left text-xs transition-shadow hover:shadow-card"
+                                            :class="[shiftTone(shift.starts_at), draggingId === shift.id ? 'opacity-40' : '']"
+                                            :title="`${shiftPeriodLabel(shift.starts_at)} vardiyası`"
                                             @dragstart="(e) => onDragStart(e, shift)"
                                             @dragend="draggingId = null"
                                             @click="openEdit(shift)"

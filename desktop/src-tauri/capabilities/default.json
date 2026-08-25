@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "default",
+  "description": "BamBumPOS masaustu kabugu - varsayilan pencere yetkileri (iskelet, minimum kapsam).",
+  "windows": ["shell", "panel"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "shell:allow-open",
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.bogahostdeveloper.com.tr/*" },
+        { "url": "https://*.bambumpos.com/*" }
+      ]
+    },
+    "store:default"
+  ]
+}

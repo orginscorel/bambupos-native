@@ -73,6 +73,11 @@ class PortalClockTest extends PortalTestCase
 
         $this->actingAs($user)->getJson($this->portalUrl('/api/v1/portal/reports'))
             ->assertOk()
-            ->assertJsonStructure(['today' => ['worked_min'], 'month' => ['worked_min'], 'history']);
+            ->assertJsonStructure([
+                'period', 'from', 'to',
+                'worked' => ['total_min', 'active_days', 'by_day'],
+                'ops' => ['prepared_count', 'taken_count', 'served_count', 'by_day'],
+                'orders' => ['order_count'],
+            ]);
     }
 }

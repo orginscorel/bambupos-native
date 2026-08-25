@@ -5,9 +5,11 @@ namespace Tests\Feature\Receivables;
 use App\Modules\Identity\Models\Role;
 use App\Modules\Identity\Models\User;
 use App\Modules\Orders\Models\Order;
+use App\Modules\Payments\Models\CashMovement;
 use App\Modules\Receivables\Models\Receivable;
 use App\Modules\Receivables\Models\ReceivableTransaction;
 use App\Modules\Tables\Models\Table;
+use App\Modules\Tenancy\Models\Branch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithOrders;
 use Tests\Concerns\InteractsWithPayments;
@@ -162,6 +164,86 @@ class ReceivablesModuleTest extends TestCase
         $this->assertSame(0, $res->json('receivable.balance_minor'));
     }
 
+    /**
+     * #5 YÜKSEK (denetim FAZ2): NAKİT cari tahsilatı kasa defterine
+     * (cash_movements) TEK hareket olarak yazılmalı ve gün sonu kasa sayımı
+     * (expectedCashMinor) bunu yansıtmalı. KART tahsilat fiziksel çekmeceyi
+     * etkilemediğinden (PaymentMethod::affectsCashDrawer ile AYNI kural)
+     * kasa hareketi DOĞURMAMALI — çift-sayım riski yok.
+     */
+    public function test_nakit_cari_tahsilati_kasa_defterine_tek_hareket_yazar_kart_yazmaz(): void
+    {
+        $register = $this->makeRegister($this->a);
+        $session = $this->openSessionFor($this->a, $register, 0);
+
+        $orderId = $this->makeOrderWithTotal($this->a, 20000);
+        $receivableId = $this->makeReceivable('Kasa Defteri Carisi');
+        $this->postJson("/api/v1/orders/{$orderId}/transfer-to-debt", [
+            'receivable_id' => $receivableId, 'reason' => 'sonra ödeyecek',
+        ])->assertOk();
+
+        // Beklenen nakit henüz sıfır — hiçbir tahsilat yapılmadı.
+        $this->assertSame(0, $session->fresh()->expectedCashMinor());
+
+        // 1) NAKİT tahsilat 70,00 → kasa defterine TEK giriş hareketi yazılır.
+        $this->postJson("/api/v1/receivables/{$receivableId}/collect", [
+            'amount_minor' => 7000, 'method' => 'cash', 'note' => 'peşin',
+        ])->assertOk();
+
+        $this->assertSame(7000, $session->fresh()->expectedCashMinor());
+
+        $movements = CashMovement::withoutTenancy()
+            ->where('cash_session_id', $session->id)
+            ->where('type', 'receivable_collection')
+            ->get();
+        $this->assertCount(1, $movements, 'Nakit cari tahsilatı kasa defterine tam olarak BİR hareket yazmalı.');
+        $movement = $movements->first();
+        $this->assertSame('in', $movement->direction);
+        $this->assertSame(7000, (int) $movement->amount_minor);
+        $this->assertStringContainsString('Kasa Defteri Carisi', (string) $movement->reason);
+        $this->assertNull($movement->payment_id); // Orders'a bağlı bir Payment satırı yok — bilinçli tasarım.
+
+        // Z/X raporunda "movements" kırılımında görünür.
+        $report = $this->getJson("/api/v1/cash/sessions/{$session->id}/report")->assertOk()->json('report');
+        $receivableLine = collect($report['movements'])->firstWhere('type', 'receivable_collection');
+        $this->assertNotNull($receivableLine, 'Cari tahsilatı Z raporunun hareket kırılımında görünmeli.');
+        $this->assertSame(7000, $receivableLine['total_minor']);
+
+        // 2) KART tahsilat 50,00 → bakiye düşer ama kasa defterine (fiziksel
+        // çekmece) DOKUNMAZ — beklenen nakit AYNI kalır, ikinci hareket yazılmaz.
+        $this->postJson("/api/v1/receivables/{$receivableId}/collect", [
+            'amount_minor' => 5000, 'method' => 'card',
+        ])->assertOk()->assertJsonPath('receivable.balance_minor', 8000);
+
+        $this->assertSame(7000, $session->fresh()->expectedCashMinor(), 'Kart tahsilatı kasa sayımını etkilememeli.');
+        $this->assertSame(
+            1,
+            CashMovement::withoutTenancy()->where('cash_session_id', $session->id)->where('type', 'receivable_collection')->count(),
+            'Kart tahsilatı yeni bir kasa hareketi doğurmamalı (çift-sayım yok).',
+        );
+    }
+
+    /**
+     * Açık kasa oturumu YOKKEN nakit cari tahsilatı REDDEDİLMEMELİ (mevcut
+     * POS ödeme deseniyle AYNI dürüst davranış: tahsilat geçerli, yalnızca
+     * çekmece izi kalmaz) — mevcut testlerin çoğu zaten oturumsuz çalışıyor,
+     * burada bunu AÇIKÇA doğruluyoruz.
+     */
+    public function test_oturumsuz_nakit_tahsilat_reddedilmez_kasa_izi_kalmaz(): void
+    {
+        $orderId = $this->makeOrderWithTotal($this->a, 10000);
+        $receivableId = $this->makeReceivable();
+        $this->postJson("/api/v1/orders/{$orderId}/transfer-to-debt", [
+            'receivable_id' => $receivableId, 'reason' => 'oturumsuz test',
+        ])->assertOk();
+
+        $this->postJson("/api/v1/receivables/{$receivableId}/collect", [
+            'amount_minor' => 3000, 'method' => 'cash',
+        ])->assertOk()->assertJsonPath('receivable.balance_minor', 7000);
+
+        $this->assertSame(0, CashMovement::withoutTenancy()->where('type', 'receivable_collection')->count());
+    }
+
     /** PARA KORUNUMU: birden çok borç + kısmi tahsilat sonrası defter toplamı bakiyeye eşit. */
     public function test_para_korunumu_ledger_toplami_bakiyeye_esittir(): void
     {
@@ -248,5 +330,121 @@ class ReceivablesModuleTest extends TestCase
         $this->postJson("/api/v1/orders/{$order2}/transfer-to-debt", [
             'receivable_id' => $receivableId, 'reason' => 'kasiyer denemesi',
         ])->assertForbidden();
+    }
+
+    /* ---------------- ŞUBE İZOLASYONU (FAZ1) ---------------- */
+
+    private function makeBranchB(): Branch
+    {
+        return $this->asTenant($this->a['tenant'], fn (): Branch => Branch::factory()->create([
+            'tenant_id' => $this->a['tenant']->id,
+            'name' => 'B Şube',
+        ]));
+    }
+
+    /** Şubesiz (kiracı-geneli) cari — doğrudan model ile (API'den artık üretilemez, bkz. aşağıdaki test). */
+    private function makeBranchlessReceivable(string $name = 'Kiracı Geneli Cari'): int
+    {
+        return $this->asTenant($this->a['tenant'], function () use ($name): int {
+            $r = new Receivable(['name' => $name]);
+            $r->created_by_id = $this->a['user']->id;
+            $r->save();
+
+            return $r->id;
+        });
+    }
+
+    /** receivables.* izinlerine sahip, verilen şubeye KİLİTLİ (yönetici-olmayan) personel. */
+    private function receivablesStaffOn(Branch $branch, array $extra = []): User
+    {
+        $role = Role::factory()->create(['tenant_id' => $this->a['tenant']->id]);
+        $role->permissions()->sync(
+            \App\Modules\Identity\Models\Permission::query()
+                ->whereIn('key', array_merge(['receivables.view', 'receivables.update', 'receivables.collect'], $extra))
+                ->pluck('id')->all(),
+        );
+        $user = User::factory()->create(['tenant_id' => $this->a['tenant']->id, 'branch_id' => $branch->id]);
+        $user->roles()->sync([$role->id]);
+
+        return $user;
+    }
+
+    /** #6 YÜKSEK: create — istekten gelen branch_id ASLA güvenilmez, DAİMA geçerli şubeden türetilir. */
+    public function test_cari_olustururken_istekten_gelen_branch_id_yok_sayilir(): void
+    {
+        $branchB = $this->makeBranchB();
+
+        // $this->a['user'] geçerli şubesi (A) dururken istekte B şubesinin id'si gönderiliyor.
+        $res = $this->postJson('/api/v1/receivables', [
+            'name' => 'Saldırgan Deneme', 'branch_id' => $branchB->id,
+        ])->assertCreated();
+
+        $this->assertSame($this->a['branch']->id, $res->json('receivable.branch_id'));
+        $this->assertNotSame($branchB->id, $res->json('receivable.branch_id'));
+    }
+
+    /** #6 YÜKSEK: update — branch_id bu uçtan asla değiştirilemez (cari başka şubeye taşınamaz). */
+    public function test_cari_guncellerken_istekten_gelen_branch_id_yok_sayilir(): void
+    {
+        $branchB = $this->makeBranchB();
+        $id = $this->makeReceivable('Taşınmaya Çalışılan Cari');
+
+        $this->assertSame($this->a['branch']->id, Receivable::withoutTenancy()->find($id)->branch_id);
+
+        $this->putJson("/api/v1/receivables/{$id}", ['branch_id' => $branchB->id, 'note' => 'x'])
+            ->assertOk()
+            ->assertJsonPath('receivable.note', 'x');
+
+        // branch_id AYNI kaldı — B şubesine taşınmadı.
+        $this->assertSame($this->a['branch']->id, Receivable::withoutTenancy()->find($id)->branch_id);
+    }
+
+    /** #7 ORTA: başka şubenin carisi görüntülenemez/güncellenemez/tahsil edilemez (403). */
+    public function test_baska_subenin_carisi_403_ile_engellenir(): void
+    {
+        $branchB = $this->makeBranchB();
+
+        $receivableBId = $this->asTenant($this->a['tenant'], function () use ($branchB): int {
+            $r = new Receivable(['name' => 'B Şube Carisi', 'branch_id' => $branchB->id]);
+            $r->save();
+
+            return $r->id;
+        });
+
+        // $this->a['user'] (tüm izinler) varsayılan olarak KENDİ şubesine (A) bağlı.
+        $this->getJson("/api/v1/receivables/{$receivableBId}")->assertForbidden();
+        $this->putJson("/api/v1/receivables/{$receivableBId}", ['note' => 'ele geçirme denemesi'])->assertForbidden();
+        $this->postJson("/api/v1/receivables/{$receivableBId}/collect", ['amount_minor' => 100, 'method' => 'cash'])->assertForbidden();
+
+        // A şubesine KİLİTLİ (yönetici olmayan) personel için de aynı sonuç.
+        $staffA = $this->receivablesStaffOn($this->a['branch']);
+        $this->actingAs($staffA);
+        $this->getJson("/api/v1/receivables/{$receivableBId}")->assertForbidden();
+    }
+
+    /** #7 ORTA: aktif şubenin carisi normal şekilde erişilebilir kalır (regresyon değil). */
+    public function test_gecerli_subenin_carisi_erisilebilir(): void
+    {
+        $id = $this->makeReceivable('A Şube Carisi');
+
+        $this->getJson("/api/v1/receivables/{$id}")->assertOk();
+        $this->putJson("/api/v1/receivables/{$id}", ['note' => 'güncellendi'])->assertOk();
+
+        $staffA = $this->receivablesStaffOn($this->a['branch']);
+        $this->actingAs($staffA);
+        $this->getJson("/api/v1/receivables/{$id}")->assertOk();
+    }
+
+    /** #7 ORTA: şubesiz (kiracı-geneli) cari kısıtlanmaz — her şubeden erişilebilir kalmalı. */
+    public function test_subesiz_kiraci_geneli_cari_her_subeden_erisilebilir(): void
+    {
+        $branchB = $this->makeBranchB();
+        $id = $this->makeBranchlessReceivable();
+
+        $this->getJson("/api/v1/receivables/{$id}")->assertOk();
+
+        $staffB = $this->receivablesStaffOn($branchB);
+        $this->actingAs($staffB);
+        $this->getJson("/api/v1/receivables/{$id}")->assertOk();
     }
 }

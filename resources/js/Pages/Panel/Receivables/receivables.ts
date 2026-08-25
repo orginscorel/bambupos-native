@@ -29,12 +29,28 @@ export interface ReceivableTransactionRow {
     created_at: string | null;
 }
 
+/** Borca taşınan adisyonun kompakt kalemi (cari detayındaki döküm). */
+export interface ReceivableDebtItemRow {
+    id: number;
+    qty: number;
+    name: string;
+    variant_name: string | null;
+    is_comp: boolean;
+    line_total_minor: number;
+}
+
 export interface ReceivableDebtOrderRow {
     id: number;
     table_name: string | null;
     total_minor: number;
     debt_amount_minor: number | null;
     closed_at: string | null;
+    created_at?: string | null;
+    channel_label?: string;
+    channel_icon?: string;
+    items_count?: number;
+    /** Ne yenmiş/içilmiş — ziyaret bazlı döküm. */
+    items?: ReceivableDebtItemRow[];
 }
 
 export interface Paginated<T> {

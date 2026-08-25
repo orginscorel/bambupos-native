@@ -19,9 +19,14 @@ use Illuminate\Support\Facades\Route;
 | bootstrap/app.php `then:` bloğunda kaydedilir. Tüm uçlar oturum + kiracı
 | bağlamı ister; public uç YOKTUR. Yetki: stock.view (okuma) /
 | stock.adjust (stok değiştiren her şey) — policy'ler denetler.
+|
+| feature:inventory (denetim #panel-mgmt-3, bkz. routes/shifts.php'deki aynı
+| düzeltme): "Depo/Stok" eklentisi kapalıysa TÜM grup 404 — eskiden yalnız
+| InventoryPageController sayfa gate'i vardı, API (stok kartı/hareket/sayım/
+| tedarikçi/satın alma…) kapalıyken de açıktı.
 */
 
-Route::middleware(['web', 'auth:web', 'tenant'])->group(function (): void {
+Route::middleware(['web', 'auth:web', 'tenant', 'feature:inventory'])->group(function (): void {
 
     /* ---- Panel ekranları (Inertia) ---- */
     Route::prefix('panel/stok')->group(function (): void {

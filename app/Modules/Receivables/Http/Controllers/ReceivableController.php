@@ -65,8 +65,14 @@ class ReceivableController extends Controller
     {
         $this->authorize('view', $receivable);
 
+        // Kalemler de yüklenir: cari detayında "hangi tarihte ne yenmiş/içilmiş"
+        // sorusunun yanıtı burada. Aylardır her gün gelen bir müşteride yalnız
+        // adisyon numarası ve tutar görmek işe yaramıyordu — itiraz halinde
+        // kalem dökümü olmadan borcun neden o kadar olduğu savunulamıyor.
         $receivable->load(['transactions.performedBy:id,name', 'orders' => function ($q): void {
-            $q->where('status', 'debt_transferred')->with('table:id,name,number')->orderByDesc('id');
+            $q->where('status', 'debt_transferred')
+                ->with(['table:id,name,number', 'items'])
+                ->orderByDesc('id');
         }]);
 
         return response()->json([
@@ -82,7 +88,24 @@ class ReceivableController extends Controller
                 'performed_by' => $t->performedBy?->name,
                 'created_at' => $t->created_at?->toIso8601String(),
             ])->values()->all(),
-            'debt_orders' => $receivable->orders->map(fn (Order $o) => OrderPresenter::summary($o))->values()->all(),
+            'debt_orders' => $receivable->orders->map(fn (Order $o) => array_merge(
+                OrderPresenter::summary($o),
+                [
+                    // Kompakt kalem dökümü (iptal edilenler hariç): adet + ad +
+                    // varyant + satır tutarı. Tam detay payload'ı (olaylar,
+                    // seçenekler) burada GEREKSİZ ağırlık yapardı.
+                    'items' => $o->items
+                        ->filter(fn ($i) => $i->statusEnum()->isActive())
+                        ->map(fn ($i) => [
+                            'id' => $i->id,
+                            'qty' => (int) $i->qty,
+                            'name' => $i->name,
+                            'variant_name' => $i->variant_name,
+                            'is_comp' => (bool) $i->is_comp,
+                            'line_total_minor' => (int) $i->line_total_minor,
+                        ])->values()->all(),
+                ],
+            ))->values()->all(),
         ]);
     }
 
@@ -91,12 +114,16 @@ class ReceivableController extends Controller
         $this->authorize('create', Receivable::class);
 
         $data = $request->validate([
-            'branch_id' => ['nullable', 'integer'],
             'name' => ['required', 'string', 'min:2', 'max:150'],
             'phone' => ['nullable', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:150'],
             'note' => ['nullable', 'string', 'max:500'],
         ]);
+
+        // ŞUBE KAPSAMI: cari DAİMA geçerli şubede oluşturulur — istekten
+        // gelen branch_id ASLA güvenilmez (OrderController/ScheduleController
+        // ile aynı desen: türetilir, alınmaz).
+        $data['branch_id'] = $this->currentBranchId();
 
         $receivable = $this->receivables->create($data, $request->user());
 
@@ -108,13 +135,15 @@ class ReceivableController extends Controller
         $this->authorize('update', $receivable);
 
         $data = $request->validate([
-            'branch_id' => ['nullable', 'integer'],
             'name' => ['sometimes', 'string', 'min:2', 'max:150'],
             'phone' => ['nullable', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:150'],
             'note' => ['nullable', 'string', 'max:500'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+
+        // ŞUBE KAPSAMI: branch_id bu uçtan hiç değiştirilemez — istekten
+        // gelen değer okunmaz/uygulanmaz bile (cari başka şubeye taşınamaz).
 
         $receivable = $this->receivables->update($receivable, $data);
 

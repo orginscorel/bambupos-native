@@ -3,6 +3,8 @@
 namespace App\Modules\Venue\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Orders\Enums\OrderStatus;
+use App\Modules\Orders\Models\Order;
 use App\Modules\Tables\Models\Table;
 use App\Modules\Tenancy\Models\Branch;
 use App\Modules\Venue\Enums\TableShape;
@@ -163,6 +165,15 @@ class VenueTableController extends Controller
         return response()->json(['created_count' => count($created), 'table_ids' => $created], 201);
     }
 
+    /**
+     * Masa META verisini günceller (ad/no/kapasite/şekil/alan/not/birleştirilebilirlik).
+     *
+     * KASITLI OLARAK `status` kabul ETMEZ (denetim BLOKER #1): durum geçişleri
+     * yalnız açık-adisyon korumalı {@see updateStatus()} ucundan yapılır — aksi
+     * halde bu genel-amaçlı uç üzerinden dolu bir masa manuel olarak boşa
+     * çekilebilir ve TableStatusSynchronizer'ın koruduğu masa↔adisyon senkronu
+     * bozulup aktif adisyon panodan "kaybolabilirdi".
+     */
     public function update(Request $request, Table $table): JsonResponse
     {
         $this->authorize('update', $table);
@@ -173,7 +184,6 @@ class VenueTableController extends Controller
             'number' => ['sometimes', 'integer', 'min:1', 'max:999999'],
             'capacity' => ['sometimes', 'integer', 'min:1', 'max:200'],
             'shape' => ['sometimes', Rule::enum(TableShape::class)],
-            'status' => ['sometimes', Rule::enum(TableStatus::class)],
             'is_joinable' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
@@ -185,6 +195,15 @@ class VenueTableController extends Controller
 
         if (isset($data['number']) && (int) $data['number'] !== (int) $table->number) {
             $this->assertAvailable((int) $table->branch_id, [], [(int) $data['number']], $table->id);
+        }
+
+        // AÇIK ADİSYON KORUMASI (denetim #2/YÜKSEK): deaktivasyon masayı ops
+        // panosundan (is_active=true filtresi) tamamen düşürür; açık adisyonu
+        // varken masa "kaybolmasın".
+        if (($data['is_active'] ?? true) === false && $this->tableHasOpenOrder($table)) {
+            throw ValidationException::withMessages([
+                'is_active' => ['Masada açık adisyon var; masa pasifleştirilemez. Önce adisyonu kapatın (ödeme/iptal).'],
+            ]);
         }
 
         if (array_key_exists('area_id', $data)) {
@@ -205,9 +224,40 @@ class VenueTableController extends Controller
 
         $data = $request->validate(['status' => ['required', Rule::enum(TableStatus::class)]]);
 
+        // AÇIK ADİSYON KORUMASI (denetim #11): masada açık adisyon varken masayı
+        // "boş/rezerve/servis dışı/temizlik"e ELLE çekmek masa↔adisyon senkronunu
+        // bozar (aktif adisyon panoda kaybolur). Bu durumları engelle; masa durumu
+        // adisyon kapandığında (ödeme/iptal) otomatik güncellenir.
+        if ($this->freesTable(TableStatus::from($data['status'])) && $this->tableHasOpenOrder($table)) {
+            throw ValidationException::withMessages([
+                'status' => ['Masada açık adisyon var; durumu elle değiştiremezsiniz. Önce adisyonu kapatın (ödeme/iptal).'],
+            ]);
+        }
+
         $table->update(['status' => $data['status']]);
 
         return response()->json(['table' => $this->present($table->fresh(['area.floor', 'branch']))]);
+    }
+
+    /** Masayı "boş bırakan" durumlar — açık adisyon varken elle seçilemez. */
+    private function freesTable(TableStatus $status): bool
+    {
+        return in_array($status, [
+            TableStatus::Available,
+            TableStatus::Reserved,
+            TableStatus::ReservationLate,
+            TableStatus::Cleaning,
+            TableStatus::OutOfService,
+        ], true);
+    }
+
+    /** Masada kapanmamış (açık/tahsilat fazında) adisyon var mı? */
+    private function tableHasOpenOrder(Table $table): bool
+    {
+        return Order::query()
+            ->where('table_id', $table->getKey())
+            ->whereNotIn('status', OrderStatus::closedValues())
+            ->exists();
     }
 
     /**
@@ -234,20 +284,39 @@ class VenueTableController extends Controller
         }
 
         $affected = 0;
+        $skippedOpenOrder = [];
 
-        DB::transaction(function () use ($tables, $data, &$affected): void {
+        DB::transaction(function () use ($tables, $data, &$affected, &$skippedOpenOrder): void {
             foreach ($tables as $table) {
                 switch ($data['action']) {
                     case 'activate':
                         $table->update(['is_active' => true]);
                         break;
                     case 'deactivate':
+                        // Denetim #2/YÜKSEK: açık adisyonlu masa deaktive edilirse
+                        // OrderController::board() `is_active=true` filtresiyle onu
+                        // hiç göstermez → ödenmemiş sipariş yönetilemez hale gelir.
+                        if ($this->tableHasOpenOrder($table)) {
+                            $skippedOpenOrder[] = $table->id;
+                            continue 2; // bu masayı atla (affected artmaz)
+                        }
                         $table->update(['is_active' => false]);
                         break;
                     case 'delete':
+                        // Denetim #2/YÜKSEK: aynı guard silme için de geçerli — aksi
+                        // halde tekli silme (destroy) yerine toplu silme bypass olurdu.
+                        if ($this->tableHasOpenOrder($table)) {
+                            $skippedOpenOrder[] = $table->id;
+                            continue 2;
+                        }
                         $table->delete();
                         break;
                     case 'set_status':
+                        // Denetim #11: açık adisyonlu masayı toplu işlemle de boşa çekme.
+                        if ($this->freesTable(TableStatus::from($data['status'])) && $this->tableHasOpenOrder($table)) {
+                            $skippedOpenOrder[] = $table->id;
+                            continue 2; // bu masayı atla (affected artmaz)
+                        }
                         $table->update(['status' => $data['status']]);
                         break;
                     case 'set_area':
@@ -260,12 +329,28 @@ class VenueTableController extends Controller
             }
         });
 
-        return response()->json(['affected' => $affected]);
+        // "Net hata" (denetim #2): kaç masanın açık adisyon nedeniyle atlandığı
+        // yanıtta açıkça döner; arayüz bunu ayrı bir uyarıda gösterebilir.
+        return response()->json([
+            'affected' => $affected,
+            'skipped_open_order_ids' => $skippedOpenOrder,
+        ]);
     }
 
     public function destroy(Request $request, Table $table): JsonResponse
     {
         $this->authorize('delete', $table);
+
+        // AÇIK ADİSYON KORUMASI (denetim #2/YÜKSEK): tekli silme de bulkAction'daki
+        // guard'ın aynısını taşımalı — aksi halde masalar teker teker silinerek
+        // toplu-işlem koruması bypass edilebilirdi. service_requests.table_id
+        // cascadeOnDelete olduğundan silme, o masaya ait bekleyen "garson çağır"
+        // isteklerini de sessizce siler; açık adisyon varken buna izin verme.
+        if ($this->tableHasOpenOrder($table)) {
+            throw ValidationException::withMessages([
+                'table' => ['Masada açık adisyon var; masa silinemez. Önce adisyonu kapatın (ödeme/iptal).'],
+            ]);
+        }
 
         $table->delete();
 

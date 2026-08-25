@@ -24,4 +24,7 @@ export interface NavItem {
     badge?: number;
     /** Mobil alt navigasyonda gösterilsin mi (en fazla 4 öğe önerilir) */
     mobile?: boolean;
+    /** Kenar çubuğu bölüm başlığı (ör. "Operasyon", "Yönetim"). Aynı `group`
+     *  değerine sahip öğeler tek başlık altında toplanır. Boşsa başlıksız (üstte). */
+    group?: string;
 }

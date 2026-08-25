@@ -4,15 +4,22 @@ import { useFocusTrap } from '@/composables/useFocusTrap';
 import { useId } from '@/composables/useId';
 import AppIcon from './AppIcon.vue';
 
-/** Sağdan açılan panel (drawer). Mobilde tam genişlik, masaüstünde sabit genişlik. */
+/**
+ * Kenardan açılan panel (drawer). Mobilde tam genişlik, masaüstünde sabit.
+ *
+ * Yön seçilebilir: ANA MENÜ soldan açılmalıdır — menü her zaman solda durur,
+ * sağdan gelmesi yön duygusunu bozuyordu. Detay/filtre panelleri sağda kalır.
+ */
 const props = withDefaults(
     defineProps<{
         open: boolean;
         title: string;
         /** Tailwind genişlik sınıfı (masaüstü) */
         widthClass?: string;
+        /** Açılış kenarı — varsayılan sağ (mevcut kullanımlar değişmez). */
+        side?: 'left' | 'right';
     }>(),
-    { widthClass: 'sm:max-w-md' },
+    { widthClass: 'sm:max-w-md', side: 'right' },
 );
 
 const emit = defineEmits<{ close: [] }>();
@@ -55,9 +62,9 @@ onBeforeUnmount(() => {
         </Transition>
         <Transition
             enter-active-class="transition-transform duration-(--dur-slow) ease-out"
-            enter-from-class="translate-x-full"
+            :enter-from-class="props.side === 'left' ? '-translate-x-full' : 'translate-x-full'"
             leave-active-class="transition-transform duration-(--dur-normal) ease-in"
-            leave-to-class="translate-x-full"
+            :leave-to-class="props.side === 'left' ? '-translate-x-full' : 'translate-x-full'"
         >
             <div
                 v-if="open"
@@ -66,8 +73,8 @@ onBeforeUnmount(() => {
                 aria-modal="true"
                 :aria-labelledby="titleId"
                 tabindex="-1"
-                class="fixed inset-y-0 right-0 z-(--z-drawer) flex w-full flex-col bg-raised shadow-modal outline-none"
-                :class="widthClass"
+                class="fixed inset-y-0 z-(--z-drawer) flex w-full flex-col bg-raised shadow-modal outline-none"
+                :class="[widthClass, props.side === 'left' ? 'left-0' : 'right-0']"
             >
                 <header class="flex items-center justify-between gap-3 border-b border-default px-5 py-4">
                     <h2 :id="titleId" class="text-base font-semibold text-body">{{ title }}</h2>

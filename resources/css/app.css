@@ -90,20 +90,20 @@
    ============================================================ */
 
 :root {
-    /* --- Katman 1: marka skalası (varsayılan turuncu) --- */
-    --brand-50: #fff7ed;
-    --brand-100: #ffedd5;
-    --brand-200: #fed7aa;
-    --brand-300: #fdba74;
-    --brand-400: #fb923c;
-    --brand-500: #f97316;
-    --brand-600: #ea580c;
-    --brand-700: #c2410c;
-    --brand-800: #9a3412;
-    --brand-900: #7c2d12;
+    /* --- Katman 1: marka skalası (MAVİ — kurumsal) --- */
+    --brand-50: #eff6ff;
+    --brand-100: #dbeafe;
+    --brand-200: #bfdbfe;
+    --brand-300: #93c5fd;
+    --brand-400: #60a5fa;
+    --brand-500: #3b82f6;
+    --brand-600: #2563eb;
+    --brand-700: #1d4ed8;
+    --brand-800: #1e40af;
+    --brand-900: #1e3a8a;
 
     /* --- Katman 2: semantik (açık tema) --- */
-    --ui-primary: var(--brand-700);          /* etkileşim rengi: AA-güvenli */
+    --ui-primary: var(--brand-700);          /* #1d4ed8 — beyaz metinle AA */
     --ui-primary-hover: var(--brand-800);
     --ui-primary-active: var(--brand-900);
     --ui-on-primary: #ffffff;
@@ -112,18 +112,19 @@
     --ui-accent: var(--brand-600);           /* dekoratif/büyük öğe vurgusu */
     --ui-link: var(--brand-700);
 
+    /* Serin (slate) nötr yüzeyler — mavi marka ile uyum */
     --ui-surface: #ffffff;                   /* sayfa zemini */
-    --ui-surface-alt: #fafaf9;               /* panel gövdesi, tablo başlığı */
+    --ui-surface-alt: #f6f8fb;               /* panel gövdesi, tablo başlığı */
     --ui-surface-raised: #ffffff;            /* kart, modal, drawer */
-    --ui-surface-inset: #f5f5f4;             /* input zemini, kod, iskelet */
-    --ui-overlay: rgb(28 25 23 / 0.55);
+    --ui-surface-inset: #f1f5f9;             /* input zemini, kod, iskelet */
+    --ui-overlay: rgb(15 23 42 / 0.55);
 
-    --ui-border: #e7e5e4;
-    --ui-border-strong: #d6d3d1;
+    --ui-border: #e5eaf1;
+    --ui-border-strong: #d3dbe6;
 
-    --ui-text: #1c1917;
-    --ui-text-muted: #57534e;                /* 7.63:1 */
-    --ui-text-subtle: #79716b;               /* 4.79:1 — en açık izinli ton */
+    --ui-text: #0f172a;                      /* slate-900 */
+    --ui-text-muted: #475569;                /* slate-600 ~7.0:1 */
+    --ui-text-subtle: #64748b;               /* slate-500 ~4.8:1 */
     --ui-text-invert: #ffffff;
 
     --ui-focus-ring: var(--brand-600);
@@ -139,10 +140,20 @@
     --ui-danger-hover: #b91c1c;
     --ui-danger-soft: #fef2f2;
     --ui-danger-border: #fecaca;
-    --ui-info: #2563eb;
-    --ui-info-soft: #eff6ff;
-    --ui-info-border: #bfdbfe;
+    --ui-info: #0284c7;                      /* sky — marka mavisinden ayrışır */
+    --ui-info-soft: #e0f2fe;
+    --ui-info-border: #bae6fd;
     --ui-on-status: #ffffff;
+
+    /* --- Katman 2b: DOMAIN durum token'ları (anlam taşır) --- */
+    --ui-order-new: var(--brand-600);        /* yeni sipariş */
+    --ui-order-preparing: #b45309;           /* hazırlanıyor (amber) */
+    --ui-order-ready: #15803d;               /* hazır (yeşil) */
+    --ui-order-served: #64748b;              /* serviste/tamam (nötr) */
+    --ui-table-empty: #15803d;               /* boş masa */
+    --ui-table-occupied: #dc2626;            /* dolu masa */
+    --ui-table-delayed: #b91c1c;             /* gecikmiş masa */
+    --ui-stock-critical: #dc2626;            /* kritik stok */
 
     /* --- tema bağımsız yapı token'ları --- */
     --z-sticky: 20;
@@ -163,28 +174,29 @@
    app.blade.php'deki küçük satır-içi betik localStorage/sistem
    tercihine göre atar (FOUC yok). */
 :root[data-theme='dark'] {
-    --ui-primary: var(--brand-700);          /* buton zemini sabit: beyaz metinle 5.18 */
-    --ui-primary-hover: var(--brand-600);
-    --ui-primary-active: var(--brand-500);
+    --ui-primary: var(--brand-600);          /* #2563eb — beyaz metinle AA */
+    --ui-primary-hover: var(--brand-500);
+    --ui-primary-active: var(--brand-400);
     --ui-on-primary: #ffffff;
-    --ui-primary-soft: rgb(194 65 12 / 0.14);
-    --ui-primary-soft-border: rgb(251 146 60 / 0.35);
+    --ui-primary-soft: rgb(37 99 235 / 0.18);
+    --ui-primary-soft-border: rgb(96 165 250 / 0.38);
     --ui-accent: var(--brand-400);
-    --ui-link: var(--brand-400);             /* 7.73:1 koyu zeminde */
+    --ui-link: var(--brand-300);             /* açık mavi, koyu zeminde okunur */
 
-    --ui-surface: #171412;
-    --ui-surface-alt: #1c1917;
-    --ui-surface-raised: #242020;
-    --ui-surface-inset: #2b2624;
-    --ui-overlay: rgb(0 0 0 / 0.6);
+    /* Serin-koyu (slate) yüzeyler */
+    --ui-surface: #0b1120;                   /* sayfa zemini */
+    --ui-surface-alt: #0f1729;
+    --ui-surface-raised: #151e33;            /* kart/modal */
+    --ui-surface-inset: #1c2740;
+    --ui-overlay: rgb(2 6 23 / 0.65);
 
-    --ui-border: #38322e;
-    --ui-border-strong: #4c443f;
+    --ui-border: #26314a;
+    --ui-border-strong: #35425f;
 
-    --ui-text: #fafaf9;                      /* 16.7:1 */
-    --ui-text-muted: #b8b2ac;
-    --ui-text-subtle: #a09a94;
-    --ui-text-invert: #1c1917;
+    --ui-text: #f1f5f9;                      /* slate-100 */
+    --ui-text-muted: #c2cbda;
+    --ui-text-subtle: #8a97ac;
+    --ui-text-invert: #0f172a;
 
     --ui-focus-ring: var(--brand-400);
 
@@ -198,10 +210,20 @@
     --ui-danger-hover: #fca5a5;
     --ui-danger-soft: rgb(248 113 113 / 0.12);
     --ui-danger-border: rgb(248 113 113 / 0.32);
-    --ui-info: #60a5fa;                      /* 6.9:1 */
-    --ui-info-soft: rgb(96 165 250 / 0.12);
-    --ui-info-border: rgb(96 165 250 / 0.32);
-    --ui-on-status: #1c1917;
+    --ui-info: #38bdf8;                       /* sky */
+    --ui-info-soft: rgb(56 189 248 / 0.12);
+    --ui-info-border: rgb(56 189 248 / 0.32);
+    --ui-on-status: #0f172a;
+
+    /* Domain durum token'ları (koyu) */
+    --ui-order-new: var(--brand-400);
+    --ui-order-preparing: #fbbf24;
+    --ui-order-ready: #4ade80;
+    --ui-order-served: #94a3b8;
+    --ui-table-empty: #4ade80;
+    --ui-table-occupied: #f87171;
+    --ui-table-delayed: #fca5a5;
+    --ui-stock-critical: #f87171;
 
     color-scheme: dark;
 }
@@ -260,6 +282,16 @@
     --color-info-border: var(--ui-info-border);
     --color-on-status: var(--ui-on-status);
 
+    /* Domain durum renkleri (sipariş/masa/stok) — Tailwind utility eşlemesi */
+    --color-order-new: var(--ui-order-new);
+    --color-order-preparing: var(--ui-order-preparing);
+    --color-order-ready: var(--ui-order-ready);
+    --color-order-served: var(--ui-order-served);
+    --color-table-empty: var(--ui-table-empty);
+    --color-table-occupied: var(--ui-table-occupied);
+    --color-table-delayed: var(--ui-table-delayed);
+    --color-stock-critical: var(--ui-stock-critical);
+
     /* köşe yarıçapı ölçeği */
     --radius-xs: 0.25rem;   /* 4px  — küçük rozet */
     --radius-sm: 0.375rem;  /* 6px  — input, buton (sm) */
@@ -271,6 +303,21 @@
     --shadow-card: 0 1px 2px 0 rgb(28 25 23 / 0.05);
     --shadow-dropdown: 0 4px 6px -1px rgb(28 25 23 / 0.08), 0 2px 4px -2px rgb(28 25 23 / 0.06);
     --shadow-modal: 0 10px 15px -3px rgb(28 25 23 / 0.12), 0 4px 6px -4px rgb(28 25 23 / 0.08);
+
+    /* ===== Native-mobil ölçü sistemi (Kardo-HR referans hissi) =====
+       Bileşen yükseklikleri 44px dokunma tabanına oturur; liste satırı 56-68px;
+       alt sekme çubuğu + FAB native oranlar. Tümü 4-tabanlı. */
+    --h-list-row: 3.5rem;      /* 56px — standart liste satırı */
+    --h-list-row-lg: 4.25rem;  /* 68px — iki-satırlı (başlık+açıklama) */
+    --h-tap: 2.75rem;          /* 44px — min dokunma alanı */
+    --h-control: 3.25rem;      /* 52px — buton/input native yükseklik */
+    --h-tabbar: 3.5rem;        /* 56px — alt sekme çubuğu (safe-area hariç) */
+    --size-fab: 3.5rem;        /* 56px — floating action button */
+
+    /* Native üst-bar/alt-bar gölgeleri (yön farkı: bar aşağı/yukarı basar) */
+    --shadow-tabbar: 0 -1px 0 0 var(--ui-border), 0 -4px 16px -8px rgb(28 25 23 / 0.10);
+    --shadow-fab: 0 6px 16px -4px rgb(29 78 216 / 0.45), 0 2px 6px -2px rgb(28 25 23 / 0.20);
+    --shadow-sheet: 0 -8px 24px -8px rgb(28 25 23 / 0.16);
 }
 
 /* ============ temel (base) katmanı ============ */
@@ -319,5 +366,233 @@
     @keyframes skeleton-pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.55; }
+    }
+
+    /* ===== Native mikro-animasyonlar (kısa, profesyonel) =====
+       Tümü prefers-reduced-motion'da global olarak durur (base katmanı). */
+
+    /* Modal/gate girişi: hafif yukarı + ölçek */
+    .animate-gate-in { animation: bhx-gate-in var(--dur-normal) cubic-bezier(0.16, 1, 0.3, 1); }
+    @keyframes bhx-gate-in {
+        from { opacity: 0; transform: scale(0.96) translateY(10px); }
+        to   { opacity: 1; transform: none; }
+    }
+
+    /* Bottom sheet / alttan yükselme */
+    .animate-sheet-up { animation: bhx-sheet-up var(--dur-normal) cubic-bezier(0.16, 1, 0.3, 1); }
+    @keyframes bhx-sheet-up {
+        from { transform: translateY(100%); }
+        to   { transform: translateY(0); }
+    }
+
+    /* PIN noktası dolunca "pop" */
+    .animate-pop { animation: bhx-pop 180ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+    @keyframes bhx-pop {
+        0%   { transform: scale(0.4); opacity: 0.4; }
+        60%  { transform: scale(1.15); }
+        100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Hata: yatay sarsıntı (yanlış PIN vb.) */
+    .animate-shake { animation: bhx-shake 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+    @keyframes bhx-shake {
+        0%, 100% { transform: translateX(0); }
+        15%, 55% { transform: translateX(-7px); }
+        35%, 75% { transform: translateX(7px); }
+    }
+
+    /* Yumuşak fade+yukarı giriş (liste/kart belirmesi) */
+    .animate-rise { animation: bhx-rise var(--dur-normal) ease-out; }
+    @keyframes bhx-rise {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: none; }
+    }
+
+    /* Liste "cascade": doğrudan alt öğeler sırayla belirir (native his).
+       İlk ~10 öğe kademeli, sonrası birlikte gelir; reduced-motion'da (base
+       katmanı) tüm süreler ~0 → hepsi anında görünür, gecikme hissi olmaz. */
+    .stagger-in > * { animation: bhx-rise var(--dur-normal) ease-out both; }
+    .stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+    .stagger-in > *:nth-child(2) { animation-delay: 30ms; }
+    .stagger-in > *:nth-child(3) { animation-delay: 60ms; }
+    .stagger-in > *:nth-child(4) { animation-delay: 90ms; }
+    .stagger-in > *:nth-child(5) { animation-delay: 120ms; }
+    .stagger-in > *:nth-child(6) { animation-delay: 150ms; }
+    .stagger-in > *:nth-child(7) { animation-delay: 180ms; }
+    .stagger-in > *:nth-child(8) { animation-delay: 210ms; }
+    .stagger-in > *:nth-child(9) { animation-delay: 240ms; }
+    .stagger-in > *:nth-child(n+10) { animation-delay: 270ms; }
+
+    /* Basılabilir satır/kart geri bildirimi: dokununca hafif çök (native press).
+       Fare/klavye odağında etkilenmez; yalnız :active. */
+    .press-row { transition: transform var(--dur-fast, 120ms) ease, background-color var(--dur-fast, 120ms) ease; }
+    .press-row:active { transform: scale(0.985); }
+}
+
+/* ============================================================
+   PERSONEL PORTALI — özel görsel kimlik (personel.* alt alan adı)
+   QR panelinden AYRI bir ürün gibi durur: indigo→violet→sky gradient
+   kimlik, renkli stat "tile"lar, yumuşak katmanlı gölge, mavi-gri zemin.
+   Tümü .portal-root'a scope'lu → panel/qrmenu görünümünü ETKİLEMEZ.
+   ============================================================ */
+.portal-root {
+    /* İmza gradyanı = marka MAVİSİ (kurumsal, derin→parlak→sky). */
+    --p-hero-from: #1e3a8a;   /* blue-900 — derin */
+    --p-hero-via:  #2563eb;   /* blue-600 — marka */
+    --p-hero-to:   #0ea5e9;   /* sky-500 — parlak vurgu */
+    --p-surface: #f6f8fb;     /* serin kırık-beyaz (slate) */
+    --p-card: #ffffff;
+    --p-card-border: #e5eaf1; /* serin nötr kenarlık */
+    --p-card-shadow: 0 6px 20px -10px rgb(15 23 42 / 0.16), 0 2px 5px -2px rgb(15 23 42 / 0.07);
+    --p-ring: rgb(37 99 235 / 0.35);
+
+    /* Aksan paleti — MAVİ birincil + tamamlayıcılar.
+       (Değişken adları korunur; sayfalar dokunmadan yeni tonlara oturur.) */
+    --p-indigo: #2563eb;  --p-indigo-soft: #e0ebff;  /* BİRİNCİL = marka mavisi */
+    --p-teal:   #0f766e;  --p-teal-soft:   #d6efeb;  /* tamamlayıcı */
+    --p-emerald:#047857;  --p-emerald-soft:#d3efdf;  /* olumlu */
+    --p-amber:  #b45309;  --p-amber-soft:  #fbeaca;  /* uyarı */
+    --p-rose:   #be123c;  --p-rose-soft:   #fbdce1;  /* olumsuz */
+    --p-sky:    #0284c7;  --p-sky-soft:    #dce8f3;  /* çelik-mavi (ikincil) */
+    --p-violet: #6d28d9;  --p-violet-soft: #ede4ff;  /* mor (çeşitlilik) */
+}
+:root[data-theme='dark'] .portal-root {
+    --p-surface: #0b1120;     /* serin koyu zemin */
+    --p-card: #151e33;
+    --p-card-border: #26314a;
+    --p-card-shadow: 0 8px 26px -10px rgb(0 0 0 / 0.6), 0 2px 8px -3px rgb(0 0 0 / 0.5);
+    --p-ring: rgb(96 165 250 / 0.4);
+    --p-indigo: #60a5fa;  --p-indigo-soft: rgb(37 99 235 / 0.22);  /* birincil mavi */
+    --p-teal:   #5eead4;  --p-teal-soft:   rgb(15 118 110 / 0.22);
+    --p-emerald:#6ee7b7;  --p-emerald-soft:rgb(4 120 87 / 0.22);
+    --p-amber:  #fbbf24;  --p-amber-soft:  rgb(180 83 9 / 0.24);
+    --p-rose:   #fb7185;  --p-rose-soft:   rgb(190 18 60 / 0.24);
+    --p-sky:    #7dd3fc;  --p-sky-soft:    rgb(2 132 199 / 0.24);
+    --p-violet: #c4b5fd;  --p-violet-soft: rgb(109 40 217 / 0.26);
+}
+
+@layer components {
+    /* Portal zemini */
+    .portal-root { background: var(--p-surface); }
+
+    /* İmza gradient hero (dashboard başlığı, üst bar vurgusu) */
+    .p-hero {
+        background:
+            radial-gradient(120% 140% at 100% 0%, rgb(255 255 255 / 0.18), transparent 45%),
+            linear-gradient(135deg, var(--p-hero-from), var(--p-hero-via) 52%, var(--p-hero-to));
+        color: #fff;
+    }
+    /* Hafif nokta deseni katmanı (hero üstüne) */
+    .p-dots {
+        background-image: radial-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1.4px);
+        background-size: 15px 15px;
+    }
+
+    /* Yükseltilmiş beyaz kart (yuvarlak + katmanlı gölge) */
+    .p-card {
+        background: var(--p-card);
+        border: 1px solid var(--p-card-border);
+        border-radius: 1.25rem;
+        box-shadow: var(--p-card-shadow);
+    }
+
+    /* Renkli metrik tile'ı — accent değişkeni üzerinden */
+    .p-tile {
+        border-radius: 1rem;
+        padding: 0.9rem 0.75rem;
+        background: var(--tile-soft, var(--p-indigo-soft));
+        color: var(--tile-fg, var(--p-indigo));
+    }
+    .p-tile-indigo  { --tile-soft: var(--p-indigo-soft);  --tile-fg: var(--p-indigo); }
+    .p-tile-teal    { --tile-soft: var(--p-teal-soft);    --tile-fg: var(--p-teal); }
+    .p-tile-emerald { --tile-soft: var(--p-emerald-soft); --tile-fg: var(--p-emerald); }
+    .p-tile-amber   { --tile-soft: var(--p-amber-soft);   --tile-fg: var(--p-amber); }
+    .p-tile-rose    { --tile-soft: var(--p-rose-soft);    --tile-fg: var(--p-rose); }
+    .p-tile-sky     { --tile-soft: var(--p-sky-soft);     --tile-fg: var(--p-sky); }
+    .p-tile-violet  { --tile-soft: var(--p-violet-soft);  --tile-fg: var(--p-violet); }
+
+    /* Yuvarlak ikon çipi (tile içi) */
+    .p-chip {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 2.25rem; height: 2.25rem; border-radius: 0.75rem;
+        background: var(--chip-bg, var(--p-indigo-soft));
+        color: var(--chip-fg, var(--p-indigo));
+    }
+
+    /* Segmented control (dönem seçici) */
+    .p-seg {
+        display: inline-flex; padding: 0.25rem; gap: 0.25rem;
+        background: var(--p-card); border: 1px solid var(--p-card-border);
+        border-radius: 9999px; box-shadow: var(--p-card-shadow);
+    }
+    .p-seg > button {
+        min-height: 2.5rem; padding: 0 1rem; border-radius: 9999px;
+        font-weight: 600; font-size: 0.875rem; color: var(--color-text-muted);
+        transition: all var(--dur-fast);
+    }
+    .p-seg > button[aria-selected='true'] {
+        background: linear-gradient(135deg, var(--p-hero-from), var(--p-hero-via));
+        color: #fff; box-shadow: 0 4px 12px -4px var(--p-ring);
+    }
+}
+
+/* =========================================================================
+   DOKUNMATİK UYUM (kaba işaretçi)
+   -------------------------------------------------------------------------
+   Sistem tablet ve dokunmatik POS ekranlarında kullanılıyor; yoğunluk
+   geçişinden sonra bazı hedefler (32px'lik küçük butonlar, tablo içi ikon
+   düğmeleri) parmakla vurulamayacak kadar küçüldü.
+
+   Kurallar YALNIZ `pointer: coarse` altında uygulanır — fareyle kullanılan
+   masaüstünde ölçüler DEĞİŞMEZ, arayüz şişmez. Hedef 44px (WCAG 2.5.5 /
+   iOS HIG); girdilerde 16px yazı tipi iOS'un odakta yakınlaştırmasını önler.
+   ========================================================================= */
+@media (pointer: coarse) {
+    button,
+    [role='button'],
+    [role='menuitem'],
+    [role='tab'],
+    summary {
+        min-height: 44px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* İkon-only düğmeler kare kalsın (yükseklik büyürken genişlik de büyür). */
+    button[class*='w-8'],
+    button[class*='size-8'],
+    button[class*='w-9'],
+    button[class*='size-9'],
+    [role='button'][class*='size-8'] {
+        min-width: 44px;
+    }
+
+    /* Metin girdileri: parmakla dokunulabilir yükseklik + iOS zoom engeli. */
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+        min-height: 44px;
+        font-size: max(16px, 1em);
+    }
+
+    /* Onay kutusu / radyo: görsel boyut küçük kalsa da hedef büyür. */
+    input[type='checkbox'],
+    input[type='radio'] {
+        min-width: 22px;
+        min-height: 22px;
+    }
+
+    /* Bağlantı listeleri (menü, sekme, satır) için rahat hedef. */
+    nav a,
+    a[class*='press-row'] {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        touch-action: manipulation;
+    }
+
+    /* Dokunmatikte "hover" yapışır; imleç efektleri devre dışı. */
+    .press-row:hover {
+        background-color: inherit;
     }
 }

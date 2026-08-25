@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Services;
 
 use App\Modules\Catalog\Models\Option;
 use App\Modules\Catalog\Models\Product;
+use App\Modules\Tenancy\Models\Branch;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Catalog\Support\Money;
 use App\Modules\Identity\Models\User;
@@ -201,6 +202,41 @@ class OrderService
         return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($data, $actor): OrderItem {
             $this->assertItemsChangeable($locked);
 
+            // BİRLEŞTİRME: aynı ürünü (aynı varyant/opsiyon/not) tekrar eklerken,
+            // mutfağın HENÜZ BİTİRMEDİĞİ (düzenlenebilir) özdeş satır varsa YENİ
+            // satır açma → adedini artır ("çay çay" yerine "çay ×2", derli toplu).
+            // Satır hazır/servis edildiyse özdeş sayılmaz → yeni satır (yeni hazırlık).
+            $merge = $this->findMergeableItem($locked, $data);
+
+            if ($merge !== null) {
+                $product = Product::withoutTenancy()
+                    ->where('tenant_id', $locked->tenant_id)
+                    ->find((int) $data['product_id']);
+                $max = ($product?->max_order_qty !== null) ? (int) $product->max_order_qty : 100;
+                $addQty = max(1, (int) $data['qty']);
+
+                // Yalnız ürün hâlâ mevcutsa ve birleşik adet üst sınırı aşmıyorsa birleştir.
+                if ($product !== null && $product->is_available && ($merge->qty + $addQty) <= $max) {
+                    $merge->qty += $addQty;
+                    $this->computeLine($merge);
+                    $merge->save();
+
+                    $this->logEvent($locked, 'item_added', $actor, [
+                        'name' => $merge->name,
+                        'qty' => $merge->qty,
+                        'unit_price_minor' => $merge->unit_price_minor,
+                        'options_price_minor' => $merge->options_price_minor,
+                        'line_total_minor' => $merge->line_total_minor,
+                        'merged' => true,
+                    ], item: $merge);
+
+                    $this->recomputeTotals($locked);
+                    $this->deriveKitchenStatus($locked, $actor);
+
+                    return $merge;
+                }
+            }
+
             if ($locked->items()->count() >= (int) config('orders.max_items_per_order', 200)) {
                 throw ValidationException::withMessages(['items' => ['Adisyon kalem sınırına ulaştı.']]);
             }
@@ -220,6 +256,51 @@ class OrderService
 
             return $item;
         });
+    }
+
+    /**
+     * Eklenmek istenen kalemle BİRLEŞTİRİLEBİLİR mevcut satırı bulur: aynı ürün,
+     * aynı varyant, aynı opsiyon kümesi, aynı not VE hâlâ düzenlenebilir statü
+     * (Placed/SentToStation/Accepted — mutfak bitirmemiş). Yoksa null.
+     */
+    private function findMergeableItem(Order $order, array $data): ?OrderItem
+    {
+        $variantId = ! empty($data['variant_id']) ? (int) $data['variant_id'] : null;
+        $note = $data['note'] ?? null;
+        $note = ($note === '') ? null : $note;
+        $newOpts = collect(array_map('intval', $data['option_ids'] ?? []))
+            ->unique()->sort()->values()->all();
+
+        $mergeable = [
+            OrderItemStatus::Placed->value,
+            OrderItemStatus::SentToStation->value,
+            OrderItemStatus::Accepted->value,
+        ];
+
+        $candidates = $order->items()
+            ->where('product_id', (int) $data['product_id'])
+            ->whereIn('status', $mergeable)
+            ->when(
+                $variantId === null,
+                fn ($q) => $q->whereNull('variant_id'),
+                fn ($q) => $q->where('variant_id', $variantId),
+            )
+            ->with('options')
+            ->get();
+
+        foreach ($candidates as $candidate) {
+            $cNote = ($candidate->note === '') ? null : $candidate->note;
+            if ($cNote !== $note) {
+                continue;
+            }
+            $cOpts = $candidate->options->pluck('option_id')
+                ->map(fn ($x) => (int) $x)->unique()->sort()->values()->all();
+            if ($cOpts === $newOpts) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /** Snapshot'lı kalem üretimi (public sipariş de bunu kullanır). */
@@ -384,6 +465,50 @@ class OrderService
         });
     }
 
+    /**
+     * Adisyon başlığını günceller: KİŞİ SAYISI ve ADİSYON NOTU.
+     *
+     * Bu iki alan yalnız adisyon AÇILIRKEN verilebiliyordu; sonradan
+     * düzeltilemiyordu (masaya bir kişi daha katıldı, mutfağa iletilecek
+     * bir not çıktı). Para/kalem/durum alanlarına DOKUNMAZ — tutar
+     * hesabını etkileyecek hiçbir şey değişmez, yalnız başlık bilgisi.
+     *
+     * @param array{guest_count?: int|null, note?: string|null} $data
+     */
+    public function updateOrderInfo(Order $order, array $data, ?User $actor, ?int $expectedVersion = null): Order
+    {
+        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($data, $actor): Order {
+            if (! $locked->isOpen()) {
+                throw ValidationException::withMessages(['order' => ['Kapalı adisyonun bilgileri değiştirilemez.']]);
+            }
+
+            $old = ['guest_count' => $locked->guest_count, 'note' => $locked->note];
+
+            if (array_key_exists('guest_count', $data)) {
+                $guests = $data['guest_count'];
+
+                if ($guests !== null && ((int) $guests < 1 || (int) $guests > 200)) {
+                    throw ValidationException::withMessages(['guest_count' => ['Kişi sayısı 1–200 aralığında olmalı.']]);
+                }
+
+                $locked->guest_count = $guests === null ? null : (int) $guests;
+            }
+
+            if (array_key_exists('note', $data)) {
+                $locked->note = $data['note'];
+            }
+
+            $locked->save();
+
+            $this->logEvent($locked, 'order_info_updated', $actor, [
+                'old' => $old,
+                'new' => ['guest_count' => $locked->guest_count, 'note' => $locked->note],
+            ]);
+
+            return $locked;
+        });
+    }
+
     /** Henüz mutfağa gitmemiş kalemi adisyondan ÇIKARIR (iz: order_events). */
     public function removeItem(Order $order, OrderItem $item, ?User $actor, ?int $expectedVersion = null): void
     {
@@ -453,9 +578,14 @@ class OrderService
     }
 
     /** İkram — NEDEN ZORUNLU; önceki tutar + yapan denetime yazılır (§12.3). */
-    public function compItem(Order $order, OrderItem $item, string $reason, User $actor, ?int $expectedVersion = null): OrderItem
+    /**
+     * Kalemi ikram et. $qty verilir ve kalem adedinden AZ ise KISMİ ikram:
+     * kalem bölünür — orijinal (adet − qty) ücretli kalır, qty adetli yeni bir
+     * satır ikram (0₺) olur. $qty null/≥adet ise tüm satır ikram edilir.
+     */
+    public function compItem(Order $order, OrderItem $item, string $reason, User $actor, ?int $expectedVersion = null, ?int $qty = null): OrderItem
     {
-        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($item, $reason, $actor): OrderItem {
+        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($item, $reason, $actor, $qty): OrderItem {
             $this->assertItemsChangeable($locked);
             $item = $this->freshItem($locked, $item);
 
@@ -467,25 +597,59 @@ class OrderService
                 throw ValidationException::withMessages(['item' => ['Kalem zaten ikram.']]);
             }
 
-            $previousTotal = (int) $item->line_total_minor;
+            $fullQty = (int) $item->qty;
+            $compQty = ($qty === null || $qty >= $fullQty) ? $fullQty : max(1, $qty);
 
-            $item->is_comp = true;
-            $item->comp_reason = $reason;
-            $item->comp_by_id = $actor->getKey();
-            $this->computeLine($item);
-            $item->save();
+            // KISMİ ikram: kalemi böl — orijinali azalt, ikram için yeni satır aç.
+            if ($compQty < $fullQty) {
+                $item->qty = $fullQty - $compQty;
+                $this->computeLine($item);
+                $item->save();
+
+                $comp = $item->replicate();
+                $comp->qty = $compQty;
+                $comp->is_comp = true;
+                $comp->comp_reason = $reason;
+                $comp->comp_by_id = $actor->getKey();
+                $comp->save();
+
+                // Opsiyon alt satırlarını da kopyala (döküm/fiş tutarlılığı).
+                foreach ($item->options()->get() as $o) {
+                    $comp->options()->create([
+                        'tenant_id' => $locked->tenant_id,
+                        'option_id' => $o->option_id,
+                        'group_name' => $o->group_name,
+                        'option_name' => $o->option_name,
+                        'price_minor' => $o->price_minor,
+                    ]);
+                }
+
+                $this->computeLine($comp);
+                $comp->save();
+
+                $item = $comp;
+            } else {
+                // Tüm satır ikram.
+                $item->is_comp = true;
+                $item->comp_reason = $reason;
+                $item->comp_by_id = $actor->getKey();
+                $this->computeLine($item);
+                $item->save();
+            }
 
             $this->logEvent($locked, 'item_comped', $actor, [
                 'name' => $item->name,
                 'reason' => $reason,
-                'previous_total_minor' => $previousTotal,
+                'qty' => $compQty,
+                'previous_total_minor' => $this->lineGross($item),
                 'comp_value_minor' => $this->lineGross($item),
             ], item: $item);
 
             $this->audit->log('orders.item_comped', $locked, null, [
                 'item' => $item->name,
                 'reason' => $reason,
-                'previous_total_minor' => $previousTotal,
+                'qty' => $compQty,
+                'previous_total_minor' => $this->lineGross($item),
                 'comp_value_minor' => $this->lineGross($item),
                 'performed_by' => $actor->getKey(),
             ]);
@@ -550,18 +714,71 @@ class OrderService
 
     public function requestBill(Order $order, ?User $actor, ?int $expectedVersion = null): Order
     {
-        return $this->transition($order, OrderStatus::BillRequested, $actor, $expectedVersion);
+        $result = $this->transition($order, OrderStatus::BillRequested, $actor, $expectedVersion);
+        // KASA'ya "ödeme bekliyor" bildirimi (best-effort).
+        app(\App\Modules\Notify\Services\NotifyEmitter::class)->awaitingPayment($result);
+
+        return $result;
     }
 
     /** QR siparişi onayı: Onay bekliyor → Sipariş alındı. */
     public function approve(Order $order, User $actor, ?int $expectedVersion = null): Order
     {
-        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($actor): Order {
+        $result = $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($actor): Order {
             $this->applyTransition($locked, OrderStatus::Placed, $actor);
             $locked->placed_at ??= now();
+            // Onay = mutfağa GÖNDER: bekleyen (placed) kalemler sent_to_station olur ve
+            // KDS'e düşer. Onaydan önce hiçbir kalem mutfakta değildi.
+            $this->firePlacedItems($locked, $actor);
+            $this->deriveKitchenStatus($locked, $actor);
 
             return $locked;
         });
+
+        // Mutfak/barista bir kez bilgilendirilir (best-effort).
+        app(\App\Modules\Notify\Services\NotifyEmitter::class)->orderApproved($result);
+
+        return $result;
+    }
+
+    /**
+     * "Mutfağa gönder": adisyondaki GÖNDERİLMEMİŞ (placed) kalemleri sent_to_station
+     * yapar → KDS'e o an düşer. Kazara eklenen kalem gönderilene kadar düzeltilebilir.
+     * Garson kalemleri toplayıp tek seferde mutfağa yollar (adisyonu açık tutar).
+     */
+    public function sendToKitchen(Order $order, User $actor, ?int $expectedVersion = null): Order
+    {
+        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($actor): Order {
+            $this->assertItemsChangeable($locked);
+
+            $count = $this->firePlacedItems($locked, $actor);
+            if ($count === 0) {
+                throw ValidationException::withMessages(['items' => ['Mutfağa gönderilecek yeni kalem yok (hepsi zaten gönderildi).']]);
+            }
+
+            $this->deriveKitchenStatus($locked, $actor);
+
+            return $locked;
+        });
+    }
+
+    /** Placed kalemleri sent_to_station'a taşır; gönderilen adet döner. */
+    private function firePlacedItems(Order $order, ?User $actor): int
+    {
+        $placed = $order->items()
+            ->where('status', OrderItemStatus::Placed->value)
+            ->get();
+
+        foreach ($placed as $item) {
+            $item->status = OrderItemStatus::SentToStation->value;
+            $item->save();
+        }
+
+        if ($placed->isNotEmpty()) {
+            $this->logEvent($order, 'sent_to_kitchen', $actor, ['count' => $placed->count()]);
+        }
+
+        return $placed->count();
     }
 
     /** Makine denetimli ortak geçiş. */
@@ -667,15 +884,63 @@ class OrderService
      * ========================================================= */
 
     /**
+     * Uygulanmış indirimi KALDIRIR (tutar yeniden hesaplanır, iz düşer).
+     *
+     * "Tek indirim" kuralının karşılığı: yanlış indirim uygulandıysa üzerine
+     * yazmak yerine kaldırılır, sonra doğrusu uygulanır — böylece olay
+     * günlüğünde ne uygulandığı ve neyin kaldırıldığı ayrı ayrı görünür.
+     */
+    public function removeDiscount(Order $order, User $actor, ?int $expectedVersion = null): Order
+    {
+        return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($actor): Order {
+            $this->assertItemsChangeable($locked);
+
+            if ((int) $locked->discount_minor <= 0) {
+                throw ValidationException::withMessages(['discount' => ['Bu adisyonda kaldırılacak indirim yok.']]);
+            }
+
+            $previous = [
+                'discount_minor' => (int) $locked->discount_minor,
+                'discount_percent' => $locked->discount_percent !== null ? (float) $locked->discount_percent : null,
+                'reason' => $locked->discount_reason,
+            ];
+
+            $locked->discount_minor = 0;
+            $locked->discount_percent = null;
+            $locked->discount_reason = null;
+            $locked->discount_preset_id = null;
+            $locked->discount_by_id = null;
+            $locked->discount_approved_by_id = null;
+
+            $this->recomputeTotals($locked);
+
+            $this->logEvent($locked, 'discount_removed', $actor, $previous);
+            $this->audit->log('orders.discount_removed', $locked, $previous, ['discount_minor' => 0]);
+
+            return $locked;
+        });
+    }
+
+    /**
      * Adisyon indirimi. Eşik ÜZERİ indirim yönetici onayı ister (PIN
      * doğrulaması controller'da yapılır, onaylayan buraya gelir).
      *
-     * @param array{type: 'percent'|'amount', value: int|float, reason: string} $data
+     * @param array{type: 'percent'|'amount', value: int|float, reason: string, preapproved?: bool, preset_id?: int|null} $data
      */
     public function applyDiscount(Order $order, array $data, User $actor, ?User $approver, ?int $expectedVersion = null): Order
     {
         return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($data, $actor, $approver): Order {
             $this->assertItemsChangeable($locked);
+
+            // TEK İNDİRİM KURALI: adisyonda zaten indirim varsa ÜZERİNE yazılmaz.
+            // Eskiden ikinci indirim sessizce birincinin yerini alıyordu; hem
+            // kasiyer "iki indirim uyguladım" sanıyor hem de kaldırılan indirimin
+            // izi kalmıyordu. Değiştirmek isteyen önce KALDIRIR (removeDiscount).
+            if ((int) $locked->discount_minor > 0) {
+                throw ValidationException::withMessages([
+                    'discount' => ['Bu adisyonda zaten bir indirim var ('.($locked->discount_reason ?? 'indirim').'). Önce mevcut indirimi kaldırın.'],
+                ]);
+            }
 
             $itemsTotal = (int) $locked->items_total_minor;
 
@@ -708,10 +973,14 @@ class OrderService
                 $locked->discount_minor = $amount;
             }
 
+            // Hazır tanımdan gelen indirimde onay eşiği ATLANABİLİR: tanımı zaten
+            // `orders.discount` yetkili biri yapmıştır — onay tanım anında verilmiştir.
+            // Serbest (tanımsız) indirimde eşik AYNEN geçerlidir.
             $threshold = (float) config('orders.discount_approval_threshold_percent', 10);
             $effectivePercent = $itemsTotal > 0 ? ((int) $locked->discount_minor) * 100 / $itemsTotal : 0;
+            $skipApproval = (bool) ($data['preapproved'] ?? false);
 
-            if ($effectivePercent > $threshold && $approver === null) {
+            if (! $skipApproval && $effectivePercent > $threshold && $approver === null) {
                 // withLockedOrder transaction'ı geri sarar; indirim yazılmaz.
                 throw ValidationException::withMessages(['approver' => [
                     sprintf('%%%s üzeri indirim yönetici onayı (PIN) gerektirir.', rtrim(rtrim(number_format($threshold, 2, '.', ''), '0'), '.')),
@@ -719,6 +988,9 @@ class OrderService
             }
 
             $locked->discount_reason = $data['reason'];
+            // Hangi hazır tanımdan geldiği (varsa) — kullanım istatistiği ada
+            // göre değil REFERANSA göre sayılsın diye.
+            $locked->discount_preset_id = $data['preset_id'] ?? null;
             $locked->discount_by_id = $actor->getKey();
             $locked->discount_approved_by_id = $approver?->getKey();
 
@@ -797,7 +1069,48 @@ class OrderService
             $locked->closed_at = null;
         }
 
+        // #11 Masa oto-boşaltma × void yarışı: void, KAPALI (ödenmiş) bir adisyonu
+        // yeniden AÇIYORSA ve masa bu arada BAŞKA açık adisyonca kullanılıyorsa,
+        // aynı masada iki açık adisyon oluşmasını önle (çakışma).
+        if ($deltaMinor < 0
+            && in_array($from, OrderStatus::closedCases(), true)
+            && $to->isOpen()
+            && $locked->table_id !== null) {
+            $otherOpen = Order::withoutTenancy()
+                ->where('table_id', $locked->table_id)
+                ->where('id', '!=', $locked->getKey())
+                ->whereNotIn('status', OrderStatus::closedValues())
+                ->exists();
+            if ($otherOpen) {
+                throw ValidationException::withMessages(['payment' => [
+                    'Bu masa yeniden kullanımda (başka açık adisyon var). Ödemeyi geri almak '
+                    .'çakışma yaratır — önce diğer adisyonu kapatın ya da iadeyi cari/borç üzerinden yapın.',
+                ]]);
+            }
+        }
+
         $locked->status = $to->value;
+
+        // Ön-ödemeli akış (kiosk/POS): tahsilat alınınca GÖNDERİLMEMİŞ (placed) kalemler
+        // mutfağa düşer — garson yok, ödeme = onay. Dine-in'de kalemler zaten gönderilmiş
+        // olduğundan no-op'tur (placed kalan kalem = ödemeden önce gönderilmemiş → mutfağa
+        // gitmeli ki hazırlansın).
+        if ($deltaMinor > 0) {
+            $this->firePlacedItems($locked, $actor);
+        }
+
+        // TAM ÖDEME + DİNE-IN masa: servis tamamlandı sayılır → kalan aktif kalemler
+        // "served" olur. Böylece adisyon Siparişler panosundan düşer (operationallyVisible
+        // artık tutmaz) ve masa OTOMATİK boşalır — "ödedim ama masa hâlâ dolu / sadece
+        // iade var" sorunu biter. Kiosk/paket ön-ödemelidir (kalem hâlâ pişecek) → HARİÇ.
+        if ($to === OrderStatus::Paid && $locked->channelEnum()->usesTable()) {
+            $servedNow = $locked->items()
+                ->whereNotIn('status', [OrderItemStatus::Served->value, OrderItemStatus::Cancelled->value])
+                ->update(['status' => OrderItemStatus::Served->value]);
+            if ($servedNow > 0) {
+                $this->logEvent($locked, 'items_served_on_payment', $actor, ['count' => $servedNow]);
+            }
+        }
 
         $this->logEvent($locked, $deltaMinor > 0 ? 'payment_recorded' : 'payment_reversed', $actor, $meta + [
             'amount_minor' => abs($deltaMinor),
@@ -893,6 +1206,9 @@ class OrderService
         $this->audit->log('orders.debt_transferred', $locked, ['status' => $from->value], $payload);
 
         $this->tables->syncForOrder($locked, OrderStatus::DebtTransferred);
+
+        // KASA + yönetici bildirimi (best-effort).
+        app(\App\Modules\Notify\Services\NotifyEmitter::class)->debtTransferred($locked);
     }
 
     /**
@@ -1128,6 +1444,10 @@ class OrderService
             /** @var Order $lockedTarget */
             $lockedTarget = Order::query()->lockForUpdate()->findOrFail($targetOrder->getKey());
 
+            // HEDEF ADİSYON KORUMASI (denetim #12): tahsilata geçmiş/kapanmış hedefe
+            // kalem taşınmaz (aksi halde ödenmiş adisyona sessizce ürün eklenir).
+            $this->assertItemsChangeable($lockedTarget);
+
             $item->order_id = $lockedTarget->getKey();
             $item->save();
 
@@ -1198,6 +1518,30 @@ class OrderService
             $lockedSource->version = (int) $lockedSource->version + 1;
             $lockedSource->save();
 
+            // BİRLEŞİK MASA BAĞI: kaynak adisyonun masası artık hedef adisyona
+            // bağlanır. Aksi halde grup hâlâ o masada otururken masa panoda BOŞ
+            // görünüyor, garson üstüne yeni müşteri oturtabiliyordu.
+            $sourceTableId = $lockedSource->table_id !== null ? (int) $lockedSource->table_id : null;
+            if ($sourceTableId !== null && $sourceTableId !== (int) $lockedTarget->table_id) {
+                \App\Modules\Orders\Models\OrderLinkedTable::withoutTenancy()
+                    ->where('table_id', $sourceTableId)
+                    ->delete();
+
+                $link = new \App\Modules\Orders\Models\OrderLinkedTable([
+                    'order_id' => $lockedTarget->getKey(),
+                    'table_id' => $sourceTableId,
+                    'created_at' => now(),
+                ]);
+                $link->tenant_id = $lockedTarget->tenant_id;
+                $link->save();
+
+                // Kaynak adisyonun KENDİ bağlı masaları da hedefe devrolur
+                // (üç masalık grup: A+B birleşti, sonra (A+B)+C).
+                \App\Modules\Orders\Models\OrderLinkedTable::withoutTenancy()
+                    ->where('order_id', $lockedSource->getKey())
+                    ->update(['order_id' => $lockedTarget->getKey()]);
+            }
+
             $this->logEvent($lockedSource, 'merged_into', $actor, ['target_order_id' => $lockedTarget->getKey(), 'moved_items' => $moved], $from->value, OrderStatus::Cancelled->value);
             $this->logEvent($lockedTarget, 'merged_from', $actor, ['source_order_id' => $lockedSource->getKey(), 'moved_items' => $moved]);
 
@@ -1222,6 +1566,13 @@ class OrderService
     {
         return $this->withLockedOrder($order, $expectedVersion, function (Order $locked) use ($itemIds, $actor): Order {
             $this->assertItemsChangeable($locked);
+
+            // KISMİ ÖDEME KORUMASI (denetim #10): merge() ile aynı — tahsilat başlamış
+            // adisyon ürün bazlı bölünürse ödeme dağılımı (paid_minor kaynakta kalır,
+            // kalemler yeni adisyona gider) bozulur. Önce ödeme kapatılmalı.
+            if ((int) $locked->paid_minor > 0) {
+                throw ValidationException::withMessages(['item_ids' => ['Kısmi ödemesi olan adisyon ürün bazlı bölünemez; önce ödemeyi kapatın.']]);
+            }
 
             $items = $locked->items()->whereIn('id', $itemIds)->get()
                 ->filter(fn (OrderItem $i): bool => $i->isActive());
@@ -1459,6 +1810,22 @@ class OrderService
         $order->total_minor = max(0, $itemsTotal - $discount
             + (int) ($order->service_charge_minor ?? 0)
             + (int) ($order->rounding_minor ?? 0));
+
+        // KISMİ ÖDEME UZLAŞTIRMA (denetim #1/#11): indirim/ikram/kalem-çıkarma/böl ile
+        // TUTAR düşünce, ödenen tutar toplamı artık KARŞILIYORSA adisyon "kısmi ödeme"de
+        // takılıp kilitlenmesin → KAPANIR (Paid). paid>total kalırsa fazla-tahsil görünür
+        // kalır ve Paid iade yolundan çözülebilir. Yalnız tahsilatı başlamış (PartiallyPaid)
+        // adisyon; artırıcı işlemlerde (paid<total) hiçbir şey değişmez.
+        if ($order->statusEnum() === OrderStatus::PartiallyPaid
+            && (int) $order->paid_minor >= (int) $order->total_minor) {
+            $order->closed_at = $order->closed_at ?? now();
+            $order->status = OrderStatus::Paid->value;
+            $this->logEvent($order, 'payment_reconciled', null, [
+                'paid_minor' => (int) $order->paid_minor,
+                'total_minor' => (int) $order->total_minor,
+                'reason' => 'total_reduced_covers_paid',
+            ], OrderStatus::PartiallyPaid->value, OrderStatus::Paid->value);
+        }
     }
 
     /* =========================================================
@@ -1635,6 +2002,49 @@ class OrderService
      * @param  array{note?: string|null, customer_name?: string|null,
      *   items: array<int, array{product_id: int, variant_id?: int|null, qty: int, option_ids?: array<int, int>, note?: string|null}>}  $data
      */
+    /**
+     * PUBLIC sipariş doğrulaması (denetim #5): müşteri, TÜKENEN (stok 0) ya da
+     * SERVİS SAATİ DIŞI ürünü sipariş edemesin — bu kurallar menüde yalnız
+     * istemcideydi; doğrudan POST/yarışla aşılabiliyordu. Sunucu tarafında zorlanır.
+     * (Personel eklemesi buildItem'in kendi kurallarına tabidir; burası yalnız public.)
+     */
+    private function assertPublicOrderable(Order $order, int $productId): void
+    {
+        if ($productId <= 0) {
+            return;
+        }
+
+        $p = Product::withoutTenancy()
+            ->with('category:id,available_from,available_until')
+            ->where('tenant_id', $order->tenant_id)
+            ->find($productId);
+
+        if ($p === null) {
+            return; // buildItem zaten "ürün bulunamadı" verir
+        }
+
+        if ($p->track_stock && (int) $p->stock_quantity <= 0) {
+            throw ValidationException::withMessages(['product_id' => [$p->name.' şu an tükendi, sipariş alınamıyor.']]);
+        }
+
+        $tz = (string) (Branch::withoutTenancy()->whereKey($order->branch_id)->value('timezone') ?: config('app.timezone'));
+        $now = now($tz)->format('H:i:s');
+        $inWindow = static function (?string $from, ?string $until) use ($now): bool {
+            if ($from === null || $until === null) {
+                return true;
+            }
+
+            return $from <= $until ? ($now >= $from && $now <= $until) : ($now >= $from || $now <= $until);
+        };
+
+        $offHours = ! $inWindow($p->available_from, $p->available_until)
+            || ($p->category !== null && ! $inWindow($p->category->available_from, $p->category->available_until));
+
+        if ($offHours) {
+            throw ValidationException::withMessages(['product_id' => [$p->name.' şu an servis edilmiyor (servis saati dışında).']]);
+        }
+    }
+
     public function createPublicOrder(Table $table, array $data): Order
     {
         return DB::transaction(function () use ($table, $data): Order {
@@ -1647,7 +2057,17 @@ class OrderService
             $existing = $this->findOpenPrimaryOrderForTable((int) $table->tenant_id, (int) $table->getKey());
 
             if ($existing !== null) {
+                // ÖDEME FAZI KORUMASI (denetim #3): adisyon hesap istendi / kısmen
+                // ödendiyse müşteri QR'dan kalem EKLEYEMEZ (tahsilat sırasında toplam
+                // kaymasın). Yeni sipariş için garson çağrılır.
+                if (in_array($existing->statusEnum(), [OrderStatus::BillRequested, OrderStatus::PartiallyPaid], true)) {
+                    throw ValidationException::withMessages(['order' => [
+                        'Bu masada hesap istendi/ödeme başladı. Yeni sipariş için lütfen garsonu çağırın.',
+                    ]]);
+                }
+
                 foreach ($data['items'] as $itemData) {
+                    $this->assertPublicOrderable($existing, (int) ($itemData['product_id'] ?? 0));
                     $this->buildItem($existing, $itemData, null);
                 }
 
@@ -1683,6 +2103,7 @@ class OrderService
             $order->save();
 
             foreach ($data['items'] as $itemData) {
+                $this->assertPublicOrderable($order, (int) ($itemData['product_id'] ?? 0));
                 $this->buildItem($order, $itemData, null);
             }
 

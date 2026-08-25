@@ -60,7 +60,7 @@ class KdsFlowTest extends KdsTestCase
 
         $this->assertSame('ready', $statuses['Kebap']);
         $this->assertSame('ready', $statuses['Pide']);
-        $this->assertSame('placed', $statuses['Ayran']); // bar kalemine DOKUNULMADI
+        $this->assertSame('sent_to_station', $statuses['Ayran']); // bar kalemine DOKUNULMADI (gönderildi ama hazırlanmadı)
 
         $this->assertSame('partially_ready', Order::withoutTenancy()->find($setup['order_id'])->status);
     }

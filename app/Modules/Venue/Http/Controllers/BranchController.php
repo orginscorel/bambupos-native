@@ -33,6 +33,7 @@ class BranchController extends Controller
                     'phone' => $branch->phone,
                     'timezone' => $branch->timezone,
                     'is_active' => $branch->is_active,
+                    'showcase' => $branch->showcase,
                     'has_qr_token' => $branch->qr_token !== null,
                     'areas_count' => Area::query()->where('branch_id', $branch->id)->count(),
                     'tables_count' => Table::query()->where('branch_id', $branch->id)->count(),
@@ -109,6 +110,26 @@ class BranchController extends Controller
             'phone' => ['nullable', 'string', 'max:32'],
             'timezone' => ['sometimes', 'string', 'max:64', 'timezone:all'],
             'is_active' => ['sometimes', 'boolean'],
+
+            // İşletme Vitrini (public QR menüsünde görünen bilgi kartı).
+            'showcase' => ['sometimes', 'nullable', 'array'],
+            'showcase.wifi_ssid' => ['nullable', 'string', 'max:64'],
+            'showcase.wifi_password' => ['nullable', 'string', 'max:128'],
+            'showcase.maps_url' => ['nullable', 'url', 'max:500'],
+            'showcase.show_map' => ['sometimes', 'boolean'],
+            'showcase.hours' => ['nullable', 'array', 'max:7'],
+            'showcase.hours.*.d' => ['required_with:showcase.hours', 'integer', 'between:0,6'],
+            'showcase.hours.*.closed' => ['sometimes', 'boolean'],
+            'showcase.hours.*.open' => ['nullable', 'date_format:H:i'],
+            'showcase.hours.*.close' => ['nullable', 'date_format:H:i'],
+            'showcase.social' => ['nullable', 'array'],
+            'showcase.social.instagram' => ['nullable', 'string', 'max:120'],
+            'showcase.social.facebook' => ['nullable', 'string', 'max:120'],
+            'showcase.social.x' => ['nullable', 'string', 'max:120'],
+            'showcase.social.tiktok' => ['nullable', 'string', 'max:120'],
+            'showcase.social.youtube' => ['nullable', 'string', 'max:120'],
+            'showcase.social.whatsapp' => ['nullable', 'string', 'max:32'],
+            'showcase.social.website' => ['nullable', 'string', 'max:200'],
         ]);
     }
 }

@@ -36,6 +36,15 @@ class KdsPageController extends Controller
         return $this->screen($request, 'barista');
     }
 
+    /** NARGİLE ekranı: 'nargile' eklentisi AÇIKSA ayrı kulvar; kapalıyken 404. */
+    public function hookah(Request $request): Response|RedirectResponse
+    {
+        $tenantId = (int) app(\App\Modules\Tenancy\TenantContext::class)->tenantId();
+        abort_unless(\App\Modules\Settings\Support\Features::enabled($tenantId, 'nargile'), 404);
+
+        return $this->screen($request, 'nargile');
+    }
+
     /**
      * Mutfak/Barista ekranı — aynı premium tasarım, yalnız varsayılan istasyon
      * süzgeci değişir. ?istasyon=X açıkça verilirse o kazanır; verilmezse
@@ -55,23 +64,25 @@ class KdsPageController extends Controller
         $families = $this->kds->stationFamilies($user);
 
         if ($families !== [] && ! in_array($default, $families, true)) {
-            // Kısıtlı kullanıcı yalnız barista ailesindeyse Barista'ya, aksi
-            // (mutfak/karışık) hâlde Mutfak ekranına yönlendir.
-            $onlyBarista = $families === ['barista'];
+            // Kısıtlı kullanıcıyı KENDİ kulvarına yönlendir (barista/nargile/mutfak).
+            if ($families === ['barista']) {
+                return redirect()->to('/panel/barista');
+            }
+            if ($families === ['nargile']) {
+                return redirect()->to('/panel/nargile');
+            }
 
-            return redirect()->to($onlyBarista ? '/panel/barista' : '/panel/mutfak');
+            return redirect()->to('/panel/mutfak');
         }
 
+        // VARSAYILAN = "Tümü" (bu ekranın/kulvarın TÜM istasyonları) → hiçbir kalem
+        // gizlenmez. Eskiden ekran tek istasyona (ör. 'kitchen') açılıyordu; Izgara/
+        // Tatlı/Fırın'a atanan kalemler görünmüyordu ("gözden kaçma"). Personel dilerse
+        // ?istasyon=X ile (çiplerle) tek istasyona daraltabilir; ama zorunlu değil.
         $requested = (string) $request->query('istasyon', '');
 
-        if ($requested === '') {
-            $allowed = $this->kds->allowedStations($user);
-            $requested = ($allowed === null || in_array($default, $allowed, true)) ? $default : '';
-        }
-
-        // $default = bu ekranın KULVARI ('kitchen'|'barista'). Kitchen.vue çipleri
-        // yalnız bu kulvarın istasyonlarıyla sınırlar; "Tümü" ve kuyruk lane ile
-        // daralır (Mutfak barista çiplerini/kalemlerini HİÇ göstermez, tersi de).
+        // $default = bu ekranın KULVARI ('kitchen'|'barista'|'nargile'). Kuyruk + çipler
+        // lane ile sınırlıdır (Mutfak barista/nargile kalemini HİÇ göstermez, tersi de).
         return Inertia::render('Panel/Kds/Kitchen', $this->meta($request) + [
             'initialStation' => $requested,
             'lane' => $default,

@@ -163,11 +163,26 @@ function bumpPreview(): void {
     previewVersion.value++;
 }
 
+// CANLI önizleme: URL güncel (kaydedilmemiş) şablon değerlerini taşır (?preview=1).
+// settings değişince computed yeniden hesaplanır → <img> src değişir → anında yenilenir.
 const previewUrl = computed(() => {
     const first = tables.value[0];
-    if (first) return `/api/v1/venue/tables/${first.id}/qr-image?v=${previewVersion.value}`;
-    if (branchId.value) return `/api/v1/venue/branches/${branchId.value}/qr-image?v=${previewVersion.value}`;
-    return '';
+    const base = first
+        ? `/api/v1/venue/tables/${first.id}/qr-image`
+        : branchId.value
+            ? `/api/v1/venue/branches/${branchId.value}/qr-image`
+            : '';
+    if (!base) return '';
+    const p = new URLSearchParams({ preview: '1', v: String(previewVersion.value) });
+    const s = settings.value;
+    if (s) {
+        p.set('color', s.color);
+        p.set('bg_color', s.bg_color);
+        p.set('frame', s.frame);
+        p.set('header', s.header_text ?? '');
+        p.set('description', s.description ?? '');
+    }
+    return `${base}?${p.toString()}`;
 });
 
 /* ================= İndirme / rotasyon ================= */
@@ -251,10 +266,14 @@ const columns: TableColumn[] = [
 
 <template>
     <Head title="QR Yönetimi" />
-    <PanelShell title="QR Yönetimi">
-        <VenueNav />
+    <!-- TAM KAPLAMA: mekân gezinmesi SABİT şeritte; içerik kendi içinde kayar. -->
+    <PanelShell title="QR Yönetimi" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <VenueNav />
+        </div>
 
-        <div class="flex flex-col gap-4">
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
             <div class="grid gap-4 lg:grid-cols-3">
                 <!-- Şablon -->
                 <div class="lg:col-span-2">
@@ -424,5 +443,6 @@ const columns: TableColumn[] = [
                 <BaseButton variant="danger" :loading="rotateBusy" @click="rotateBranchToken">Yenile</BaseButton>
             </template>
         </BaseModal>
+        </div>
     </PanelShell>
 </template>

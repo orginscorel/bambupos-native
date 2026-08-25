@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BamBumPOS">
+  <!-- Marka karesi: panel ve terminal üst çubuğundaki logo bloğuyla AYNI
+       kimlik (mor yuvarlak kare + QR glifi). Sekmede küçükken de tanınsın
+       diye glif kalın ve az detaylı tutuldu. -->
+  <rect width="64" height="64" rx="14" fill="#5443D2"/>
+  <g fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="15" y="15" width="12" height="12" rx="3"/>
+    <rect x="37" y="15" width="12" height="12" rx="3"/>
+    <rect x="15" y="37" width="12" height="12" rx="3"/>
+    <path d="M37 37h6"/>
+    <path d="M43 43v6"/>
+    <path d="M49 37v12"/>
+  </g>
+</svg>

@@ -84,6 +84,7 @@ const form = ref({
     qr_price_minor: null as number | null,
     tax_rate: '10' as string | number,
 
+    weight_grams: '' as string | number,
     calories: '' as string | number,
     protein: '' as string | number,
     carbs: '' as string | number,
@@ -128,6 +129,7 @@ function fillFrom(p: ProductRow): void {
         kiosk_price_minor: p.kiosk_price_minor,
         qr_price_minor: p.qr_price_minor,
         tax_rate: String(Number(p.tax_rate)),
+        weight_grams: p.weight_grams ?? '',
         calories: p.calories ?? '',
         protein: p.protein === null ? '' : String(Number(p.protein)),
         carbs: p.carbs === null ? '' : String(Number(p.carbs)),
@@ -250,6 +252,7 @@ async function save(): Promise<void> {
         qr_price_minor: form.value.qr_price_minor,
         tax_rate: numOrNull(form.value.tax_rate) ?? 10,
 
+        weight_grams: numOrNull(form.value.weight_grams),
         calories: numOrNull(form.value.calories),
         protein: numOrNull(form.value.protein),
         carbs: numOrNull(form.value.carbs),
@@ -638,6 +641,9 @@ const spicinessOptions = [
                             <div class="border-t border-default pt-4">
                                 <h3 class="mb-3 text-sm font-semibold text-body">Besin değerleri <span class="font-normal text-muted">(porsiyon başına, isteğe bağlı)</span></h3>
                                 <div class="grid gap-4 sm:grid-cols-4">
+                                    <FormField label="Gramaj (g/ml)" hint="Tahmini porsiyon" :error="err('weight_grams')">
+                                        <BaseInput v-model="form.weight_grams" inputmode="numeric" />
+                                    </FormField>
                                     <FormField label="Kalori (kcal)" :error="err('calories')">
                                         <BaseInput v-model="form.calories" inputmode="numeric" />
                                     </FormField>

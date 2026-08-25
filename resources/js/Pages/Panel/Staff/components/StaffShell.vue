@@ -29,7 +29,10 @@ const isActive = (href: string) =>
 </script>
 
 <template>
-    <PanelShell :title="props.title">
+    <PanelShell :title="props.title" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
+
         <div class="flex flex-col gap-4">
             <nav class="flex gap-1 overflow-x-auto border-b border-default" aria-label="Personel bölümleri">
                 <Link
@@ -48,6 +51,8 @@ const isActive = (href: string) =>
                 </Link>
             </nav>
             <slot />
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

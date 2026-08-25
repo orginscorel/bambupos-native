@@ -325,6 +325,10 @@ class StaffManagementTest extends TestCase
         foreach (['orders.view', 'orders.create', 'orders.update', 'orders.discount', 'orders.comp', 'tables.view', 'catalog.view'] as $key) {
             $this->assertContains($key, $garson, "garson: {$key} olmalı");
         }
+        // DENETİM 2026-08-06: komi rolü yoksa garson "hazır" kalemi servis edebilsin
+        // diye komi'deki AYNI izin (kds.deliver) eklendi; kds.view YOK (mutfak işi).
+        $this->assertContains('kds.deliver', $garson, 'garson: kds.deliver olmalı (servis edebilsin)');
+        $this->assertNotContains('kds.view', $garson, 'garson: kds.view OLMAMALI (mutfak/istasyon işi değil)');
         foreach (['cash.view', 'cash.close', 'payments.take', 'reports.view', 'staff.manage', 'orders.refund'] as $key) {
             $this->assertNotContains($key, $garson, "garson: {$key} OLMAMALI");
         }

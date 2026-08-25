@@ -64,6 +64,36 @@ class OrderAdisyonOpsTest extends TestCase
         $this->assertSame(10000, $log->new_values['previous_total_minor']);
     }
 
+    public function test_kismi_ikram_kalemi_boler_ve_yalniz_o_adedi_bedava_yapar(): void
+    {
+        $table = $this->makeTable($this->a);
+        $product = $this->makeProduct($this->a, ['name' => 'Çay', 'price_minor' => 2000]); // 20 TL
+        $orderId = $this->openTableOrder($table);
+
+        $itemId = $this->postJson("/api/v1/orders/{$orderId}/items", ['product_id' => $product->id, 'qty' => 5])
+            ->json('order.items.0.id');
+
+        // 5 adetten 2'sini ikram et
+        $res = $this->postJson("/api/v1/orders/{$orderId}/items/{$itemId}/comp", [
+            'reason' => 'kampanya', 'qty' => 2,
+        ])->assertOk();
+
+        $items = collect($res->json('order.items'));
+        // Kalem bölündü: 3 adet ücretli (6000) + 2 adet ikram (0)
+        $paid = $items->firstWhere('is_comp', false);
+        $comp = $items->firstWhere('is_comp', true);
+        $this->assertNotNull($paid);
+        $this->assertNotNull($comp);
+        $this->assertSame(3, (int) $paid['qty']);
+        $this->assertSame(6000, (int) $paid['line_total_minor']);
+        $this->assertSame(2, (int) $comp['qty']);
+        $this->assertSame(0, (int) $comp['line_total_minor']);
+
+        // Adisyon: ücretli 6000, ikram değeri 4000
+        $this->assertSame(6000, $res->json('order.total_minor'));
+        $this->assertSame(4000, $res->json('order.comp_total_minor'));
+    }
+
     public function test_esik_alti_indirim_gecer_esik_ustu_yonetici_pin_ister(): void
     {
         $table = $this->makeTable($this->a);
@@ -78,7 +108,17 @@ class OrderAdisyonOpsTest extends TestCase
         $this->assertSame(10000, $res->json('order.discount_minor'));
         $this->assertSame(90000, $res->json('order.total_minor'));
 
-        // %25: onaysız REDDEDİLİR
+        // TEK İNDİRİM KURALI: indirim varken ikincisi eklenemez (üzerine yazma yok).
+        $this->postJson("/api/v1/orders/{$orderId}/discount", [
+            'type' => 'percent', 'value' => 25, 'reason' => 'şikâyet telafisi',
+        ])->assertUnprocessable();
+
+        // Değiştirmek için önce KALDIR.
+        $this->deleteJson("/api/v1/orders/{$orderId}/discount")
+            ->assertOk()
+            ->assertJsonPath('order.discount_minor', 0);
+
+        // %25: onaysız REDDEDİLİR (eşik kuralı korunuyor)
         $this->postJson("/api/v1/orders/{$orderId}/discount", [
             'type' => 'percent', 'value' => 25, 'reason' => 'şikâyet telafisi',
         ])->assertUnprocessable();
@@ -95,7 +135,9 @@ class OrderAdisyonOpsTest extends TestCase
         $this->assertSame(25000, $res->json('order.discount_minor'));
         $this->assertSame(75000, $res->json('order.total_minor'));
 
-        // Yanlış PIN reddedilir
+        // Yanlış PIN reddedilir (önce mevcut indirim kaldırılır ki tek-indirim
+        // kuralı değil, PIN kuralı sınansın)
+        $this->deleteJson("/api/v1/orders/{$orderId}/discount")->assertOk();
         $this->postJson("/api/v1/orders/{$orderId}/discount", [
             'type' => 'percent', 'value' => 30, 'reason' => 'x deneme',
             'approver_email' => $manager->email, 'approver_pin' => '111222',

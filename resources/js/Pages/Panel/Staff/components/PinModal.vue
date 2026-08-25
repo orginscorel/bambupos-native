@@ -19,13 +19,50 @@ const pin = ref('');
 const error = ref('');
 const busy = ref(false);
 
+/* ---- Mevcut PIN'i görüntüleme (yönetici) ---- */
+const revealedPin = ref<string | null>(null);
+const revealed = ref(false);
+const revealing = ref(false);
+const revealMsg = ref('');
+
 watch(
     () => props.open,
     () => {
         pin.value = '';
         error.value = '';
+        revealedPin.value = null;
+        revealed.value = false;
+        revealMsg.value = '';
     },
 );
+
+async function revealPin(): Promise<void> {
+    if (!props.staff || revealing.value) return;
+    revealing.value = true;
+    revealMsg.value = '';
+    try {
+        const res = await api<{ pin: string | null }>(`/api/v1/staff-access/${props.staff.id}/pin`);
+        revealedPin.value = res.pin;
+        revealed.value = true;
+        if (res.pin === null) {
+            revealMsg.value = 'Bu PIN eski kayıt olduğu için görüntülenemiyor. Aşağıdan yeni bir PIN atayın.';
+        }
+    } catch (e) {
+        revealMsg.value = e instanceof ApiError ? e.displayMessage : 'PIN görüntülenemedi.';
+    } finally {
+        revealing.value = false;
+    }
+}
+
+async function copyPin(): Promise<void> {
+    if (!revealedPin.value) return;
+    try {
+        await navigator.clipboard.writeText(revealedPin.value);
+        success('Kopyalandı', 'PIN panoya kopyalandı.');
+    } catch {
+        /* pano izni yok — kullanıcı elle okur */
+    }
+}
 
 async function save(): Promise<void> {
     if (!props.staff || busy.value) return;
@@ -62,6 +99,22 @@ async function clearPin(): Promise<void> {
 <template>
     <BaseModal :open="open" :title="staff ? `PIN — ${staff.name}` : 'PIN'" size="sm" @close="emit('close')">
         <form class="flex flex-col gap-4" @submit.prevent="save">
+            <!-- Mevcut PIN'i görüntüle (yönetici) -->
+            <div v-if="staff?.has_pin" class="rounded-lg border border-default bg-inset/60 p-3">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-sm font-medium text-body">Mevcut PIN</span>
+                    <BaseButton v-if="!revealed" size="sm" variant="secondary" :loading="revealing" @click="revealPin">
+                        Göster
+                    </BaseButton>
+                </div>
+                <div v-if="revealed && revealedPin" class="mt-2 flex items-center gap-2">
+                    <code class="rounded bg-raised px-3 py-1.5 text-lg font-bold tracking-widest tabular-nums text-body">{{ revealedPin }}</code>
+                    <BaseButton size="sm" variant="ghost" @click="copyPin">Kopyala</BaseButton>
+                </div>
+                <p v-if="revealMsg" class="mt-1.5 text-xs text-warning">{{ revealMsg }}</p>
+                <p v-else-if="!revealed" class="mt-1 text-xs text-subtle">Görüntüleme denetim kaydına düşer.</p>
+            </div>
+
             <FormField
                 label="Yeni PIN"
                 :error="error"

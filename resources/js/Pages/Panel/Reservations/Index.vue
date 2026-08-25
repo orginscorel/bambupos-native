@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
 import PanelShell from '@/Components/panel/PanelShell.vue';
@@ -217,14 +217,22 @@ function onSaved(row: ReservationRow): void {
     const i = rows.value.findIndex((r) => r.id === row.id);
     if (i >= 0) rows.value[i] = row;
     else void load();
+    // Genel Bakış sekmesi ("Bugün sıradaki" + sayaçlar) sunucu prop'larından
+    // beslenir; yeni kayıt anında görünsün diye Inertia prop'larını tazele
+    // (tam sayfa yenileme DEĞİL — F5 gerekmez, SPA içi hafif reload).
+    router.reload();
 }
 </script>
 
 <template>
     <Head title="Rezervasyonlar" />
-    <PanelShell title="Rezervasyonlar">
-        <ReservationsNav :active="screen" />
+    <PanelShell title="Rezervasyonlar" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <ReservationsNav :active="screen" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <!-- Genel Bakış landing -->
         <ReservationsOverview v-if="screen === 'overview'" :can-create="canCreate" @create="openCreate" />
 
@@ -291,9 +299,11 @@ function onSaved(row: ReservationRow): void {
 
                             <!-- Müşteri + detay -->
                             <div class="min-w-0 grow">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="font-medium text-body">{{ r.customer_name }}</span>
-                                    <span class="text-sm text-muted">{{ r.party_size }} kişi</span>
+                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span class="text-[15px] font-semibold text-body">{{ r.customer_name }}</span>
+                                    <span class="inline-flex items-center gap-1 text-sm text-muted">
+                                        <AppIcon name="users" :size="13" />{{ r.party_size }}
+                                    </span>
                                     <BaseBadge :variant="r.status_variant">
                                         <AppIcon :name="r.status_icon" :size="12" />
                                         {{ r.status_label }}
@@ -310,17 +320,31 @@ function onSaved(row: ReservationRow): void {
                                         Kapora {{ formatMinor(r.deposit_minor) }} · {{ r.deposit_status_label }}
                                     </BaseBadge>
                                 </div>
-                                <div class="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted">
-                                    <span v-if="r.tables.length > 0">
-                                        Masa: {{ r.tables.map((t) => t.name).join(', ') }}
+                                <!-- Meta: masa / bölüm / telefon / kaynak — ikonlu, ayraçlı, tek satır tonda -->
+                                <div class="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted">
+                                    <span v-if="r.tables.length > 0" class="inline-flex items-center gap-1 font-medium text-body">
+                                        <AppIcon name="store" :size="12" class="text-primary" />{{ r.tables.map((t) => t.name).join(', ') }}
                                     </span>
-                                    <span v-else class="text-warning">Masa atanmadı</span>
-                                    <span v-if="r.area_name">Bölüm: {{ r.area_name }}</span>
-                                    <span v-if="r.customer_phone">{{ r.customer_phone }}</span>
-                                    <span>Kaynak: {{ r.source_label }}</span>
-                                    <span v-if="r.special_note" class="italic">“{{ r.special_note }}”</span>
-                                    <span v-if="canSeeSensitive && r.allergy_note" class="font-medium text-danger">
-                                        Alerji: {{ r.allergy_note }}
+                                    <span v-else class="inline-flex items-center gap-1 font-medium text-warning">
+                                        <AppIcon name="alert-triangle" :size="12" />Masa atanmadı
+                                    </span>
+                                    <span v-if="r.area_name" class="inline-flex items-center gap-1">
+                                        <span class="text-subtle">·</span>{{ r.area_name }}
+                                    </span>
+                                    <span v-if="r.customer_phone" class="inline-flex items-center gap-1">
+                                        <span class="text-subtle">·</span><AppIcon name="phone" :size="12" />{{ r.customer_phone }}
+                                    </span>
+                                    <span class="inline-flex items-center gap-1">
+                                        <span class="text-subtle">·</span>{{ r.source_label }}
+                                    </span>
+                                </div>
+                                <!-- Notlar: özel not + alerji — ayrı satırda, tutarlı çip -->
+                                <div v-if="r.special_note || (canSeeSensitive && r.allergy_note)" class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                    <span v-if="r.special_note" class="inline-flex items-center gap-1 rounded-md bg-info-soft px-2 py-0.5 text-xs font-medium text-info">
+                                        <AppIcon name="info" :size="12" />{{ r.special_note }}
+                                    </span>
+                                    <span v-if="canSeeSensitive && r.allergy_note" class="inline-flex items-center gap-1 rounded-md bg-danger-soft px-2 py-0.5 text-xs font-semibold text-danger">
+                                        <AppIcon name="alert-triangle" :size="12" />Alerji: {{ r.allergy_note }}
                                     </span>
                                 </div>
                             </div>
@@ -405,5 +429,7 @@ function onSaved(row: ReservationRow): void {
                 <BaseButton variant="danger" :loading="deleteBusy" @click="confirmDelete">Sil</BaseButton>
             </div>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

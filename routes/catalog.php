@@ -32,6 +32,23 @@ Route::middleware(['auth:web', 'tenant'])->group(function (): void {
     /* ---- JSON uçları ---- */
     Route::prefix('api/v1/catalog')->group(function (): void {
 
+        // Müşteri menüsü ÖNİZLEME URL'i: boş (available) masa önceliğiyle bir masanın
+        // QR token'ını alıp /m/{token}?preview=1 döner (önizlemede sipariş oluşmaz).
+        Route::get('preview-url', function () {
+            $table = \App\Modules\Tables\Models\Table::query()
+                ->whereNotNull('qr_token')
+                ->orderByRaw("FIELD(status, 'available') DESC")
+                ->orderBy('id')
+                ->first();
+
+            abort_if($table === null, 404, 'Önizlenecek masa bulunamadı.');
+
+            return response()->json([
+                'url' => url('/m/'.$table->qr_token.'?preview=1'),
+                'table' => trim($table->name.($table->number !== null ? ' · No '.$table->number : '')),
+            ]);
+        })->name('catalog.preview-url');
+
         Route::get('categories', [CategoryController::class, 'index'])->name('catalog.categories.index');
         Route::post('categories', [CategoryController::class, 'store'])->name('catalog.categories.store');
         Route::post('categories/reorder', [CategoryController::class, 'reorder'])->name('catalog.categories.reorder');

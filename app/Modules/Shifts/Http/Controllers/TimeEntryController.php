@@ -78,6 +78,8 @@ class TimeEntryController extends Controller
     public function update(Request $request, TimeEntry $entry): JsonResponse
     {
         abort_unless($request->user()->hasPermission('staff.manage'), 403);
+        // ŞUBE KAPSAMI (denetim #8): başka şubenin mesai kaydı düzeltilemez.
+        abort_unless($entry->branch_id === $this->currentBranchId(), 404);
 
         $data = $request->validate([
             'clock_in_at' => ['sometimes', 'date'],
@@ -97,6 +99,8 @@ class TimeEntryController extends Controller
     public function approve(Request $request, TimeEntry $entry): JsonResponse
     {
         abort_unless($request->user()->hasPermission('staff.manage'), 403);
+        // ŞUBE KAPSAMI (denetim #8): başka şubenin mesai kaydı onaylanamaz.
+        abort_unless($entry->branch_id === $this->currentBranchId(), 404);
 
         $entry = $this->clock->approve($entry, $request->user());
 
@@ -119,6 +123,8 @@ class TimeEntryController extends Controller
                 CarbonImmutable::parse($data['from']),
                 CarbonImmutable::parse($data['to']),
                 $canViewAll ? null : (int) $user->id,
+                // ŞUBE KAPSAMI: yönetici yalnız geçerli şubenin devam özetini görür.
+                $canViewAll ? $this->currentBranchId() : null,
             ),
         ]);
     }

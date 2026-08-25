@@ -21,6 +21,12 @@ import EmptyState from '@/Components/ui/EmptyState.vue';
 import BaseSkeleton from '@/Components/ui/BaseSkeleton.vue';
 import BasePagination from '@/Components/ui/BasePagination.vue';
 import SearchInput from '@/Components/ui/SearchInput.vue';
+import StatusPill from '@/Components/ui/StatusPill.vue';
+import MetricTile from '@/Components/ui/MetricTile.vue';
+import SegmentedControl from '@/Components/ui/SegmentedControl.vue';
+import NumberStepper from '@/Components/ui/NumberStepper.vue';
+import BottomSheet from '@/Components/ui/BottomSheet.vue';
+import Tooltip from '@/Components/ui/Tooltip.vue';
 import { useToast } from '@/composables/useToast';
 
 const { success, warning, danger, info } = useToast();
@@ -89,6 +95,13 @@ const modalOpen = ref(false);
 const drawerOpen = ref(false);
 const page = ref(3);
 const btnLoading = ref(false);
+
+// --- Faz 1 yeni bileşen durumları ---
+const segView = ref<string | number>('today');
+const segMode = ref<string | number>('list');
+const qty = ref(2);
+const qtyBounded = ref(10);
+const sheetOpen = ref(false);
 
 const columns: TableColumn[] = [
     { key: 'no', label: 'Sipariş' },
@@ -396,6 +409,182 @@ function demoLoading(): void {
                     <BaseSkeleton variant="rect" size-class="mt-4 h-24 w-full" />
                 </BaseCard>
             </div>
+
+            <!-- Faz 1 — yeni bileşenler -->
+            <div class="pt-2">
+                <h2 class="text-lg font-semibold text-body">Faz 1 — yeni bileşenler</h2>
+                <p class="mt-1 text-sm text-muted">
+                    Domain durumları, KPI, seçim ve dokunma odaklı kontroller. Tümü token tabanlı; durum yalnız renkle
+                    değil ikon + metin ile de kodlanır.
+                </p>
+            </div>
+
+            <!-- StatusPill -->
+            <BaseCard title="StatusPill — domain durum rozeti (sipariş / masa / stok)">
+                <div class="flex flex-col gap-4">
+                    <div>
+                        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Sipariş durumları</h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <StatusPill kind="order-new" label="Yeni" />
+                            <StatusPill kind="order-preparing" label="Hazırlanıyor" />
+                            <StatusPill kind="order-ready" label="Hazır" />
+                            <StatusPill kind="order-served" label="Serviste" />
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Masa & stok</h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <StatusPill kind="table-empty" label="Boş" />
+                            <StatusPill kind="table-occupied" label="Dolu" />
+                            <StatusPill kind="table-delayed" label="Gecikti" />
+                            <StatusPill kind="stock-critical" label="Kritik stok" />
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Genel durum</h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <StatusPill kind="success" label="Onaylandı" />
+                            <StatusPill kind="warning" label="Uyarı" />
+                            <StatusPill kind="danger" label="Hata" />
+                            <StatusPill kind="info" label="Bilgi" />
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Boy (sm) · dot varyantı</h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <StatusPill kind="order-new" label="Yeni" size="sm" />
+                            <StatusPill kind="order-preparing" label="Hazırlanıyor" size="sm" />
+                            <StatusPill kind="order-ready" label="Hazır" dot />
+                            <StatusPill kind="table-occupied" label="Dolu" dot size="sm" />
+                        </div>
+                    </div>
+                </div>
+            </BaseCard>
+
+            <!-- MetricTile -->
+            <BaseCard title="MetricTile — KPI kutusu (sayı baskın, tabular; delta ok + renk)">
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <MetricTile
+                        label="Günlük ciro"
+                        :value="'₺ 12.480'"
+                        icon="wallet"
+                        accent="brand"
+                        :delta="{ value: 8.2, direction: 'up' }"
+                        hint="düne göre"
+                    />
+                    <MetricTile
+                        label="Sipariş"
+                        :value="146"
+                        unit="adet"
+                        icon="orders"
+                        accent="info"
+                        :delta="{ value: 3.1, direction: 'down' }"
+                        hint="düne göre"
+                    />
+                    <MetricTile
+                        label="Ortalama servis"
+                        :value="'14:20'"
+                        icon="clock"
+                        accent="warning"
+                        :delta="{ value: 0, direction: 'flat' }"
+                        hint="hedefte"
+                    />
+                    <MetricTile
+                        label="Kritik stok"
+                        :value="5"
+                        unit="ürün"
+                        icon="package"
+                        accent="danger"
+                    />
+                </div>
+            </BaseCard>
+
+            <!-- SegmentedControl -->
+            <BaseCard title="SegmentedControl — tek seçim (klavye: ←/→, Home/End; ≥44px)">
+                <div class="flex flex-col gap-4">
+                    <SegmentedControl
+                        v-model="segView"
+                        aria-label="Dönem"
+                        :options="[
+                            { value: 'today', label: 'Bugün' },
+                            { value: 'week', label: 'Hafta' },
+                            { value: 'month', label: 'Ay' },
+                        ]"
+                    />
+                    <SegmentedControl
+                        v-model="segMode"
+                        aria-label="Görünüm"
+                        :options="[
+                            { value: 'list', label: 'Liste', icon: 'orders' },
+                            { value: 'grid', label: 'Izgara', icon: 'dashboard' },
+                            { value: 'map', label: 'Kroki', icon: 'store' },
+                        ]"
+                    />
+                    <p class="text-xs text-muted">Seçili: <code class="rounded-xs bg-inset px-1 py-0.5">{{ segView }}</code> · <code class="rounded-xs bg-inset px-1 py-0.5">{{ segMode }}</code></p>
+                </div>
+            </BaseCard>
+
+            <!-- NumberStepper -->
+            <BaseCard title="NumberStepper — POS adet ( − [n] + ; büyük dokunma, tabular, sınırda pasif)">
+                <div class="flex flex-wrap items-center gap-8">
+                    <div class="flex flex-col items-start gap-2">
+                        <span class="text-xs font-medium text-muted">Serbest (min 0)</span>
+                        <NumberStepper v-model="qty" aria-label="Ürün adedi" :min="0" />
+                        <span class="text-xs text-subtle">Değer: {{ qty }}</span>
+                    </div>
+                    <div class="flex flex-col items-start gap-2">
+                        <span class="text-xs font-medium text-muted">Sınırlı (10–20, adım 2)</span>
+                        <NumberStepper v-model="qtyBounded" aria-label="Porsiyon" :min="10" :max="20" :step="2" />
+                        <span class="text-xs text-subtle">Değer: {{ qtyBounded }} (sınırda buton pasif)</span>
+                    </div>
+                    <div class="flex flex-col items-start gap-2">
+                        <span class="text-xs font-medium text-muted">Kompakt (md)</span>
+                        <NumberStepper v-model="qty" aria-label="Adet küçük" :min="0" size="md" />
+                    </div>
+                </div>
+            </BaseCard>
+
+            <!-- BottomSheet + Tooltip -->
+            <BaseCard title="BottomSheet — mobil/tablet alt sayfa (aşağı-swipe / backdrop / Esc kapatır)">
+                <div class="flex flex-col gap-3">
+                    <BaseButton variant="secondary" @click="sheetOpen = true">Alt sayfayı aç</BaseButton>
+                    <p class="flex items-start gap-1.5 text-xs text-muted">
+                        <AppIcon name="info" :size="14" class="mt-0.5 shrink-0 text-info" />
+                        Tutamaçtan aşağı sürükleyerek de kapatabilirsiniz. safe-area-inset-bottom + odak tuzağı uygulanır.
+                    </p>
+                </div>
+            </BaseCard>
+
+            <BaseCard title="Tooltip — hover/odak ipucu (klavye erişimli, role=tooltip)">
+                <div class="flex flex-wrap items-center gap-6">
+                    <Tooltip content="QR kodunu yeniden üretir" placement="top">
+                        <template #default="{ ariaDescribedby }">
+                            <BaseButton variant="secondary" :aria-describedby="ariaDescribedby">
+                                <AppIcon name="qr-code" :size="16" />
+                                Üst
+                            </BaseButton>
+                        </template>
+                    </Tooltip>
+                    <Tooltip content="Ürünü menüden gizler" placement="bottom">
+                        <template #default="{ ariaDescribedby }">
+                            <BaseButton variant="secondary" :aria-describedby="ariaDescribedby">Alt</BaseButton>
+                        </template>
+                    </Tooltip>
+                    <Tooltip content="Sola yaslı ipucu" placement="left">
+                        <template #default="{ ariaDescribedby }">
+                            <BaseButton variant="secondary" :aria-describedby="ariaDescribedby">Sol</BaseButton>
+                        </template>
+                    </Tooltip>
+                    <Tooltip content="Sağa yaslı ipucu" placement="right">
+                        <template #default="{ ariaDescribedby }">
+                            <BaseButton variant="ghost" icon-only label="Bilgi" :aria-describedby="ariaDescribedby">
+                                <AppIcon name="info" :size="18" />
+                            </BaseButton>
+                        </template>
+                    </Tooltip>
+                    <span class="text-xs text-muted">Sekme (Tab) ile odaklanınca da görünür.</span>
+                </div>
+            </BaseCard>
         </div>
 
         <BaseModal :open="modalOpen" title="Örnek modal" @close="modalOpen = false">
@@ -418,5 +607,20 @@ function demoLoading(): void {
                 <BaseButton @click="drawerOpen = false">Kaydet</BaseButton>
             </template>
         </BaseDrawer>
+
+        <BottomSheet v-model="sheetOpen" title="Örnek alt sayfa">
+            <p class="text-sm text-muted">
+                Alttan yukarı kayarak açılır; tutamaçtan aşağı sürükleyerek, arka plana tıklayarak veya Esc ile kapanır.
+                Odak sayfa içinde tutulur ve safe-area-inset-bottom uygulanır — mobil/tablet bağlam işlemleri için.
+            </p>
+            <div class="mt-4 flex flex-col gap-2">
+                <StatusPill kind="order-new" label="Bahçe 4 · yeni sipariş" />
+                <StatusPill kind="order-preparing" label="Salon 2 · hazırlanıyor" />
+            </div>
+            <template #footer>
+                <BaseButton variant="secondary" @click="sheetOpen = false">Vazgeç</BaseButton>
+                <BaseButton @click="sheetOpen = false">Onayla</BaseButton>
+            </template>
+        </BottomSheet>
     </PanelLayout>
 </template>

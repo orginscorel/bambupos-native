@@ -50,9 +50,13 @@ const totalCount = computed(() => {
 
 <template>
     <Head title="Stok Uyarıları" />
-    <PanelShell title="Stok">
-        <InventoryNav active="alerts" />
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav active="alerts" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <div v-if="loading" class="p-6 text-center text-sm text-muted">Yükleniyor…</div>
 
         <EmptyState
@@ -140,6 +144,8 @@ const totalCount = computed(() => {
                     </li>
                 </ul>
             </BaseCard>
+        </div>
+        </div>
         </div>
     </PanelShell>
 </template>

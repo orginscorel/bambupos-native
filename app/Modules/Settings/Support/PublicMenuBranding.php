@@ -27,7 +27,7 @@ class PublicMenuBranding
         // §9 feature-flag: public menü davranışı. Kiracı çözülemezse (geçersiz
         // token) makul varsayılan = açık. Çıktı token'a göre deterministik
         // kalır → tam-sayfa cache (ADR-011) korunur.
-        $menuFeatures = ['qr_ordering' => true, 'service_calls' => true];
+        $menuFeatures = ['qr_ordering' => true, 'service_calls' => true, 'sarjmatik' => false];
 
         $token = request()?->route('token');
 
@@ -41,6 +41,7 @@ class PublicMenuBranding
             if ($tenantId !== null) {
                 $menuFeatures['qr_ordering'] = Features::enabled((int) $tenantId, 'qr_ordering');
                 $menuFeatures['service_calls'] = Features::enabled((int) $tenantId, 'service_calls');
+                $menuFeatures['sarjmatik'] = Features::enabled((int) $tenantId, 'sarjmatik');
 
                 $logoPath = DB::table('tenants')->where('id', $tenantId)->value('logo_path');
 

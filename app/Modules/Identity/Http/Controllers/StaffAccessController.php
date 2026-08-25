@@ -139,6 +139,21 @@ class StaffAccessController extends Controller
         return response()->json(['ok' => true, 'has_pin' => true]);
     }
 
+    /**
+     * Yönetici personelin mevcut PIN'ini GÖRÜNTÜLER (yetki + audit). Şifreli
+     * kopya yoksa (eski bcrypt-only kayıt) null → yeniden atanmalı.
+     */
+    public function revealPin(Request $request, User $staff): JsonResponse
+    {
+        $this->authorize('update', $staff);
+
+        $pin = $this->pins->revealPin($staff);
+
+        $this->audit->log('staff.pin_viewed_by_admin', $staff);
+
+        return response()->json(['pin' => $pin, 'has_pin' => $staff->pin_hash !== null]);
+    }
+
     /** PIN'i kaldırır (personel PIN ile giremez olur). */
     public function clearPin(Request $request, User $staff): JsonResponse
     {
@@ -146,6 +161,7 @@ class StaffAccessController extends Controller
 
         $staff->forceFill([
             'pin_hash' => null,
+            'pin_encrypted' => null,
             'failed_pin_attempts' => 0,
             'pin_locked_until' => null,
         ])->save();

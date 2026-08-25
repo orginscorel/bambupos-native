@@ -54,10 +54,14 @@ class OrderConcurrencyTest extends TestCase
         $this->assertSame(1, OrderItem::withoutTenancy()->where('order_id', $orderId)->count());
         $this->assertSame(10000, $this->getJson("/api/v1/orders/{$orderId}")->json('order.total_minor'));
 
-        // Farklı anahtar = gerçek yeni istek: eklenir
+        // Farklı anahtar = gerçek yeni istek. Aynı ürün (özdeş: varyant/opsiyon/not
+        // yok) + satır hâlâ düzenlenebilir → BİRLEŞİR: yeni satır açılmaz, adet 2'ye
+        // çıkar ("çay çay" yerine "çay ×2"), toplam 20000.
         $this->postJson("/api/v1/orders/{$orderId}/items", $payload, ['Idempotency-Key' => 'garson-tablet-abc-124'])
             ->assertCreated();
-        $this->assertSame(2, OrderItem::withoutTenancy()->where('order_id', $orderId)->count());
+        $this->assertSame(1, OrderItem::withoutTenancy()->where('order_id', $orderId)->count());
+        $this->assertSame(2, (int) OrderItem::withoutTenancy()->where('order_id', $orderId)->value('qty'));
+        $this->assertSame(20000, $this->getJson("/api/v1/orders/{$orderId}")->json('order.total_minor'));
     }
 
     public function test_idempotency_anahtari_kiraciya_ozeldir(): void

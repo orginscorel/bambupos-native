@@ -47,6 +47,14 @@ class ShiftPlanner
             ])->status(422);
         }
 
+        // ONAYLI İZİN KORUMASI (denetim orta): izinli güne vardiya atanmaz —
+        // ilk vardiyada engel (net hata), tekrar haftalarında sessizce atlanır.
+        if ($this->isOnApprovedLeave((int) $data['user_id'], $start)) {
+            throw ValidationException::withMessages([
+                'starts_at' => ['Personel bu tarihte onaylı izinli; vardiya atanamaz.'],
+            ])->status(422);
+        }
+
         $created = [];
         $skipped = [];
 
@@ -54,7 +62,10 @@ class ShiftPlanner
             $s = $start->addWeeks($week);
             $e = $end->addWeeks($week);
 
-            if ($week > 0 && ! $allowOverlap && $this->conflictsFor((int) $data['user_id'], $s, $e) !== []) {
+            if ($week > 0 && (
+                $this->isOnApprovedLeave((int) $data['user_id'], $s)
+                || (! $allowOverlap && $this->conflictsFor((int) $data['user_id'], $s, $e) !== [])
+            )) {
                 $skipped[] = $s->format('Y-m-d');
 
                 continue;
@@ -130,6 +141,19 @@ class ShiftPlanner
                 'ends_at' => $s->ends_at->toIso8601String(),
             ])
             ->all();
+    }
+
+    /** Personel verilen GÜN onaylı izinli mi (izin günü = tarih bazlı)? */
+    private function isOnApprovedLeave(int $userId, CarbonImmutable $date): bool
+    {
+        $day = $date->toDateString();
+
+        return LeaveRequest::query()
+            ->where('user_id', $userId)
+            ->where('status', LeaveRequest::STATUS_APPROVED)
+            ->whereDate('starts_on', '<=', $day)
+            ->whereDate('ends_on', '>=', $day)
+            ->exists();
     }
 
     /**

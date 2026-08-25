@@ -295,8 +295,14 @@ const warehouseSelect = computed(() => warehouses.value.filter((w) => w.is_activ
 
 <template>
     <Head title="Stok" />
-    <PanelShell title="Stok">
-        <InventoryNav :active="view" />
+    <!-- TAM KAPLAMA: stok gezinmesi SABİT; liste kendi içinde kayar. -->
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav :active="view" />
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
 
         <!-- Genel Bakış (varsayılan açılış) -->
         <InventoryOverview v-if="view === 'overview'" />
@@ -539,5 +545,7 @@ const warehouseSelect = computed(() => warehouses.value.filter((w) => w.is_activ
             </form>
         </BaseModal>
         </template>
+        </div>
+        </div>
     </PanelShell>
 </template>

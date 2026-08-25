@@ -293,6 +293,7 @@ class ProductController extends Controller
             'unit' => ['nullable', 'string', 'max:30'],
             'prep_minutes' => ['nullable', 'integer', 'min:0', 'max:600'],
 
+            'weight_grams' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'calories' => ['nullable', 'integer', 'min:0', 'max:20000'],
             'protein' => ['nullable', 'numeric', 'min:0', 'max:2000'],
             'carbs' => ['nullable', 'numeric', 'min:0', 'max:2000'],

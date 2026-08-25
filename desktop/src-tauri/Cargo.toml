@@ -1,0 +1,49 @@
+[package]
+name = "bambumpos-desktop"
+version = "0.1.0"
+description = "BamBumPOS Tauri masaustu istemcisi (offline-first POS kabugu, iskelet)"
+edition = "2021"
+rust-version = "1.77"
+license = "UNLICENSED"
+repository = "https://github.com/bogahost/qrmenu"
+
+# NOT (iskelet): bu proje henuz `cargo check` ile derlenmedi (ortamda cargo/rustc
+# yok). Surumler yazim aninda (2026-07) guncel kabul edilen Tauri v2 hattina gore
+# secildi; ilk `cargo check` calistirildiginda `cargo update` ile kesinlestirin.
+# bkz. desktop/SYNC.md "Derleme talimati".
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-http = "2"
+tauri-plugin-store = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Senkron istemci HTTP katmani (Rust tarafi arka plan replay/pull icin;
+# webview'daki fetch'ten AYRI - bkz. src/sync/client.rs basindaki not).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+# Yerel SQLite ayna + pending_ops kuyrugu. `bundled` ozelligi sistemde ayrica
+# sqlite kurulmasini gerektirmez (libsqlite3 crate icine gomulur) - offline
+# masaustu dagitimi icin bilincli tercih.
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+uuid = { version = "1", features = ["v4", "serde"] }
+# WebviewUrl::External icin (bkz. src/commands.rs::open_online_panel) -
+# reqwest zaten transitive olarak tasiyor ama dogrudan kullandigimiz icin
+# acikca dependency olarak eklendi (Rust 2018+ path kurali).
+url = "2"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# NOT: Tauri v1'deki "custom-protocol" feature/build-flag deseni v2'de
+# gerekmiyor (bundler otomatik ele alir) - bilerek EKLENMEDI, eski
+# ornekleri kopyalarken bu satiri geri eklemeyin.

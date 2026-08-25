@@ -18,6 +18,17 @@
             <span data-i18n="offline">İnternet bağlantısı yok. Sipariş ve ödeme şu an alınamıyor.</span>
         </div>
 
+        {{-- ==== Cihaz kilidi (feature: device_lock) — bu bağlantı başka cihaza kilitli ====
+             kiosk.js showDeviceLocked() display:flex ile açar; kapalıyken (varsayılan)
+             sunucu 'locked_device' döndürmez → hiç görünmez. --}}
+        <div id="k-devlock" role="alertdialog" aria-modal="true"
+             style="display:none;position:fixed;inset:0;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px;background:#0b1220;color:#e5edff;text-align:center;font-family:inherit">
+            <div style="font-size:64px" aria-hidden="true">🔒</div>
+            <h2 style="margin:0;font-size:26px;font-weight:800">Bu cihaz kilitli</h2>
+            <p id="k-devlock-msg" style="margin:0;max-width:520px;font-size:17px;line-height:1.5;opacity:.85">Bu kiosk bağlantısı başka bir cihaza kilitli.</p>
+            <p style="margin:0;font-size:14px;opacity:.6">Yetkili personel “İzinli Cihazlar” ekranından bu bağlantıyı bu cihaza aktarabilir.</p>
+        </div>
+
         {{-- ============ 1) Karşılama ============ --}}
         <section class="k-screen k-attract" data-screen="attract">
             <div class="k-attract__inner">
@@ -229,5 +240,5 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/kiosk.js?v=20260725.3" defer></script>
+    <script src="/assets/kiosk.js?v=20260806.1" defer></script>
 @endpush

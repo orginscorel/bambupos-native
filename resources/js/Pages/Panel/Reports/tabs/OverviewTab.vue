@@ -4,9 +4,12 @@ import { formatCurrencyMinor, formatNumber } from '@/lib/format';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseCard from '@/Components/ui/BaseCard.vue';
 import EmptyState from '@/Components/ui/EmptyState.vue';
+import ChartColumn from '../components/ChartColumn.vue';
 import {
     isoDate,
+    shortDay,
     useReport,
+    type DayPoint,
     type EodSummary,
     type ProductsReport,
     type ReconciliationSummary,
@@ -37,6 +40,18 @@ const sales = useReport<SalesSummary>('sales-summary', todayFilters);
 const recon = useReport<ReconciliationSummary>('finance-reconciliation', todayFilters);
 const eod = useReport<EodSummary>('ops-eod', todayFilters);
 const products = useReport<ProductsReport>('sales-products', todayFilters);
+
+/** Son 7 gün ciro trendi (landing'in başlık grafiği). */
+const weekFilters = computed<ReportFilterState>(() => ({
+    from: isoDate(new Date(Date.now() - 6 * 86400000)),
+    to: isoDate(new Date()),
+    branchId: props.branchId,
+}));
+const daily = useReport<{ days: DayPoint[] }>('sales-daily', weekFilters);
+const trendPoints = computed(() =>
+    (daily.data.value?.days ?? []).map((d) => ({ label: shortDay(d.date), title: d.date, value: d.revenue_minor })),
+);
+const weekTotal = computed(() => (daily.data.value?.days ?? []).reduce((s, d) => s + d.revenue_minor, 0));
 
 const loading = computed(
     () =>
@@ -132,6 +147,29 @@ const collectionRows = computed(() => [
                     <p class="mt-0.5 truncate text-xs text-subtle">{{ k.hint }}</p>
                 </button>
             </div>
+
+            <!-- Son 7 gün ciro trendi (landing başlık grafiği) -->
+            <BaseCard>
+                <template #header>
+                    <h2 class="text-sm font-semibold text-body">Ciro trendi · son 7 gün</h2>
+                </template>
+                <template #actions>
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-semibold tabular-nums text-body">{{ formatCurrencyMinor(weekTotal) }}</span>
+                        <button type="button" class="text-xs font-medium text-primary hover:underline" @click="emit('navigate', 'sales')">
+                            Satış raporu
+                        </button>
+                    </div>
+                </template>
+                <ChartColumn
+                    v-if="trendPoints.some((p) => p.value > 0)"
+                    :points="trendPoints"
+                    money
+                    label="Günlük ciro (son 7 gün)"
+                    :height="180"
+                />
+                <EmptyState v-else icon="chart" title="Henüz veri yok" description="Son 7 günde tamamlanmış satış bulunmuyor." />
+            </BaseCard>
 
             <!-- Hızlı işlemler -->
             <BaseCard title="Hızlı işlemler">

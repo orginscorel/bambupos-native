@@ -5,6 +5,7 @@ namespace App\Modules\Terminal\Services;
 use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Services\AuditLogger;
 use App\Modules\Shifts\Services\TimeClockService;
+use App\Modules\Terminal\Support\TerminalOperator;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -56,6 +57,69 @@ class TerminalPinGate
 
         /** @var User $user */
         return $user;
+    }
+
+    /**
+     * ÖDEME ALMA aktörü (§13, Faz C). Terminal oturumda:
+     *  - PIN GÖNDERİLMEDİ → aktif operatöre atfedilir (rutin; operatör yoksa 422).
+     *    Operatörün ilgili izni (payments.take) yeniden doğrulanır.
+     *  - PIN GÖNDERİLDİ → mevcut PIN kapısı (actor()) çalışır — geriye dönük
+     *    uyumluluk + hassas-eylem akışı BOZULMAZ.
+     *  - NORMAL oturum → actor() (policy + oturum kullanıcısı; mevcut davranış).
+     *
+     * @param  Closure():void  $authorize
+     */
+    public function actorOrOperator(Request $request, string $permission, string $action, Closure $authorize): User
+    {
+        $user = $request->user();
+
+        if ($user instanceof User && $user->is_terminal && ! $request->filled('pin')) {
+            $operator = $this->requireOperator($request);
+
+            if (! $operator->hasPermission($permission)) {
+                $this->audit->log('terminal.operator_denied', $operator, null, [
+                    'action' => $action,
+                    'permission' => $permission,
+                    'terminal_user_id' => (int) $user->getKey(),
+                ]);
+
+                throw ValidationException::withMessages([
+                    'operator' => ['Aktif personelin bu işlem için yetkisi yok.'],
+                ])->status(422);
+            }
+
+            TerminalOperator::touch($request); // yetkili gerçek eylem → idle sayacını tazele
+
+            $this->audit->log('terminal.operator_action', $operator, null, [
+                'action' => $action,
+                'permission' => $permission,
+                'terminal_user_id' => (int) $user->getKey(),
+                'terminal_station' => $user->terminal_station,
+            ]);
+
+            return $operator;
+        }
+
+        return $this->actor($request, $permission, $action, $authorize);
+    }
+
+    /**
+     * Aktif operatörü döndür ya da 422 fırlat. (Operatör kimliği current()
+     * içinde kiracı+şube+aktif+gizli-değil olarak DB'den yeniden doğrulanır;
+     * idle-timeout geçmişse null → 422.) Tazeleme (touch) çağırana bırakılır:
+     * yalnız YETKİLİ gerçek eylemde idle sayacı yenilenir.
+     */
+    private function requireOperator(Request $request): User
+    {
+        $operator = TerminalOperator::current($request);
+
+        if ($operator === null) {
+            throw ValidationException::withMessages([
+                'operator' => ['Önce personel seçin.'],
+            ])->status(422);
+        }
+
+        return $operator;
     }
 
     /**

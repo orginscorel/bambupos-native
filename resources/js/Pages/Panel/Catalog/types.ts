@@ -84,6 +84,7 @@ export interface ProductRow {
     portion: string | null;
     unit: string | null;
     prep_minutes: number | null;
+    weight_grams: number | null;
     calories: number | null;
     protein: string | number | null;
     carbs: string | number | null;

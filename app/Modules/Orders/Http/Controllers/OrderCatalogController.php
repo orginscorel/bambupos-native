@@ -25,7 +25,7 @@ class OrderCatalogController extends Controller
         $categories = Category::query()
             ->where('is_active', true)
             ->orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'icon', 'color', 'sort_order']);
+            ->get(['id', 'parent_id', 'name', 'icon', 'color', 'sort_order']);
 
         $products = Product::query()
             ->with([
@@ -45,6 +45,10 @@ class OrderCatalogController extends Controller
         return response()->json([
             'categories' => $categories->map(fn (Category $c): array => [
                 'id' => $c->id,
+                // Üst kategori (nullable) — sipariş ekranı iki seviyeli kategori
+                // gezinmesi kurabilsin diye eklendi. Şema zaten destekliyordu,
+                // yalnız uçtan yayınlanmıyordu. EK alan; mevcutlar değişmedi.
+                'parent_id' => $c->parent_id,
                 'name' => $c->name,
                 'icon' => $c->icon,
                 'color' => $c->color,

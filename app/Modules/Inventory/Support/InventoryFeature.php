@@ -11,11 +11,10 @@ namespace App\Modules\Inventory\Support;
  * feature-flag" altyapısı gelince stok modülünü işletme bazında tek yerden
  * aç/kapa yapmak — çağrı noktalarını dağıtmadan.
  *
- * TODO(§9 feature-flag): `features` tablosu/servisi geldiğinde burada tenant
- * bazlı gerçek kontrol yapılacak (ör. Features::enabled($tenantId, 'stock')).
+ * Gerçek kontrol BAĞLI: Features::enabled($tenantId, 'inventory').
  * Kapalı = özellik hiç yok (ADR: kapalı=render edilmez) → panel ekranları
- * 404, menü linki gizli, sipariş köprüsü sessiz durur. Tablo henüz YOK;
- * yer tutucu true.
+ * 404, menü linki gizli (nav feature:'inventory'), sipariş köprüsü sessiz durur.
+ * İşletme istemezse "Eklentiler" ekranından tek tıkla kapatır.
  */
 class InventoryFeature
 {

@@ -107,9 +107,13 @@ const err = (f: string): string => formErrors.value[f]?.[0] ?? '';
 
 <template>
     <Head title="Tedarikçiler" />
-    <PanelShell title="Stok">
-        <InventoryNav active="suppliers" />
+    <PanelShell title="Stok" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <InventoryNav active="suppliers" />
+        </div>
 
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
         <div class="mb-3 flex items-center justify-between">
             <p class="text-sm text-muted">Mal kabulünde alış fiyatı otomatik geçmişe yazılır.</p>
             <BaseButton v-if="meta.canAdjust" size="sm" @click="openCreate">
@@ -203,5 +207,7 @@ const err = (f: string): string => formErrors.value[f]?.[0] ?? '';
             </div>
             <p v-else class="py-6 text-center text-sm text-muted">Bu tedarikçiden henüz mal kabul yapılmadı.</p>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

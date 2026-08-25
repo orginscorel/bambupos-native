@@ -11,6 +11,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { api, ApiError } from '@/lib/http';
 import { useToast } from '@/composables/useToast';
+import { usePermissions } from '@/composables/usePermissions';
 import PanelShell from '@/Components/panel/PanelShell.vue';
 import AppIcon from '@/Components/ui/AppIcon.vue';
 import BaseBadge from '@/Components/ui/BaseBadge.vue';
@@ -53,32 +54,119 @@ interface StationOption {
     label: string;
 }
 
+/** §13 Faz 3: panelden lisanslı terminal kurulumu — kullanım göstergesi. */
+interface LicenseDto {
+    limit: number | null;
+    used: number;
+    remaining: number | null;
+    unlimited: boolean;
+}
+
+/** /api/v1/devices/synced satırı (yalnız İHTİYACIMIZ olan alanlar). */
+interface SyncedBinding {
+    bound: boolean;
+    online: boolean;
+    revoked: boolean;
+}
+interface SyncedRow {
+    source: 'terminal' | 'kiosk';
+    source_id: number;
+    binding: SyncedBinding | null;
+}
+
 const toast = useToast();
+const { can } = usePermissions();
+const canManage = can('terminals.manage');
+const canManageDeviceLock = can('devices.manage');
 
 const loading = ref(true);
 const devices = ref<DeviceDto[]>([]);
 const branches = ref<BranchDto[]>([]);
 const stationOptions = ref<StationOption[]>([]);
 const busyId = ref<number | null>(null);
+const license = ref<LicenseDto>({ limit: null, used: 0, remaining: null, unlimited: true });
+
+// Fiziksel cihaz kilidi köprüsü (İzinli Cihazlar ekranıyla ORTAK durum).
+const lockEnabled = ref(false);
+const lockToggling = ref(false);
+const bindingByTerminalId = ref<Record<number, SyncedBinding | null>>({});
 
 /* ---------- Liste ---------- */
 
 async function load(): Promise<void> {
     try {
-        const res = await api<{ devices: DeviceDto[]; branches: BranchDto[]; stations: StationOption[] }>(
+        const res = await api<{ devices: DeviceDto[]; branches: BranchDto[]; stations: StationOption[]; license: LicenseDto }>(
             '/api/v1/terminals/devices',
         );
         devices.value = res.devices;
         branches.value = res.branches;
         stationOptions.value = res.stations;
+        license.value = res.license;
     } catch (e) {
         toast.danger(e instanceof ApiError ? e.displayMessage : 'Cihazlar yüklenemedi.');
     } finally {
         loading.value = false;
     }
+    await loadDeviceLockBridge();
+}
+
+/**
+ * İzinli Cihazlar (A3) ile köprü: aynı senkron ucu kullanır, yalnız cihaz
+ * kilidi AÇIK/KAPALI durumunu + bu ekrandaki her terminalin fiziksel
+ * bağlanma durumunu okur. devices.view izni yoksa sessizce atlanır — bu
+ * ekranın asıl işlevi bozulmaz (bonus bir gösterge).
+ */
+async function loadDeviceLockBridge(): Promise<void> {
+    try {
+        const res = await api<{ lock_enabled: boolean; devices: SyncedRow[] }>('/api/v1/devices/synced');
+        lockEnabled.value = res.lock_enabled;
+        const map: Record<number, SyncedBinding | null> = {};
+        res.devices.filter((r) => r.source === 'terminal').forEach((r) => (map[r.source_id] = r.binding));
+        bindingByTerminalId.value = map;
+    } catch {
+        /* devices.view yoksa ya da başka bir sebeple: köprü göstergesi gizlenir, sayfa çalışmaya devam eder. */
+    }
+}
+
+async function toggleDeviceLock(): Promise<void> {
+    lockToggling.value = true;
+    try {
+        const res = await api<{ enabled: boolean }>('/api/v1/devices/lock-feature', {
+            method: 'POST',
+            body: { enabled: !lockEnabled.value },
+        });
+        lockEnabled.value = res.enabled;
+        toast.success(res.enabled ? 'Cihaz kilidi açıldı.' : 'Cihaz kilidi kapatıldı.');
+    } catch (e) {
+        toast.danger(e instanceof ApiError ? e.displayMessage : 'İşlem yapılamadı.');
+    } finally {
+        lockToggling.value = false;
+    }
+}
+
+function physicalLockLabel(d: DeviceDto): { text: string; cls: string } {
+    if (!lockEnabled.value) {
+        return { text: 'Cihaz kilidi kapalı', cls: 'text-subtle bg-inset' };
+    }
+    const b = bindingByTerminalId.value[d.id];
+    if (!b || !b.bound) {
+        return { text: 'Fiziksel cihaz bekleniyor', cls: 'text-warning bg-warning-soft' };
+    }
+    if (b.revoked) {
+        return { text: 'Fiziksel cihaz izni iptal edildi', cls: 'text-danger bg-danger-soft' };
+    }
+    return b.online
+        ? { text: 'Fiziksel cihaza kilitli · çevrimiçi', cls: 'text-success bg-success-soft' }
+        : { text: 'Fiziksel cihaza kilitli', cls: 'text-subtle bg-inset' };
 }
 
 onMounted(load);
+
+const atLicenseLimit = computed(() => !license.value.unlimited && (license.value.remaining ?? 0) <= 0);
+const licenseText = computed(() => {
+    if (license.value.unlimited) return 'Sınırsız terminal lisansı';
+    return `${license.value.used} / ${license.value.limit} terminal lisansı kullanıldı`;
+});
 
 const branchOptions = computed(() => branches.value.map((b) => ({ value: String(b.id), label: b.name })));
 
@@ -102,6 +190,10 @@ const form = reactive({ name: '', branch_id: '', station: 'kitchen' });
 const formErrors = reactive<{ [k: string]: string }>({});
 
 function openCreate(): void {
+    if (atLicenseLimit.value) {
+        toast.danger(`Terminal lisans limitiniz doldu (${license.value.used}/${license.value.limit}). Yükseltme için destek ekibiyle iletişime geçin.`);
+        return;
+    }
     editing.value = null;
     form.name = '';
     form.branch_id = branches.value.length === 1 ? String(branches.value[0].id) : '';
@@ -139,6 +231,11 @@ async function save(): Promise<void> {
         } else {
             const res = await api<{ device: DeviceDto }>('/api/v1/terminals/devices', { method: 'POST', body });
             devices.value = [...devices.value, res.device].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+            license.value = {
+                ...license.value,
+                used: license.value.used + 1,
+                remaining: license.value.unlimited ? null : Math.max(0, (license.value.remaining ?? 1) - 1),
+            };
             toast.success('Terminal eklendi. Adresi cihaza girin.');
             showDevice.value = res.device;
             urlModalTitle.value = 'Yeni terminal adresi';
@@ -224,6 +321,11 @@ async function deleteConfirmed(): Promise<void> {
     try {
         await api(`/api/v1/terminals/devices/${d.id}`, { method: 'DELETE' });
         devices.value = devices.value.filter((x) => x.id !== d.id);
+        license.value = {
+            ...license.value,
+            used: Math.max(0, license.value.used - 1),
+            remaining: license.value.unlimited ? null : (license.value.remaining ?? 0) + 1,
+        };
         toast.success('Terminal kaldırıldı; adresi artık çalışmaz.');
         deleteTarget.value = null;
     } catch (e) {
@@ -235,7 +337,10 @@ async function deleteConfirmed(): Promise<void> {
 </script>
 
 <template>
-    <PanelShell title="İstasyon Terminalleri">
+    <PanelShell title="İstasyon Terminalleri" flush canvas>
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1080px] flex-col gap-3">
+
         <div class="mx-auto flex w-full max-w-5xl flex-col gap-5">
 
             <div class="flex items-center justify-between gap-3">
@@ -247,10 +352,52 @@ async function deleteConfirmed(): Promise<void> {
                     geçersiz olur. Kasa/Sipariş terminalinde hassas işlemler (ödeme, iptal, iade,
                     ikram) personel PIN'i ister ve o kişiye kaydedilir.
                 </p>
-                <BaseButton @click="openCreate">
+                <BaseButton
+                    v-if="canManage"
+                    :disabled="atLicenseLimit"
+                    :title="atLicenseLimit ? 'Terminal lisans limitiniz doldu' : ''"
+                    @click="openCreate"
+                >
                     <AppIcon name="plus" :size="16" />
                     Terminal ekle
                 </BaseButton>
+            </div>
+
+            <!-- §13 Faz 3: terminal lisans göstergesi -->
+            <div
+                v-if="!loading"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm"
+                :class="atLicenseLimit ? 'border-danger bg-danger-soft text-danger' : 'border-default bg-inset text-body'"
+            >
+                <div class="flex items-center gap-2">
+                    <AppIcon :name="atLicenseLimit ? 'alert-triangle' : 'tablet'" :size="16" />
+                    <span class="font-semibold">{{ licenseText }}</span>
+                </div>
+                <div v-if="!license.unlimited" class="h-1.5 w-32 overflow-hidden rounded-full bg-black/10">
+                    <div
+                        class="h-full rounded-full"
+                        :class="atLicenseLimit ? 'bg-danger' : 'bg-primary'"
+                        :style="{ width: Math.min(100, (license.used / Math.max(1, license.limit ?? 1)) * 100) + '%' }"
+                    />
+                </div>
+                <span v-if="atLicenseLimit" class="text-xs">Yükseltme için destek ekibiyle iletişime geçin.</span>
+            </div>
+
+            <!-- §13 Faz 3: Terminaller ↔ İzinli Cihazlar köprüsü — cihaz kilidi durumu + tek-tık aç/kapa -->
+            <div
+                v-if="!loading"
+                class="flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-sm"
+                :class="lockEnabled ? 'border-success bg-success-soft text-success' : 'border-warning bg-warning-soft text-warning'"
+            >
+                <AppIcon :name="lockEnabled ? 'check-circle' : 'alert-triangle'" :size="18" />
+                <span v-if="lockEnabled" class="font-semibold">Cihaz kilidi AÇIK — her terminal bağlantısı ilk açan fiziksel cihaza kilitlenir.</span>
+                <span v-else class="font-semibold">Cihaz kilidi KAPALI — herkes bu terminal adreslerini açabilir, fiziksel cihaza kilitlenmez.</span>
+                <div class="ml-auto flex items-center gap-2">
+                    <BaseButton v-if="canManageDeviceLock" size="sm" variant="secondary" :loading="lockToggling" @click="toggleDeviceLock">
+                        {{ lockEnabled ? 'Kilidi kapat' : 'Kilidi aç' }}
+                    </BaseButton>
+                    <a href="/panel/izinli-cihazlar" class="font-semibold text-primary hover:underline">İzinli Cihazlar →</a>
+                </div>
             </div>
 
             <template v-if="loading">
@@ -295,7 +442,18 @@ async function deleteConfirmed(): Promise<void> {
                         <span v-if="d.token_rotated_at"> · Token yenilendi: {{ new Date(d.token_rotated_at).toLocaleString('tr-TR') }}</span>
                     </p>
 
-                    <div class="flex flex-wrap gap-2">
+                    <!-- §13 Faz 3: fiziksel cihaz kilidi durumu (İzinli Cihazlar ile ortak) -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" :class="physicalLockLabel(d).cls">
+                            <span class="size-1.5 rounded-full bg-current" />
+                            {{ physicalLockLabel(d).text }}
+                        </span>
+                        <a href="/panel/izinli-cihazlar" class="text-xs font-semibold text-primary hover:underline">
+                            İzinli Cihazlar'da yönet →
+                        </a>
+                    </div>
+
+                    <div v-if="canManage" class="flex flex-wrap gap-2">
                         <BaseButton size="sm" variant="secondary" :disabled="busyId === d.id" @click="openEdit(d)">
                             <AppIcon name="pencil" :size="14" /> Düzenle
                         </BaseButton>
@@ -385,5 +543,7 @@ async function deleteConfirmed(): Promise<void> {
                 </div>
             </div>
         </BaseModal>
+        </div>
+        </div>
     </PanelShell>
 </template>

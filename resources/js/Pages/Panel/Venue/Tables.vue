@@ -59,6 +59,19 @@ const areas = ref<AreaRow[]>([]);
 
 const filters = ref({ branch_id: '', area_id: '', status: '', active: '', q: '' });
 
+/** Uygulanmış süzgeç sayısı (arama hariç — o zaten görünür). */
+const activeFilterCount = computed(
+    () => [filters.value.branch_id, filters.value.area_id, filters.value.status, filters.value.active]
+        .filter((v) => v !== '').length,
+);
+
+function clearFilters(): void {
+    filters.value.branch_id = '';
+    filters.value.area_id = '';
+    filters.value.status = '';
+    filters.value.active = '';
+}
+
 const branchOptions = computed(() => branches.value.map((b) => ({ value: String(b.id), label: b.name })));
 const areaOptions = computed(() => [
     { value: 'none', label: '— Alansız —' },
@@ -138,10 +151,18 @@ async function runBulk(action: string, extra: Record<string, unknown> = {}): Pro
     if (bulkBusy.value || selected.value.size === 0) return;
     bulkBusy.value = true;
     try {
-        const res = await api<{ affected: number }>('/api/v1/venue/tables/bulk-action', {
+        const res = await api<{ affected: number; skipped_open_order_ids?: number[] }>('/api/v1/venue/tables/bulk-action', {
             method: 'POST',
             body: { table_ids: [...selected.value], action, ...extra },
         });
+        const skipped = res.skipped_open_order_ids?.length ?? 0;
+        if (skipped > 0) {
+            // Net hata (denetim #2): açık adisyonlu masalar atlandı, sessizce değil.
+            danger(
+                `${skipped} masa atlandı`,
+                `Açık adisyonu olan ${skipped} masa deaktive/silinemedi/durumu değiştirilemedi; önce adisyonu kapatın.`,
+            );
+        }
         success('Toplu işlem tamamlandı', `${res.affected} masa güncellendi.`);
         selected.value = new Set();
         await loadTables();
@@ -260,8 +281,17 @@ async function submitForm(): Promise<void> {
             await api('/api/v1/venue/tables', { method: 'POST', body });
             success('Masa oluşturuldu', `${form.value.name} eklendi; QR kodu hazır.`);
         } else {
-            body.status = form.value.status;
+            // Masa META verisi (ad/no/kapasite/…) burada; `status` KASITLI OLARAK
+            // gövdede yok — backend artık bu uçtan durum değişikliği kabul etmiyor
+            // (denetim BLOKER #1). Durum değiştiyse ayrı, açık-adisyon korumalı
+            // uçtan (setStatus → PUT .../status) gönderilir; dolu bir masa böylece
+            // "Düzenle" formundan elle boşaltılamaz.
             await api(`/api/v1/venue/tables/${editing.value.id}`, { method: 'PUT', body });
+
+            if (form.value.status !== editing.value.status) {
+                await setStatus(editing.value, form.value.status);
+            }
+
             success('Masa güncellendi', `${form.value.name} kaydedildi.`);
         }
         drawerOpen.value = false;
@@ -337,13 +367,14 @@ async function submitBulkCreate(): Promise<void> {
 }
 
 /* ================= Satır işlemleri ================= */
+/**
+ * Açık-adisyon korumalı durum ucu (VenueTableController::updateStatus).
+ * Hata yutmaz — çağıran (submitForm) kendi try/catch'inde yakalayıp
+ * "Durum" alanına (formErrors.status) net bir mesaj basar.
+ */
 async function setStatus(row: TableRow, status: string): Promise<void> {
-    try {
-        await api(`/api/v1/venue/tables/${row.id}/status`, { method: 'PUT', body: { status } });
-        await loadTables();
-    } catch (e) {
-        danger('Durum değiştirilemedi', e instanceof ApiError ? e.displayMessage : 'Beklenmeyen bir hata oluştu.');
-    }
+    await api(`/api/v1/venue/tables/${row.id}/status`, { method: 'PUT', body: { status } });
+    await loadTables();
 }
 
 const rotatingRow = ref<TableRow | null>(null);
@@ -452,59 +483,82 @@ function groupBusyCount(g: TableGroup): number {
 
 <template>
     <Head title="Masalar" />
-    <PanelShell title="Masalar">
-        <VenueNav />
+    <!-- TAM KAPLAMA: mekân gezinmesi SABİT şeritte; masa listesi kendi içinde kayar. -->
+    <PanelShell title="Masalar" flush canvas>
+        <div class="shrink-0 border-b border-default bg-raised px-4 py-2.5 sm:px-6">
+            <VenueNav />
+        </div>
 
-        <div class="flex flex-col gap-4">
-            <!-- Filtreler + eylemler -->
-            <BaseCard>
-                <div class="flex flex-wrap items-end gap-3">
-                    <div class="w-full sm:w-44">
-                        <FormField label="Şube">
-                            <BaseSelect v-model="filters.branch_id" :options="branchOptions" placeholder="Tümü" size="sm" />
-                        </FormField>
-                    </div>
-                    <div class="w-full sm:w-44">
-                        <FormField label="Alan">
-                            <BaseSelect v-model="filters.area_id" :options="areaOptions" placeholder="Tümü" size="sm" />
-                        </FormField>
-                    </div>
-                    <div class="w-full sm:w-44">
-                        <FormField label="Durum">
-                            <BaseSelect v-model="filters.status" :options="statusOptions" placeholder="Tümü" size="sm" />
-                        </FormField>
-                    </div>
-                    <div class="w-full sm:w-36">
-                        <FormField label="Aktiflik">
-                            <BaseSelect
-                                v-model="filters.active"
-                                :options="[
-                                    { value: '1', label: 'Aktif' },
-                                    { value: '0', label: 'Pasif' },
-                                ]"
-                                placeholder="Tümü"
-                                size="sm"
-                            />
-                        </FormField>
-                    </div>
-                    <div class="w-full grow sm:w-52">
-                        <FormField label="Ara">
-                            <SearchInput v-model="filters.q" placeholder="Masa adı veya no…" />
-                        </FormField>
-                    </div>
-                    <div v-if="canCreateTable" class="flex gap-2">
-                        <BaseButton variant="secondary" @click="openBulkCreate">
-                            <AppIcon name="plus" :size="16" />
-                            Toplu oluştur
-                        </BaseButton>
-                        <BaseButton @click="openCreate">
-                            <AppIcon name="plus" :size="16" />
-                            Yeni masa
-                        </BaseButton>
-                    </div>
+        <!-- ARAÇ ÇUBUĞU (tek satır). Önceki düzende beş etiketli süzgeç koca bir
+             kart olarak duruyor ve masaları ekranın altına itiyordu. Artık:
+             arama solda, süzgeçler tek menüde (uygulanan varsa rozetle sayılır),
+             eylemler sağda. -->
+        <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-default bg-raised px-4 py-2 sm:px-6">
+            <div class="min-w-48 grow sm:max-w-md">
+                <SearchInput v-model="filters.q" placeholder="Masa adı veya no…" />
+            </div>
+
+            <BaseDropdown align="right" menu-label="Süzgeçler">
+                <template #trigger="{ toggle, ariaAttrs }">
+                    <button
+                        type="button"
+                        v-bind="ariaAttrs"
+                        class="flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition"
+                        :class="activeFilterCount > 0
+                            ? 'border-primary bg-primary-soft text-primary'
+                            : 'border-default bg-raised text-body hover:border-strong'"
+                        title="Filtrele"
+                        @click="toggle"
+                    >
+                        <AppIcon name="filter" :size="15" />
+                        <span class="hidden lg:inline">Filtre</span>
+                        <span
+                            v-if="activeFilterCount > 0"
+                            class="flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-on-primary tabular-nums"
+                        >{{ activeFilterCount }}</span>
+                    </button>
+                </template>
+                <div class="flex w-64 flex-col gap-3 p-3" @click.stop>
+                    <FormField v-if="branchOptions.length > 1" label="Şube">
+                        <BaseSelect v-model="filters.branch_id" :options="branchOptions" placeholder="Tümü" size="sm" />
+                    </FormField>
+                    <FormField label="Alan">
+                        <BaseSelect v-model="filters.area_id" :options="areaOptions" placeholder="Tümü" size="sm" />
+                    </FormField>
+                    <FormField label="Durum">
+                        <BaseSelect v-model="filters.status" :options="statusOptions" placeholder="Tümü" size="sm" />
+                    </FormField>
+                    <FormField label="Aktiflik">
+                        <BaseSelect
+                            v-model="filters.active"
+                            :options="[
+                                { value: '1', label: 'Aktif' },
+                                { value: '0', label: 'Pasif' },
+                            ]"
+                            placeholder="Tümü"
+                            size="sm"
+                        />
+                    </FormField>
+                    <BaseButton v-if="activeFilterCount > 0" variant="ghost" size="sm" @click="clearFilters">
+                        Filtreleri temizle
+                    </BaseButton>
                 </div>
-            </BaseCard>
+            </BaseDropdown>
 
+            <div v-if="canCreateTable" class="ms-auto flex shrink-0 items-center gap-1.5">
+                <BaseButton variant="secondary" size="sm" @click="openBulkCreate">
+                    <AppIcon name="plus" :size="15" />
+                    <span class="hidden sm:inline">Toplu oluştur</span>
+                </BaseButton>
+                <BaseButton size="sm" @click="openCreate">
+                    <AppIcon name="plus" :size="15" />
+                    Yeni masa
+                </BaseButton>
+            </div>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-4 lg:pb-4">
+        <div class="mx-auto flex w-full max-w-[1440px] flex-col gap-3">
             <!-- Toplu işlem çubuğu (yalnız yönetim izni olana) -->
             <BaseCard v-if="canBulk && selected.size > 0">
                 <div class="flex flex-wrap items-center gap-3">
@@ -590,13 +644,13 @@ function groupBusyCount(g: TableGroup): number {
                         <article
                             v-for="t in g.rows"
                             :key="t.id"
-                            class="group relative flex min-h-40 flex-col gap-3 rounded-xl border bg-raised p-4 shadow-card transition-colors duration-(--dur-fast)"
+                            class="group relative flex min-h-40 flex-col gap-3 rounded-xl border p-4 shadow-card transition-colors duration-(--dur-fast)"
                             :class="[
                                 selected.has(t.id)
-                                    ? 'border-primary ring-2 ring-primary/30'
+                                    ? 'border-primary bg-primary-soft/25 ring-2 ring-primary/30'
                                     : isBusy(t.status_variant)
-                                        ? 'border-danger-border'
-                                        : 'border-success-border',
+                                        ? 'border-danger-border bg-danger-soft'
+                                        : 'border-success-border bg-success-soft/50',
                                 t.is_active ? '' : 'opacity-60',
                             ]"
                         >
@@ -841,5 +895,6 @@ function groupBusyCount(g: TableGroup): number {
                 <BaseButton variant="danger" :loading="bulkBusy" @click="bulkDelete">Sil</BaseButton>
             </template>
         </BaseModal>
+        </div>
     </PanelShell>
 </template>
