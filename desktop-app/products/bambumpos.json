@@ -1,0 +1,19 @@
+{
+    "productName": "BamBumPOS",
+    "identifier": "com.bambumpos.desktop",
+    "app": {
+        "windows": [
+            {
+                "title": "BamBumPOS",
+                "url": "https://bambumpos.com/panel",
+                "width": 1440,
+                "height": 900,
+                "minWidth": 1024,
+                "minHeight": 640,
+                "resizable": true,
+                "fullscreen": true,
+                "center": true
+            }
+        ]
+    }
+}

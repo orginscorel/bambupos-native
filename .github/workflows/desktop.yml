@@ -1,15 +1,13 @@
 name: Masaüstü (Windows · macOS · Linux)
 
-# BamBumPOS panelini masaüstü uygulamasına paketler (Tauri).
-# Uygulama kendi penceresinde açılır; kasa/mutfak terminallerinde tarayıcı
-# çubuğu ve sekme karmaşası olmaz.
+# ÜÇ AYRI UYGULAMA üretir — hepsi aynı Tauri kabuğundan, farklı ürün
+# yapılandırmasıyla (products/*.json): ad, kimlik, açılacak adres ve pencere
+# davranışı. Böylece personel ve patron kendi simgesiyle kurulur; kasa
+# terminaline yanlışlıkla patron paneli kurulmaz.
 #
-# NOT: Tauri üretim sunucusunda derlenemiyor (Rust araç zinciri yok) — bu iş
-# tam da bunun için Actions'ta koşar. macOS ve Windows çıktıları ilgili
-# runner'larda üretilir.
-#
-# İMZA: kod imzalama secret'ları yoksa imzasız derlenir. Windows'ta
-# SmartScreen, macOS'ta Gatekeeper uyarısı çıkar — kurulum yine yapılabilir.
+# Tauri üretim sunucusunda derlenemiyor (Rust yok) — derleme burada koşar.
+# Kod imzalama secret'ı yoksa imzasız üretilir; SmartScreen/Gatekeeper uyarısı
+# çıkar, kurulum yine yapılabilir.
 
 on:
   workflow_dispatch:
@@ -18,11 +16,12 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.product }} · ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        product: [bambumpos, personel, patron]
         include:
           - os: windows-latest
             label: Windows
@@ -30,6 +29,7 @@ jobs:
             label: macOS
           - os: ubuntu-latest
             label: Linux
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -48,19 +48,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # Kabuk saf Rust + statik dosya; npm bağımlılığı YOK. Önceden `npm ci`
-      # çalıştırılıyordu ve `package-lock.json` olmadığı için macOS/Windows
-      # runner'larında düşüyordu (Linux'ta yedek komut kurtarıyordu, bu da
-      # hatayı gizliyordu). CLI doğrudan npx ile çağrılır.
+      # Kabuk saf Rust + statik dosya; npm bağımlılığı YOK.
       - name: Paketle
         working-directory: desktop-app
-        run: npx --yes @tauri-apps/cli@^2 build
+        run: npx --yes @tauri-apps/cli@^2 build --config products/${{ matrix.product }}.json
 
       - name: Çıktıyı sakla
         uses: actions/upload-artifact@v4
         with:
-          name: bambumpos-desktop-${{ matrix.label }}
-          path: |
-            desktop-app/src-tauri/target/release/bundle/**/*
-          if-no-files-found: warn
+          name: ${{ matrix.product }}-${{ matrix.label }}
+          path: desktop-app/src-tauri/target/release/bundle/**/*
+          if-no-files-found: error
           retention-days: 30

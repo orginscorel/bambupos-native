@@ -1,0 +1,19 @@
+{
+    "productName": "BamBumPOS Patron",
+    "identifier": "com.bambumpos.patron",
+    "app": {
+        "windows": [
+            {
+                "title": "BamBumPOS Patron",
+                "url": "https://patron.bambumpos.com/",
+                "width": 1440,
+                "height": 900,
+                "minWidth": 1024,
+                "minHeight": 640,
+                "resizable": true,
+                "fullscreen": false,
+                "center": true
+            }
+        ]
+    }
+}
