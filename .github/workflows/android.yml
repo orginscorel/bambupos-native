@@ -99,18 +99,20 @@ jobs:
           else
             PASS="ci-temp-pass"; KPASS="ci-temp-pass"
           fi
-          # `bubblewrap build`, twa-manifest.json'ın yanında checksum dosyası
-          # bulamayınca "projeyi yeniden üreteyim mi? (Y/n)" diye SORAR ve CI'da
-          # orada asılı kalıp 130 ile düşer. Proje tanımı depoda ve güncel
-          # olduğu için yanıt "hayır"dır; `yes n` tüm istemleri yanıtlar.
-          yes n | bubblewrap build --skipPwaValidation \
-            --signingKeyPath ./android.keystore \
-            --signingKeyAlias bambumpos \
-            --signingKeystorePassword "$PASS" \
-            --signingKeyPassword "$KPASS"
+          # Bubblewrap parolayı KOMUT BAYRAĞINDAN değil ORTAM DEĞİŞKENİNDEN
+          # okur; bayraklar yok sayılınca parolayı etkileşimli sorar. CI'da bu
+          # istem `yes n` ile beslenince "Minimum length is 6" deyip çöküyordu.
+          export BUBBLEWRAP_KEYSTORE_PASSWORD="$PASS"
+          export BUBBLEWRAP_KEY_PASSWORD="$KPASS"
 
-          # `yes` boru hattında bubblewrap'in çıkış kodu kaybolur; paket
-          # gerçekten üretildi mi diye BAKARIZ (sessiz başarısızlık olmasın).
+          # Tek kalan istem: checksum dosyası yokken "projeyi yeniden üret?".
+          # Proje tanımı depoda ve güncel → yanıt "hayır". TEK satır besliyoruz
+          # (sonsuz `yes` parola istemine de sızıyordu).
+          printf 'n\n' | bubblewrap build --skipPwaValidation \
+            --signingKeyPath ./android.keystore \
+            --signingKeyAlias bambumpos
+
+          # Boru hattı çıkış kodunu gizler → paket gerçekten üretildi mi bak.
           if ! find . \( -name '*.apk' -o -name '*.aab' \) | grep -q .; then
             echo "::error::APK/AAB üretilmedi."
             exit 1
