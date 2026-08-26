@@ -99,11 +99,22 @@ jobs:
           else
             PASS="ci-temp-pass"; KPASS="ci-temp-pass"
           fi
-          bubblewrap build --skipPwaValidation \
+          # `bubblewrap build`, twa-manifest.json'ın yanında checksum dosyası
+          # bulamayınca "projeyi yeniden üreteyim mi? (Y/n)" diye SORAR ve CI'da
+          # orada asılı kalıp 130 ile düşer. Proje tanımı depoda ve güncel
+          # olduğu için yanıt "hayır"dır; `yes n` tüm istemleri yanıtlar.
+          yes n | bubblewrap build --skipPwaValidation \
             --signingKeyPath ./android.keystore \
             --signingKeyAlias bambumpos \
             --signingKeystorePassword "$PASS" \
             --signingKeyPassword "$KPASS"
+
+          # `yes` boru hattında bubblewrap'in çıkış kodu kaybolur; paket
+          # gerçekten üretildi mi diye BAKARIZ (sessiz başarısızlık olmasın).
+          if ! find . \( -name '*.apk' -o -name '*.aab' \) | grep -q .; then
+            echo "::error::APK/AAB üretilmedi."
+            exit 1
+          fi
 
       - name: Üretilen paketleri listele
         working-directory: build/android
