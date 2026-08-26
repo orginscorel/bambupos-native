@@ -48,3 +48,8 @@ Thumbs.db
 error_log
 *.sql
 *.sqlite
+
+# Masaüstü (Tauri) derleme çıktıları — Actions'ta üretilir, depoda durmaz
+/desktop-app/node_modules
+/desktop-app/src-tauri/target
+/build/android

@@ -1,0 +1,13 @@
+{
+    "name": "bambumpos-desktop",
+    "private": true,
+    "version": "1.0.0",
+    "description": "BamBumPOS masaüstü uygulaması (Tauri kabuğu)",
+    "scripts": {
+        "tauri": "tauri",
+        "build": "tauri build"
+    },
+    "devDependencies": {
+        "@tauri-apps/cli": "^2.0.0"
+    }
+}

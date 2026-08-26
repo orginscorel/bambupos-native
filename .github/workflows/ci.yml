@@ -1,0 +1,78 @@
+name: CI
+
+# Her push ve PR'da: PHP testleri + TypeScript tip kontrolü + üretim derlemesi.
+# Amaç: "sunucuda çalışıyordu" tuzağını kapatmak — derleme ve testler burada
+# temiz bir makinede de geçmeli.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Testler (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP kur
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo, pdo_sqlite, sqlite3, gd, intl, bcmath, zip
+          coverage: none
+
+      - name: Composer bağımlılıkları
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Ortam hazırla
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # Test paketi SQLite bellek-içi çalışır (phpunit.xml), ayrı DB gerekmez.
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
+  frontend:
+    name: Derleme ve tip kontrolü
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      # vue-tsc büyük projede varsayılan yığınla OOM veriyor.
+      - name: Tip kontrolü
+        run: npm run typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Üretim derlemesi
+        run: npm run build
+
+      - name: Derleme çıktısını sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: public/build
+          retention-days: 7

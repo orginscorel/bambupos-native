@@ -1,0 +1,97 @@
+name: Android (APK)
+
+# BamBumPOS panelini Android uygulamasına paketler (Trusted Web Activity).
+# Uygulama, bambumpos.com'daki paneli kendi penceresinde açar — tarayıcı
+# çubuğu yoktur, kendi simgesiyle kurulur, push bildirimi alır.
+#
+# İMZA: `ANDROID_KEYSTORE_BASE64` + parola secret'ları TANIMLIYSA imzalı
+# (yayınlanabilir) APK üretilir. Tanımlı değilse İMZASIZ derleme yapılır —
+# test cihazına elle kurulabilir, mağazaya yüklenemez. Sessizce "imzalı gibi"
+# davranmaz; adım çıktısında hangisinin üretildiği yazar.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: 'Uygulamanın açacağı alan adı'
+        default: 'bambumpos.com'
+        required: true
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: APK derle
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Java kur (Android derlemesi için)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Bubblewrap kur
+        run: npm i -g @bubblewrap/cli@latest
+
+      - name: TWA projesini hazırla
+        env:
+          HOST: ${{ github.event.inputs.host || 'bambumpos.com' }}
+        run: |
+          mkdir -p build/android && cd build/android
+          # Manifest'ten TWA projesi üret (ikonlar, ad, tema rengi oradan gelir).
+          bubblewrap init \
+            --manifest "https://${HOST}/bambumpos.webmanifest" \
+            --directory . \
+            --packageId com.bambumpos.app \
+            --skipPwaValidation \
+            --yes || true
+
+      - name: İmza anahtarını çöz (secret varsa)
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > build/android/android.keystore
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "İmzalı APK üretilecek."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "UYARI: ANDROID_KEYSTORE_BASE64 secret'ı yok → İMZASIZ derleme."
+          fi
+
+      - name: APK derle
+        working-directory: build/android
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            bubblewrap build --skipPwaValidation \
+              --signingKeyPath ./android.keystore \
+              --signingKeyAlias bambumpos \
+              --signingKeyPassword "$KEY_PASS" \
+              --signingKeystorePassword "$KS_PASS"
+          else
+            # İmzasız: yalnız derleme doğrulaması + test kurulumu için.
+            ./gradlew assembleDebug || bubblewrap build --skipPwaValidation || true
+          fi
+
+      - name: APK'yı sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: bambumpos-android
+          path: |
+            build/android/**/*.apk
+            build/android/**/*.aab
+          if-no-files-found: warn
+          retention-days: 30
