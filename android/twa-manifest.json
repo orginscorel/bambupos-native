@@ -1,0 +1,60 @@
+{
+    "packageId": "com.bambumpos.app",
+    "host": "bambumpos.com",
+    "name": "BamBumPOS",
+    "launcherName": "BamBumPOS",
+    "display": "standalone",
+    "themeColor": "#5443D2",
+    "themeColorDark": "#5443D2",
+    "navigationColor": "#5443D2",
+    "navigationColorDark": "#5443D2",
+    "navigationDividerColor": "#5443D2",
+    "navigationDividerColorDark": "#5443D2",
+    "backgroundColor": "#5443D2",
+    "enableNotifications": true,
+    "startUrl": "/panel",
+    "iconUrl": "https://bambumpos.com/icons/bambumpos-512.png",
+    "maskableIconUrl": "https://bambumpos.com/icons/bambumpos-512-maskable.png",
+    "splashScreenFadeOutDuration": 300,
+    "signingKey": {
+        "path": "./android.keystore",
+        "alias": "bambumpos"
+    },
+    "appVersionName": "1.0.0",
+    "appVersionCode": 1,
+    "shortcuts": [
+        {
+            "name": "Kasa",
+            "shortName": "Kasa",
+            "url": "/panel/kasa",
+            "chosenIconUrl": "https://bambumpos.com/icons/bambumpos-192.png"
+        },
+        {
+            "name": "Siparişler",
+            "shortName": "Siparişler",
+            "url": "/panel/siparisler",
+            "chosenIconUrl": "https://bambumpos.com/icons/bambumpos-192.png"
+        },
+        {
+            "name": "Mutfak",
+            "shortName": "Mutfak",
+            "url": "/panel/mutfak",
+            "chosenIconUrl": "https://bambumpos.com/icons/bambumpos-192.png"
+        }
+    ],
+    "generatorApp": "bubblewrap-cli",
+    "webManifestUrl": "https://bambumpos.com/bambumpos.webmanifest",
+    "fallbackType": "customtabs",
+    "features": {},
+    "alphaDependencies": { "enabled": false },
+    "enableSiteSettingsShortcut": true,
+    "isChromeOSOnly": false,
+    "isMetaQuest": false,
+    "fullScopeUrl": "https://bambumpos.com/",
+    "minSdkVersion": 23,
+    "orientation": "default",
+    "fingerprints": [],
+    "additionalTrustedOrigins": [],
+    "retainedBundles": [],
+    "appVersion": "1.0.0"
+}
