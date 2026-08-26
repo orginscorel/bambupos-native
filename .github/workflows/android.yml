@@ -105,9 +105,12 @@ jobs:
           export BUBBLEWRAP_KEYSTORE_PASSWORD="$PASS"
           export BUBBLEWRAP_KEY_PASSWORD="$KPASS"
 
-          # Tek kalan istem: checksum dosyası yokken "projeyi yeniden üret?".
-          # Proje tanımı depoda ve güncel → yanıt "hayır". TEK satır besliyoruz
-          # (sonsuz `yes` parola istemine de sızıyordu).
+          # Depoda YALNIZ twa-manifest.json var; Android proje iskeleti (gradlew,
+          # app/, gradle sarmalayıcı) sürüm kontrolüne alınmaz. `bubblewrap update`
+          # bunları manifest'ten ÜRETİR — bu adım olmadan build "./gradlew: not
+          # found" ile düşer.
+          bubblewrap update --skipVersionUpgrade
+
           printf 'n\n' | bubblewrap build --skipPwaValidation \
             --signingKeyPath ./android.keystore \
             --signingKeyAlias bambumpos
