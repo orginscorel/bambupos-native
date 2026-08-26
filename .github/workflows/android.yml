@@ -39,6 +39,11 @@ jobs:
       - name: Android SDK
         uses: android-actions/setup-android@v3
 
+      # SDK bileşenleri (build-tools, platform) indirilirken lisans onayı
+      # ETKİLEŞİMLİ soruluyor ve iş takılıyor (exit 130). Önceden kabul edilir.
+      - name: Android SDK lisansları
+        run: yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
       - name: Bubblewrap kur
         run: npm i -g @bubblewrap/cli@latest
 
