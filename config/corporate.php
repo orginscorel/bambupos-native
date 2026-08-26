@@ -34,16 +34,22 @@ return [
         'hero_badges' => ['Tek dokunuşla kurulum', 'Otomatik güncelleme', 'Anlık bildirim', 'Tam ekran çalışır'],
         'blocks' => [
             [
+                'type' => 'callout',
+                'icon' => 'check',
+                'title' => 'Masaüstü sürüm 1.1.0 — 26 Ağustos 2026',
+                'body' => 'Bu sürümde: uygulama paneli doğrudan açar (önceki sürümde mor açılış ekranında takılma sorunu vardı) ve CİHAZ KÖPRÜSÜ eklendi — bilgisayara kurulu yazıcılar, seri portlar (ÖKC) ve aynı ağdaki fiş yazıcıları otomatik bulunur, rol atanır, test fişi basılır. Zaten 1.0.0 kurduysanız yeni paketi indirip üzerine kurun; ayar kaybı olmaz. Android paketi (1.0.0) değişmedi.',
+            ],
+            [
                 'type' => 'cards',
                 'title' => 'İndir ve kur',
                 'lead' => 'Masaüstü ve Android paketleri. iPhone/iPad’de indirilecek dosya yoktur — kurulum Safari üzerinden yapılır (aşağıda anlatıldı).',
                 'items' => [
-                    ['icon' => 'grid', 'title' => 'Windows · Kurulum (.exe)', 'desc' => 'Önerilen. 1,4 MB — çift tıklayıp kurun, başlat menüsüne eklenir.', 'url' => '/indir/BamBumPOS-1.0.0-Windows-Setup.exe'],
-                    ['icon' => 'grid', 'title' => 'Windows · MSI paketi', 'desc' => 'Toplu kurulum / grup ilkesi için. 2,3 MB.', 'url' => '/indir/BamBumPOS-1.0.0-Windows.msi'],
-                    ['icon' => 'grid', 'title' => 'macOS (Apple Silicon)', 'desc' => 'M1 ve üzeri Mac’ler için .dmg — 1,7 MB. Açıp Uygulamalar’a sürükleyin.', 'url' => '/indir/BamBumPOS-1.0.0-macOS-AppleSilicon.dmg'],
+                    ['icon' => 'grid', 'title' => 'Windows · Kurulum (.exe)', 'desc' => 'Önerilen. 1,4 MB — çift tıklayıp kurun, başlat menüsüne eklenir.', 'url' => '/indir/BamBumPOS-1.1.0-Windows-Setup.exe'],
+                    ['icon' => 'grid', 'title' => 'Windows · MSI paketi', 'desc' => 'Toplu kurulum / grup ilkesi için. 2,3 MB.', 'url' => '/indir/BamBumPOS-1.1.0-Windows.msi'],
+                    ['icon' => 'grid', 'title' => 'macOS (Apple Silicon)', 'desc' => 'M1 ve üzeri Mac’ler için .dmg — 1,7 MB. Açıp Uygulamalar’a sürükleyin.', 'url' => '/indir/BamBumPOS-1.1.0-macOS-AppleSilicon.dmg'],
                     ['icon' => 'phone', 'title' => 'Android (.apk)', 'desc' => 'Tablet ve telefonlar için — 1,2 MB. Kurulum için “bilinmeyen kaynak” izni gerekir.', 'url' => '/indir/BamBumPOS-1.0.0.apk'],
-                    ['icon' => 'grid', 'title' => 'Linux · AppImage', 'desc' => 'Kurulum gerektirmez; çalıştırma izni verip açın — 73 MB.', 'url' => '/indir/BamBumPOS-1.0.0-Linux.AppImage'],
-                    ['icon' => 'grid', 'title' => 'Linux · .deb paketi', 'desc' => 'Debian ve Ubuntu için — 1,7 MB.', 'url' => '/indir/BamBumPOS-1.0.0-Linux.deb'],
+                    ['icon' => 'grid', 'title' => 'Linux · AppImage', 'desc' => 'Kurulum gerektirmez; çalıştırma izni verip açın — 73 MB.', 'url' => '/indir/BamBumPOS-1.1.0-Linux.AppImage'],
+                    ['icon' => 'grid', 'title' => 'Linux · .deb paketi', 'desc' => 'Debian ve Ubuntu için — 1,7 MB.', 'url' => '/indir/BamBumPOS-1.1.0-Linux.deb'],
                 ],
             ],
             [
