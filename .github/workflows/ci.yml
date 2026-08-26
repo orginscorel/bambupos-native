@@ -15,36 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Testler (PHP ${{ matrix.php }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        php: ['8.3']
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: PHP kur
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ matrix.php }}
-          extensions: mbstring, pdo, pdo_sqlite, sqlite3, gd, intl, bcmath, zip
-          coverage: none
-
-      - name: Composer bağımlılıkları
-        run: composer install --no-interaction --prefer-dist --no-progress
-
-      - name: Ortam hazırla
-        run: |
-          cp .env.example .env
-          php artisan key:generate
-
-      # Test paketi SQLite bellek-içi çalışır (phpunit.xml), ayrı DB gerekmez.
-      - name: PHPUnit
-        run: vendor/bin/phpunit
-
+  # Derleme ÖNCE koşar: bazı özellik testleri Inertia/Blade sayfası render eder
+  # ve `@vite` yönergesi public/build/manifest.json arar. Manifest yoksa istek
+  # 500 döner ve testler "sebepsiz" düşer. Bu yüzden test işi derleme
+  # çıktısını indirir — üretimdeki durumun aynısıyla koşar.
   frontend:
     name: Derleme ve tip kontrolü
     runs-on: ubuntu-latest
@@ -76,3 +50,40 @@ jobs:
           name: web-build
           path: public/build
           retention-days: 7
+
+  test:
+    name: Testler (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP kur
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo, pdo_sqlite, sqlite3, gd, intl, bcmath, zip
+          coverage: none
+
+      - name: Composer bağımlılıkları
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Derleme çıktısını indir
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: public/build
+
+      - name: Ortam hazırla
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # Test paketi SQLite bellek-içi çalışır (phpunit.xml), ayrı DB gerekmez.
+      - name: PHPUnit
+        run: vendor/bin/phpunit
