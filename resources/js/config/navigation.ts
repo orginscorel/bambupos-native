@@ -59,6 +59,7 @@ export const defaultNavigation: NavItem[] = [
     // ===== Cihazlar & Entegrasyonlar =====
     { key: 'kiosk', label: 'Kiosk', icon: 'monitor', href: '/panel/kiosklar', permission: 'kiosk.view', feature: 'kiosk', group: 'Cihazlar & Entegrasyonlar' },
     { key: 'terminals', label: 'Terminaller', icon: 'tablet', href: '/panel/terminaller', permission: 'terminals.view', feature: 'terminals', group: 'Cihazlar & Entegrasyonlar' },
+    { key: 'printers', label: 'Cihazlar & Yazıcılar', icon: 'plug', href: '/panel/ayarlar/cihazlar', permission: 'settings.view', group: 'Cihazlar & Entegrasyonlar' },
     { key: 'devices', label: 'İzinli Cihazlar', icon: 'monitor', href: '/panel/izinli-cihazlar', permission: 'devices.view', group: 'Cihazlar & Entegrasyonlar' },
     { key: 'integrations', label: 'Entegrasyonlar', icon: 'plug', href: '/panel/entegrasyonlar', permission: 'integrations.manage', group: 'Cihazlar & Entegrasyonlar' },
 

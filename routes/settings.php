@@ -23,6 +23,15 @@ Route::middleware(['auth:web', 'tenant'])->group(function (): void {
         return Inertia::render('Panel/Settings/Mail');
     })->name('panel.settings.mail');
 
+    // Cihazlar: ÖKC, termal/fiş yazıcıları, ağdaki cihazlar.
+    // Keşif masaüstü uygulamasının native köprüsünde yapılır; tarayıcıda
+    // ekran bunu açıkça söyler.
+    Route::get('/panel/ayarlar/cihazlar', function () {
+        abort_unless(request()->user()->hasPermission('settings.view'), 403);
+
+        return Inertia::render('Panel/Settings/Devices');
+    })->name('panel.settings.devices');
+
     // Hazır indirim tanımları (şehit/gazi yakını, kamu personeli, öğrenci…).
     // İndirim UYGULAMA yetkisiyle aynı kapı: tanımı yapan zaten indirim yetkilisi.
     Route::get('/panel/ayarlar/indirimler', function () {
