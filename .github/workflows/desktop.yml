@@ -48,10 +48,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # --- macOS KOD İMZALAMA + NOTARİZASYON (2026-09-06) ---
+      # Apple Developer hesabının secret'ları TANIMLIYSA imzalı + notarize
+      # edilmiş .dmg/.app üretilir (Gatekeeper uyarısı çıkmaz). Secret yoksa
+      # aşağıdaki değişkenler BOŞ gider ve Tauri imzasız üretir — iş DÜŞMEZ,
+      # yalnız kurulumda "tanımlanamayan geliştirici" uyarısı çıkar.
+      #
+      # Gerekli repo secret'ları (Settings > Secrets and variables > Actions):
+      #   APPLE_CERTIFICATE           Developer ID Application .p12 (base64)
+      #   APPLE_CERTIFICATE_PASSWORD  .p12 parolası
+      #   APPLE_SIGNING_IDENTITY      "Developer ID Application: Ad (TEAMID)"
+      #   APPLE_ID                    Apple hesabı e-postası
+      #   APPLE_PASSWORD              uygulamaya özel parola (app-specific)
+      #   APPLE_TEAM_ID               10 haneli takım kimliği
+      #
+      # Windows için ayrıca bir KOD İMZALAMA SERTİFİKASI (OV/EV) gerekir; o
+      # Apple hesabına dahil DEĞİLDİR, ayrı satın alınır. Yokken SmartScreen
+      # "bilinmeyen yayıncı" uyarısı verir, kurulum yine yapılabilir.
       # Kabuk saf Rust + statik dosya; npm bağımlılığı YOK.
       - name: Paketle
         working-directory: desktop-app
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx --yes @tauri-apps/cli@^2 build --config products/${{ matrix.product }}.json
+
+      - name: İmza durumunu bildir
+        if: matrix.os == 'macos-latest'
+        run: |
+          if [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]; then
+            echo "macOS paketi İMZALI üretildi (notarizasyon Apple sunucusunda doğrulandı)."
+          else
+            echo "::warning::APPLE_* secret'ları yok → macOS paketi İMZASIZ. Gatekeeper uyarısı çıkar."
+          fi
 
       - name: Çıktıyı sakla
         uses: actions/upload-artifact@v4
