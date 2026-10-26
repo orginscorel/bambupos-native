@@ -62,7 +62,9 @@ IconData webSimge(String? ad) => switch (ad) {
   'calendar' => Icons.calendar_today_outlined,
   'tablet' => Icons.tablet_android_outlined,
   'clock' => Icons.schedule_rounded,
-  'printer' => Icons.print_outlined,
+  'printer' || 'yazici' => Icons.print_outlined,
+  'terminal' => Icons.tablet_android_outlined,
+  'mesaiqr' => Icons.qr_code_scanner_rounded,
   'monitor' => Icons.desktop_windows_outlined,
   'globe' => Icons.public_rounded,
   'users' => Icons.people_outline_rounded,
@@ -335,13 +337,38 @@ class SeritKisayol {
 }
 
 class SeritCihaz {
-  const SeritCihaz({required this.ad, required this.ikon, required this.balon, this.durum = 'iyi'});
+  const SeritCihaz({
+    required this.ad,
+    required this.ikon,
+    required this.balon,
+    this.durum = 'iyi',
+    this.aciklama,
+    this.ayrintilar = const [],
+    this.eylem,
+    this.dinle,
+    this.canli,
+  });
   final String ad;
   final IconData ikon;
   final String balon;
 
   /// iyi | uyari | kopuk
   final String durum;
+
+  /// Dokununca açılan kutuda "ne işe yarar" metni.
+  final String? aciklama;
+
+  /// Kutuda başlık → değer satırları.
+  final List<(String, String)> ayrintilar;
+
+  /// Kutunun altındaki düğme (ör. "Şimdi tara", "Ekranı aç").
+  final ({String ad, VoidCallback bas, bool kapat})? eylem;
+
+  /// Canlı durum: değişince simge ve açık kutu yeniden çizilir.
+  final Listenable? dinle;
+  final SeritCihaz Function()? canli;
+
+  SeritCihaz get guncel => canli?.call() ?? this;
 }
 
 class AltCubuk extends StatelessWidget {
@@ -391,10 +418,6 @@ class AltCubuk extends StatelessWidget {
         if (sagMetin != null) Text(sagMetin!, style: TextStyle(fontSize: 12.5, color: Kabuk.soft)),
         if (cihazlar.isNotEmpty || tumu != null) ...[
           const SizedBox(width: 6),
-          _CihazSimgesi(
-            c: const SeritCihaz(ad: 'İnternet', ikon: Icons.public_rounded, balon: 'Sunucuya bağlı'),
-            telefon: telefon,
-          ),
           for (final c in cihazlar) _CihazSimgesi(c: c, telefon: telefon),
         ],
         if (g > 1100 && surum != null) ...[
@@ -768,6 +791,20 @@ class _TumuDugmesi extends StatelessWidget {
   );
 }
 
+Color _durumRengi(String d) => switch (d) {
+  'uyari' => Kabuk.warning,
+  'kopuk' => Kabuk.negative,
+  _ => Kabuk.success,
+};
+
+String _durumAdi(String d) => switch (d) {
+  'uyari' => 'Dikkat',
+  'kopuk' => 'Çalışmıyor',
+  _ => 'Çalışıyor',
+};
+
+/// Alt şerit cihaz simgesi: durumuna göre yeşil / sarı / kırmızı yanar;
+/// dokununca ne işe yaradığını ve şu anki durumunu anlatan kutu açılır.
 class _CihazSimgesi extends StatelessWidget {
   const _CihazSimgesi({required this.c, required this.telefon});
   final SeritCihaz c;
@@ -775,44 +812,196 @@ class _CihazSimgesi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final d = c.dinle;
+    if (d == null) return _ciz(context, c);
+    return ListenableBuilder(listenable: d, builder: (ctx, _) => _ciz(ctx, c.guncel));
+  }
+
+  Widget _ciz(BuildContext context, SeritCihaz x) {
     final boyut = telefon ? 32.0 : 36.0;
-    final renk = switch (c.durum) {
-      'uyari' => Kabuk.warning,
-      'kopuk' => Kabuk.negative,
-      _ => Kabuk.soft,
-    };
-    final nokta = switch (c.durum) {
-      'uyari' => Kabuk.warning,
-      'kopuk' => Kabuk.negative,
-      _ => Kabuk.success,
-    };
+    final renk = _durumRengi(x.durum);
     return Tooltip(
-      message: '${c.ad} — ${c.balon}',
-      child: SizedBox(
-        width: boyut,
-        height: boyut,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(c.ikon, size: telefon ? 17 : 18, color: renk),
-            Positioned(
-              right: telefon ? 5 : 6,
-              bottom: telefon ? 5 : 6,
-              child: Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: nokta,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Kabuk.serit, width: 2),
+      message: '${x.ad} — ${x.balon}',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => cihazAyrintiAc(context, c),
+        child: SizedBox(
+          width: boyut,
+          height: boyut,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(x.ikon, size: telefon ? 17 : 18, color: renk),
+              Positioned(
+                right: telefon ? 5 : 6,
+                bottom: telefon ? 5 : 6,
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: renk,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Kabuk.serit, width: 2),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Cihaz simgesine dokununca şeridin üstünde, sağda açılan kutu
+/// ("Tüm bölümler" kutusuyla aynı yer ve görünüm).
+Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: c.ad,
+    barrierColor: const Color(0x730F172A),
+    transitionDuration: const Duration(milliseconds: 140),
+    pageBuilder: (ctx, _, _) {
+      final mq = MediaQuery.of(ctx);
+      final dar = mq.size.width <= 640;
+      final altBosluk = (mq.size.width <= 700 ? 104.0 : 49.0) + 7 + mq.padding.bottom;
+      Widget govde(SeritCihaz x) {
+        final renk = _durumRengi(x.durum);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 55,
+              padding: const EdgeInsets.only(left: 14, right: 8),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Kabuk.line))),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(color: renk.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
+                    child: Icon(x.ikon, size: 18, color: renk),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      x.ad,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Kabuk.ink),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: renk.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 7, height: 7, decoration: BoxDecoration(color: renk, shape: BoxShape.circle)),
+                      const SizedBox(width: 5),
+                      Text(_durumAdi(x.durum), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: renk)),
+                    ]),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: Icon(Icons.close_rounded, size: 18, color: Kabuk.soft),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(x.balon, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Kabuk.ink)),
+                    if (x.aciklama != null) ...[
+                      const SizedBox(height: 8),
+                      Text(x.aciklama!, style: TextStyle(fontSize: 13, height: 1.45, color: Kabuk.soft)),
+                    ],
+                    if (x.ayrintilar.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Kabuk.line),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(children: [
+                          for (var i = 0; i < x.ayrintilar.length; i++)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                              decoration: BoxDecoration(
+                                border: i == 0 ? null : Border(top: BorderSide(color: Kabuk.line)),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(x.ayrintilar[i].$1, style: TextStyle(fontSize: 12.5, color: Kabuk.soft)),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 170),
+                                    child: Text(
+                                      x.ayrintilar[i].$2,
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Kabuk.ink),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ]),
+                      ),
+                    ],
+                    if (x.eylem != null) ...[
+                      const SizedBox(height: 14),
+                      OutlinedButton(
+                        onPressed: () {
+                          final e = x.eylem!;
+                          if (e.kapat) Navigator.pop(ctx);
+                          e.bas();
+                        },
+                        child: Text(x.eylem!.ad),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      return Stack(
+        children: [
+          Positioned(
+            right: dar ? 10 : 14,
+            left: dar ? 10 : null,
+            bottom: altBosluk,
+            width: dar ? null : (mq.size.width * .92).clamp(0, 340).toDouble(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: mq.size.height * (dar ? .72 : .66)),
+              child: Material(
+                color: Kabuk.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: Kabuk.line),
+                ),
+                clipBehavior: Clip.antiAlias,
+                elevation: 12,
+                shadowColor: const Color(0x2E0F172A),
+                child: c.dinle == null
+                    ? govde(c)
+                    : ListenableBuilder(listenable: c.dinle!, builder: (_, _) => govde(c.guncel)),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /* ═══════════════════════ "TÜMÜ" KUTUSU (.pg-cek) ═══════════════════════ */

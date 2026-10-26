@@ -25,6 +25,11 @@ class ApiHata implements Exception {
   String toString() => mesaj;
 }
 
+/// Sunucuya son ulaşma durumu (alt şeritteki İnternet simgesi dinler).
+/// Her istekte güncellenir; ekranlar birkaç saniyede bir sorduğu için canlıdır.
+final ValueNotifier<bool> sunucuBagli = ValueNotifier<bool>(true);
+DateTime? sunucuSonYanit;
+
 /// BamBumPOS sunucusu istemcisi.
 ///
 /// Web paneliyle AYNI oturumu kullanır: Laravel oturum çerezi + "beni
@@ -163,13 +168,17 @@ class Api {
   Future<Response<dynamic>> _gonder(String yontem, String yol,
       {Map<String, dynamic>? sorgu, Object? govde, Map<String, String>? basliklar, Duration? zamanAsimi}) async {
     try {
-      return await _dio.request<dynamic>(
+      final r = await _dio.request<dynamic>(
         yol,
         data: govde,
         queryParameters: sorgu,
         options: Options(method: yontem, headers: basliklar, receiveTimeout: zamanAsimi),
       );
+      sunucuSonYanit = DateTime.now();
+      sunucuBagli.value = true;
+      return r;
     } on DioException catch (e) {
+      sunucuBagli.value = false;
       final zaman = e.type == DioExceptionType.receiveTimeout || e.type == DioExceptionType.connectionTimeout;
       throw ApiHata(null, zaman ? 'Sunucu yanıt vermedi. Bağlantınızı kontrol edin.' : 'Sunucuya ulaşılamıyor. İnternet bağlantısını kontrol edin.');
     }

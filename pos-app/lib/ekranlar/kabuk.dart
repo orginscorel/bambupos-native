@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/ajan.dart';
+import '../core/api.dart';
 import '../core/modeller.dart';
 import 'cerceve.dart';
 import 'borclar_ekrani.dart';
@@ -152,16 +154,100 @@ Widget posAltSerit(BuildContext context, {required PosEkrani? secili, required v
               for (final e in cekmece) CekmeceOgesi(ad: e.etiket, ikon: e.ikon, secili: e == secili, bas: () => git(e)),
             ]),
     cihazlar: [
+      _internetOgesi(),
+      if (durum.ajan != null) _ajanOgesi(durum.ajan!),
       for (final c in o.seritCihaz)
-        SeritCihaz(
-          ad: '${c['ad'] ?? ''}',
-          ikon: webSimge(c['ikon'] as String?),
-          balon: '${c['balon'] ?? ''}',
-          durum: c['iyi'] == false ? 'uyari' : 'iyi',
-        ),
+        _sunucuCihazi(c, mesaiQrAc: ekranlar.contains(PosEkrani.mesaiQr) ? () => git(PosEkrani.mesaiQr) : null),
     ],
     // Uygulamanın kendi sürümü; dokununca sürüm notları (uygulama + panel).
     surum: durum.surum,
+  );
+}
+
+/* ───────── Alt şerit cihaz simgeleri ───────── */
+
+String _onceSure(DateTime? t) {
+  if (t == null) return '—';
+  final f = DateTime.now().difference(t);
+  if (f.inSeconds < 60) return '${f.inSeconds < 1 ? 1 : f.inSeconds} sn önce';
+  if (f.inMinutes < 60) return '${f.inMinutes} dk önce';
+  if (f.inHours < 24) return '${f.inHours} sa önce';
+  return '${f.inDays} gün önce';
+}
+
+SeritCihaz _internetOgesi() {
+  SeritCihaz olustur() {
+    final b = sunucuBagli.value;
+    return SeritCihaz(
+      ad: 'İnternet',
+      ikon: b ? Icons.public_rounded : Icons.public_off_rounded,
+      durum: b ? 'iyi' : 'kopuk',
+      balon: b ? 'Sunucuya bağlı' : 'Sunucuya ulaşılamıyor',
+      aciklama: 'Uygulamanın BamBumPOS sunucusuyla bağlantısı. Siparişler, masalar ve ödemeler '
+          'anında sunucuya kaydedilir ve diğer cihazlarda görünür. Bağlantı koparsa yeni işlem '
+          'kaydedilemez; Wi-Fi veya mobil veriyi kontrol edin.',
+      ayrintilar: [('Son yanıt', _onceSure(sunucuSonYanit))],
+    );
+  }
+
+  return SeritCihaz(ad: 'İnternet', ikon: Icons.public_rounded, balon: '', dinle: sunucuBagli, canli: olustur);
+}
+
+SeritCihaz _ajanOgesi(YazdirmaAjani a) {
+  SeritCihaz olustur() {
+    final d = a.durum;
+    final iyi = d.startsWith('Bağlı');
+    final calisiyor = d.contains('taranıyor') || d == 'Bekliyor';
+    return SeritCihaz(
+      ad: 'Yazdırma ajanı',
+      ikon: Icons.wifi_tethering_rounded,
+      durum: iyi ? 'iyi' : (calisiyor ? 'uyari' : 'kopuk'),
+      balon: d,
+      aciklama: 'Bu cihaz, işletmenin yerel ağındaki fiş yazıcılarını ve POS / ÖKC cihazlarını '
+          'bulur ve İşletme Yönetimi › Yazıcılar sayfasına bildirir. Ağ yazıcısına giden '
+          'fişleri (mutfak, hesap) de bu cihaz basar.',
+      ayrintilar: [
+        ('Ağda bulunan yazıcı', '${a.bulunanYazicilar.length}'),
+        ('Ağda bulunan POS / ÖKC', '${a.bulunanPos.length}'),
+        ('Son tarama', _onceSure(a.sonTarama)),
+        ('Bu açılışta basılan fiş', '${a.basilanFis}'),
+      ],
+      eylem: (ad: 'Ağı şimdi tara', bas: a.tara, kapat: false),
+    );
+  }
+
+  return SeritCihaz(ad: 'Yazdırma ajanı', ikon: Icons.wifi_tethering_rounded, balon: '', dinle: a, canli: olustur);
+}
+
+SeritCihaz _sunucuCihazi(Json c, {VoidCallback? mesaiQrAc}) {
+  final tur = '${c['ikon'] ?? ''}';
+  final iyi = c['iyi'] != false;
+  final (aciklama, eylem) = switch (tur) {
+    'printer' || 'yazici' => (
+        'İşletmede tanımlı fiş ve mutfak yazıcıları. Siparişler ilgili istasyonun yazıcısına, '
+            'hesap fişi kasa yazıcısına gider. Sarı yanıyorsa en az bir yazıcı son işte hata '
+            'verdi: kağıdı, gücü ve kabloyu / ağ bağlantısını kontrol edin.',
+        null,
+      ),
+    'tablet' || 'terminal' => (
+        'İşletmeye eşlenmiş POS uygulamaları (tablet, telefon, bilgisayar). Personel kendi '
+            'PIN\'iyle girip sipariş alır; cihazlar İşletme Yönetimi › Cihazlar\'dan yönetilir.',
+        null,
+      ),
+    'clock' || 'mesaiqr' => (
+        'Personelin telefonuyla okutarak mesaiye giriş / çıkış yaptığı ve molaya çıktığı QR '
+            'ekranları. Kod birkaç saniyede bir değişir, ekran fotoğrafıyla giriş yapılamaz.',
+        mesaiQrAc == null ? null : (ad: 'Mesai / mola QR ekranını aç', bas: mesaiQrAc, kapat: true),
+      ),
+    _ => (null, null),
+  };
+  return SeritCihaz(
+    ad: '${c['ad'] ?? ''}',
+    ikon: webSimge((c['panelIkon'] ?? c['ikon']) as String?),
+    balon: '${c['balon'] ?? ''}',
+    durum: iyi ? 'iyi' : 'uyari',
+    aciklama: aciklama,
+    eylem: eylem,
   );
 }
 

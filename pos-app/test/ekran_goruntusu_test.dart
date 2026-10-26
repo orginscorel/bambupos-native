@@ -169,6 +169,27 @@ void main() {
           await t.tap(find.text('Tümü'));
           await _bekle(t);
           await _yaz(t, '8-tumu-$ad');
+          await t.tapAt(const Offset(5, 300));
+          await _bekle(t);
+          await t.tap(find.byIcon(Icons.public_rounded).last);
+          await _bekle(t);
+          expect(find.textContaining('Son yanıt'), findsOneWidget);
+          await _yaz(t, '9-internet-$ad');
+          await t.tapAt(const Offset(5, 300));
+          await _bekle(t);
+          await t.tap(find.byIcon(Icons.wifi_tethering_rounded).last);
+          await _bekle(t);
+          await _yaz(t, '9-ajan-$ad');
+          await t.tapAt(const Offset(5, 300));
+          await _bekle(t);
+          final yazici = find.byIcon(Icons.print_outlined);
+          if (yazici.evaluate().isNotEmpty) {
+            await t.tap(yazici.last);
+            await _bekle(t);
+            await _yaz(t, '9-yazici-$ad');
+            await t.tapAt(const Offset(5, 300));
+            await _bekle(t);
+          }
         }
         await t.pumpWidget(const SizedBox());
       }, skip: _dizin == null);
