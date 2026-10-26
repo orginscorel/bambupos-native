@@ -7,6 +7,14 @@
 #ifndef Kaynak
   #define Kaynak "..\build\windows\x64\runner\Release"
 #endif
+; /DW7: Windows 7 SP1 / 8.1 paketi (windows7/yamala.py + BBW7.dll).
+#ifdef W7
+  #define Ek "Windows7"
+  #define EnAz "6.1sp1"
+#else
+  #define Ek "Windows"
+  #define EnAz "10.0"
+#endif
 
 [Setup]
 AppId={{6B1E0C52-7A44-4C5B-9E0B-BB05B05A0001}
@@ -18,14 +26,14 @@ DefaultDirName={autopf}\BamBumPOS
 DefaultGroupName=BamBumPOS
 DisableProgramGroupPage=yes
 OutputDir=..\cikti
-OutputBaseFilename=BamBumPOS-POS-{#Surum}-Windows-Kurulum
+OutputBaseFilename=BamBumPOS-POS-{#Surum}-{#Ek}-Kurulum
 SetupIconFile=..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\BamBumPOS.exe
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+MinVersion={#EnAz}
 WizardStyle=modern
 PrivilegesRequiredOverridesAllowed=dialog
 

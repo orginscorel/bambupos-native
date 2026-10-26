@@ -6,6 +6,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'app/tema.dart';
 import 'core/durum.dart';
+import 'core/eski_windows.dart';
 import 'ekranlar/aktivasyon_ekrani.dart';
 import 'ekranlar/kabuk.dart';
 import 'ekranlar/pin_ekrani.dart';
@@ -21,6 +22,7 @@ Future<void> main() async {
   // Kasa/mutfak ekranı uykuya geçmesin.
   WakelockPlus.enable().ignore();
 
+  await eskiWindowsHazirla();
   await temaYukle();
   final durum = await UygulamaDurumu.kur();
   runApp(BamBumPosUygulamasi(durum: durum));

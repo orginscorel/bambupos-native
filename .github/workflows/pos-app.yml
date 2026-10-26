@@ -109,6 +109,41 @@ jobs:
           $surum = "${{ needs.denetim.outputs.surum }}"
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DSurum=$surum" "dagitim\windows-kurulum.iss"
           Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "cikti\BamBumPOS-POS-$surum-Windows-Tasinabilir.zip"
+      # ── WINDOWS 7 SP1 / 8.1 PAKETİ ──
+      # Aynı derleme; Windows 8+ işlevlerini içe aktaran tablolar BBW7.dll'e
+      # çevrilir (windows7/yamala.py), C++ çalışma kütüphaneleri pakete
+      # konur (Windows 7'de çoğu zaman yok). Denetim yeni bir Windows 8+
+      # işlevi bulursa adım durur — bozuk paket yayımlanmaz.
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Windows 7 paketi
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $surum = "${{ needs.denetim.outputs.surum }}"
+          $w7 = "build\windows7"
+          Copy-Item "build\windows\x64\runner\Release" $w7 -Recurse
+          python -m pip install --quiet pefile
+          python windows7\yamala.py yamala $w7 build\bbw7.def
+          if ($LASTEXITCODE -ne 0) { throw "yamala başarısız" }
+          cl /nologo /O1 /GS- /W3 /LD windows7\bbw7.c /Fobuild\bbw7.obj /Fe"$w7\BBW7.dll" /link /NODEFAULTLIB /ENTRY:DllMain /DEF:build\bbw7.def kernel32.lib ws2_32.lib shlwapi.lib /SUBSYSTEM:WINDOWS,6.01 /OSVERSION:6.1
+          if ($LASTEXITCODE -ne 0) { throw "BBW7.dll derlenemedi" }
+          Remove-Item "$w7\BBW7.lib","$w7\BBW7.exp" -ErrorAction SilentlyContinue
+          # C++ çalışma kütüphaneleri (VC++ + Universal CRT) uygulamanın yanına.
+          $crt = Get-ChildItem "$env:VCToolsRedistDir\x64" -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
+          Copy-Item "$($crt.FullName)\*.dll" $w7
+          $ucrt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Redist" -Recurse -Filter ucrtbase.dll | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -Last 1
+          if ($ucrt) { Copy-Item "$($ucrt.DirectoryName)\*.dll" $w7 } else { Write-Warning "Universal CRT bulunamadı (KB2999226 gerekecek)" }
+          python windows7\yamala.py denetle $w7
+          if ($LASTEXITCODE -ne 0) { throw "Windows 7 denetimi geçmedi" }
+          # Açılış sınaması: yamalı paket, yamasız paket kadar ayakta kalmalı.
+          function Ayakta($exe) { $p = Start-Process $exe -PassThru; Start-Sleep 20; $ok = -not $p.HasExited; if ($ok) { Stop-Process $p -Force } else { Write-Host "çıkış kodu $($p.ExitCode)" }; return $ok }
+          $asil = Ayakta "build\windows\x64\runner\Release\BamBumPOS.exe"
+          $yamali = Ayakta "$w7\BamBumPOS.exe"
+          Write-Host "Açılış: asıl=$asil yamalı=$yamali"
+          if ($asil -and -not $yamali) { throw "Yamalı paket açılmadı" }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DSurum=$surum" "/DW7" "/DKaynak=..\build\windows7" "dagitim\windows-kurulum.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Windows 7 kurulumu üretilemedi" }
+          Compress-Archive -Path "$w7\*" -DestinationPath "cikti\BamBumPOS-POS-$surum-Windows7-Tasinabilir.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -195,6 +230,7 @@ jobs:
             |---|---|
             | Android 7+ | `*-Android.apk` (doğrudan kurulum) |
             | Windows 10/11 | `*-Windows-Kurulum.exe` · taşınabilir `*.zip` |
+            | Windows 7 SP1 / 8.1 | `*-Windows7-Kurulum.exe` · taşınabilir `*-Windows7-Tasinabilir.zip` |
             | macOS 11+ | `*-macOS.dmg` (ilk açılışta sağ tık → Aç) |
             | iOS | `*-iOS-imzasiz.ipa` (imzalanmadan kurulamaz) |
 

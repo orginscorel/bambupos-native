@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app/tema.dart';
 import '../core/api.dart';
+import '../core/eski_windows.dart';
 import 'ortak.dart';
 
 /// UYGULAMA İÇİ GÜNCELLEME (mağaza dışı dağıtım).
@@ -51,7 +52,8 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
   static String get _platform => switch (defaultTargetPlatform) {
         TargetPlatform.android => 'android',
         TargetPlatform.iOS => 'ios',
-        TargetPlatform.windows => 'windows',
+        // Windows 7 / 8.1: ayrı paket (uyumluluk katmanlı).
+        TargetPlatform.windows => eskiWindows ? 'windows7' : 'windows',
         TargetPlatform.macOS => 'macos',
         _ => 'diger',
       };
