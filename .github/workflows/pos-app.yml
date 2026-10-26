@@ -123,17 +123,17 @@ jobs:
           $surum = "${{ needs.denetim.outputs.surum }}"
           $w7 = "build\windows7"
           Copy-Item "build\windows\x64\runner\Release" $w7 -Recurse
+          # C++ çalışma kütüphaneleri (VC++ + Universal CRT) uygulamanın yanına — yamadan ÖNCE (msvcp140 da yamalanır).
+          $crt = Get-ChildItem "$env:VCToolsRedistDir\x64" -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
+          Copy-Item "$($crt.FullName)\*.dll" $w7
+          $ucrt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Redist" -Recurse -Filter ucrtbase.dll | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -Last 1
+          if ($ucrt) { Copy-Item "$($ucrt.DirectoryName)\*.dll" $w7 } else { Write-Warning "Universal CRT bulunamadı (KB2999226 gerekecek)" }
           python -m pip install --quiet pefile
           python windows7\yamala.py yamala $w7 build\bbw7.def
           if ($LASTEXITCODE -ne 0) { throw "yamala başarısız" }
           cl /nologo /O1 /GS- /W3 /LD windows7\bbw7.c /Fobuild\bbw7.obj /Fe"$w7\BBW7.dll" /link /NODEFAULTLIB /ENTRY:DllMain /DEF:build\bbw7.def kernel32.lib ws2_32.lib shlwapi.lib /SUBSYSTEM:WINDOWS,6.01 /OSVERSION:6.1
           if ($LASTEXITCODE -ne 0) { throw "BBW7.dll derlenemedi" }
           Remove-Item "$w7\BBW7.lib","$w7\BBW7.exp" -ErrorAction SilentlyContinue
-          # C++ çalışma kütüphaneleri (VC++ + Universal CRT) uygulamanın yanına.
-          $crt = Get-ChildItem "$env:VCToolsRedistDir\x64" -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
-          Copy-Item "$($crt.FullName)\*.dll" $w7
-          $ucrt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Redist" -Recurse -Filter ucrtbase.dll | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -Last 1
-          if ($ucrt) { Copy-Item "$($ucrt.DirectoryName)\*.dll" $w7 } else { Write-Warning "Universal CRT bulunamadı (KB2999226 gerekecek)" }
           python windows7\yamala.py denetle $w7
           if ($LASTEXITCODE -ne 0) { throw "Windows 7 denetimi geçmedi" }
           # Açılış sınaması: yamalı paket, yamasız paket kadar ayakta kalmalı.

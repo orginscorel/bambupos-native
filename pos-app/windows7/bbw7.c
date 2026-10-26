@@ -198,3 +198,54 @@ BOOL WINAPI bb_RoOriginateError(HRESULT hata, void *mesaj)
     (void)hata; (void)mesaj;
     return FALSE;
 }
+
+/* ───── kernel32: Windows 8 dosya / saat işlevleri (msvcp140.dll) ─────
+ * Yeni VC++ çalışma kütüphanesi bunları doğrudan içe aktarıyor. Windows 8+
+ * üzerinde asıl işlev çağrılır; Windows 7'de en yakın karşılık kullanılır. */
+static FARPROC asil_islev(const char *ad)
+{
+    HMODULE k = GetModuleHandleW(L"kernel32.dll");
+    return k ? GetProcAddress(k, ad) : NULL;
+}
+
+void WINAPI bb_GetSystemTimePreciseAsFileTime(LPFILETIME zaman)
+{
+    static FARPROC f;
+    static LONG hazir;
+    if (!hazir) { f = asil_islev("GetSystemTimePreciseAsFileTime"); InterlockedExchange(&hazir, 1); }
+    if (f) { ((void (WINAPI *)(LPFILETIME))f)(zaman); return; }
+    GetSystemTimeAsFileTime(zaman);
+}
+
+typedef struct {
+    DWORD dwSize, dwFileAttributes, dwFileFlags, dwSecurityQosFlags;
+    LPSECURITY_ATTRIBUTES lpSecurityAttributes;
+    HANDLE hTemplateFile;
+} BB_CREATEFILE2_EXT;
+
+HANDLE WINAPI bb_CreateFile2(LPCWSTR ad, DWORD erisim, DWORD paylasim, DWORD olusturma, BB_CREATEFILE2_EXT *p)
+{
+    FARPROC f = asil_islev("CreateFile2");
+    if (f)
+        return ((HANDLE (WINAPI *)(LPCWSTR, DWORD, DWORD, DWORD, void *))f)(ad, erisim, paylasim, olusturma, p);
+    return CreateFileW(ad, erisim, paylasim, p ? p->lpSecurityAttributes : NULL, olusturma,
+                       p ? (p->dwFileAttributes | p->dwFileFlags | p->dwSecurityQosFlags) : FILE_ATTRIBUTE_NORMAL,
+                       p ? p->hTemplateFile : NULL);
+}
+
+typedef struct {
+    DWORD dwSize, dwCopyFlags;
+    BOOL *pfCancel;
+    void *pProgressRoutine, *pvCallbackContext;
+} BB_COPYFILE2_EXT;
+
+HRESULT WINAPI bb_CopyFile2(LPCWSTR kaynak, LPCWSTR hedef, BB_COPYFILE2_EXT *p)
+{
+    FARPROC f = asil_islev("CopyFile2");
+    if (f)
+        return ((HRESULT (WINAPI *)(LPCWSTR, LPCWSTR, void *))f)(kaynak, hedef, p);
+    /* İlerleme geri çağrısı Windows 7'de yok sayılır; Windows 7'nin bilmediği bayraklar atılır. */
+    if (!CopyFileExW(kaynak, hedef, NULL, NULL, p ? p->pfCancel : NULL, p ? (p->dwCopyFlags & 0x0000080F) : 0))
+        return HRESULT_FROM_WIN32(GetLastError());
+    return S_OK;
+}

@@ -26,6 +26,7 @@ YAZILAN = {
     'RtlAddGrowableFunctionTable', 'RtlDeleteGrowableFunctionTable',
     'RoGetActivationFactory', 'WindowsCreateString', 'WindowsCreateStringReference',
     'WindowsDeleteString', 'RoOriginateError',
+    'GetSystemTimePreciseAsFileTime', 'CreateFile2', 'CopyFile2',
 }
 
 # Windows 7'de OLMAYAN, bilinen işlevler (sistem DLL'lerinde).
@@ -117,6 +118,7 @@ def yamala(dizin, def_yolu):
             if None in adlar:
                 sys.exit(f'HATA: {os.path.basename(yol)} {dll} sıra numarasıyla içe aktarıyor; yönlendirilemez.')
             asil = dll[:-4] if dll.lower().endswith('.dll') else dll
+            asil = asil.upper()  # KERNEL32 / kernel32 aynı DLL: yönlendirme tek biçimde
             for a in adlar:
                 if a in YAZILAN:
                     satir = f'    {a}=bb_{a}'

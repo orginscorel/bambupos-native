@@ -1129,10 +1129,23 @@ class KilitDugmesi extends StatelessWidget {
     if (d.oturum?.operatorVar != true) return const SizedBox.shrink();
     return Tooltip(
       message: 'Ekranı kilitle — geri dönmek için PIN gerekir',
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: d.kilitle,
-        child: SizedBox(width: 36, height: 36, child: Icon(Icons.lock_outline_rounded, size: 18, color: Kabuk.soft)),
+      // Web .pg-eylem.kilit: kırmızı; burada ayrıca açık kırmızı zemin + kenar
+      // ("kapatmak için belirgin olsun").
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Material(
+          color: Kabuk.negative.withValues(alpha: .10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: Kabuk.negative.withValues(alpha: .35)),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            hoverColor: Kabuk.negative.withValues(alpha: .16),
+            onTap: d.kilitle,
+            child: SizedBox(width: 36, height: 36, child: Icon(Icons.lock_rounded, size: 18, color: Kabuk.negative)),
+          ),
+        ),
       ),
     );
   }
