@@ -50,7 +50,10 @@ class BildirimMerkezi {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_kanal);
 
-    if (Platform.isAndroid || Platform.isIOS) {
+    // Arka plan yoklaması YALNIZ Android: iOS'ta BGTaskScheduler işleyicisi uygulama
+    // açılışı bitmeden kaydedilmezse iOS uygulamayı kapatıyordu (try/catch yakalayamaz).
+    // iPhone'a bildirim zaten APNs ile anlık gelir; yoklamaya gerek yok.
+    if (Platform.isAndroid) {
       try {
         await Workmanager().initialize(arkaPlanGorevi);
         await Workmanager().registerPeriodicTask(
