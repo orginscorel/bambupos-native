@@ -1,0 +1,40 @@
+# BamBumPOS Personel — iPhone derlemesi (İMZASIZ).
+# GitHub'ın Mac'i yalnız derler; imzayı bambumpos sunucusu atar (Ad Hoc
+# profili + dağıtım sertifikası sunucuda). Böylece yeni iPhone kaydında
+# yeniden derleme gerekmez, sunucu saniyeler içinde yeniden imzalar.
+# Çıktı: "ios-<çalışma no>" sürümüne eklenen Runner-imzasiz.ipa
+name: iOS
+on:
+  push:
+    branches: [personel-app]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - name: Bağımlılıklar
+        run: flutter pub get
+      - name: Derle (imzasız)
+        run: flutter build ios --release --no-codesign --build-number ${{ github.run_number }}
+      - name: IPA paketle
+        run: |
+          mkdir -p out/Payload
+          cp -R build/ios/iphoneos/Runner.app out/Payload/
+          cd out && zip -qry Runner-imzasiz.ipa Payload && ls -la
+      - name: Yayınla
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ios-${{ github.run_number }}" out/Runner-imzasiz.ipa \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Personel iOS ${{ github.run_number }}" --notes "İmzasız derleme" --prerelease
