@@ -16,7 +16,8 @@ void main() {
     expect(sureMetni(5), '5 dk');
     expect(sureMetni(60), '1 sa');
     expect(sureMetni(135), '2 sa 15 dk');
-    expect(sureMetni(1440 * 3 + 10), '3 gün');
+    // Web ile aynı: gün yerine saat ("1269 sa 50 dk").
+    expect(sureMetni(1440 * 3 + 10), '72 sa 10 dk');
   });
 
   test('Türkçe arama anahtarı', () {

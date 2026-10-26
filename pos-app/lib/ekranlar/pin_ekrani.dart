@@ -3,9 +3,14 @@ import 'package:flutter/services.dart';
 
 import '../app/tema.dart';
 import '../core/api.dart';
+import 'cerceve.dart';
+import 'guncelleme.dart';
 import 'ortak.dart';
+import 'telefonla_giris.dart';
 
-/// Personel girişi: yalnız PIN. Giren kişinin yetkisi ekranı belirler.
+/// PERSONEL GİRİŞİ — web'deki terminal PIN ekranının ("Oturum aç") birebiri:
+/// noktalı PIN kutusu + "en az 4 hane", 3×4 tuş takımı (Sil · 0 · Temizle),
+/// geniş "Oturum aç" düğmesi; üstte işletme künyesi, altta cihaz künyesi.
 class PinEkrani extends StatefulWidget {
   const PinEkrani({super.key});
 
@@ -18,8 +23,7 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
   String _pin = '';
   String? _hata;
   bool _bekliyor = false;
-  late final AnimationController _salla =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
+  late final AnimationController _salla = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
   final _odak = FocusNode();
 
   @override
@@ -41,6 +45,14 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
   void _sil() {
     if (_pin.isEmpty || _bekliyor) return;
     setState(() => _pin = _pin.substring(0, _pin.length - 1));
+  }
+
+  void _temizle() {
+    if (_bekliyor) return;
+    setState(() {
+      _pin = '';
+      _hata = null;
+    });
   }
 
   Future<void> _gir() async {
@@ -72,6 +84,10 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
       _sil();
       return KeyEventResult.handled;
     }
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      _temizle();
+      return KeyEventResult.handled;
+    }
     if (e.logicalKey == LogicalKeyboardKey.enter || e.logicalKey == LogicalKeyboardKey.numpadEnter) {
       _gir();
       return KeyEventResult.handled;
@@ -82,135 +98,197 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final o = context.durum.oturum;
+    final kunye = [o?.cihazAd, platformAdi(), o?.isletmeKod].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
 
     return Scaffold(
+      appBar: UstCubuk(baslik: o?.isletme ?? 'BamBumPOS', altSatir: kunye),
+      bottomNavigationBar: AltCubuk(
+        ust: o?.isletme ?? '',
+        alt: [o?.cihazAd, platformAdi()].whereType<String>().join(' · '),
+        sag: const Text('Cihaz bu işletmeye tanımlı', style: TextStyle(fontSize: 12.5, color: Renk.ikinci)),
+      ),
       body: Focus(
         focusNode: _odak,
         autofocus: true,
         onKeyEvent: _klavye,
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 380),
-                child: Column(children: [
-                  const Logo(boyut: 52),
-                  const SizedBox(height: 14),
-                  Text(o?.isletme ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800), textAlign: TextAlign.center),
-                  const SizedBox(height: 4),
-                  Text(
-                    [o?.cihazAd, o?.istasyonEtiket, o?.sube].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
-                    style: const TextStyle(color: Renk.soluk),
-                    textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            const GuncellemeSeridi(),
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFFEEF1F8), Color(0xFFF6F8FB)],
                   ),
-                  const SizedBox(height: 28),
-                  const Text('Personel PIN\'inizi girin', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 14),
-                  AnimatedBuilder(
-                    animation: _salla,
-                    builder: (_, child) {
-                      final t = _salla.value;
-                      final dx = t == 0 ? 0.0 : 10 * (1 - t) * ((t * 10).floor().isEven ? 1 : -1);
-                      return Transform.translate(offset: Offset(dx, 0), child: child);
-                    },
-                    child: SizedBox(
-                      height: 22,
-                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        for (var i = 0; i < (_pin.length < 4 ? 4 : _pin.length); i++)
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            width: 16,
-                            height: 16,
-                            margin: const EdgeInsets.symmetric(horizontal: 6),
-                            decoration: BoxDecoration(
-                              color: i < _pin.length ? Renk.marka : Colors.transparent,
-                              border: Border.all(color: i < _pin.length ? Renk.marka : Renk.cizgi, width: 2),
-                              borderRadius: BorderRadius.circular(4),
+                ),
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    // Web düzeni: geniş ekranda PIN ve telefon kartı yan yana, dar ekranda alt alta.
+                    child: LayoutBuilder(
+                      builder: (context, k) {
+                        final yan = k.maxWidth >= 760;
+                        final telefon = _kutu(const TelefonlaGiris());
+                        if (yan) {
+                          return ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 800),
+                            child: IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(flex: 54, child: _kart()),
+                                  const SizedBox(width: 10),
+                                  Expanded(flex: 46, child: telefon),
+                                ],
+                              ),
                             ),
-                          ),
-                      ]),
+                          );
+                        }
+                        return ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 440),
+                          child: Column(children: [_kart(), const SizedBox(height: 10), telefon]),
+                        );
+                      },
                     ),
                   ),
-                  SizedBox(
-                    height: 36,
-                    child: Center(
-                      child: _hata == null
-                          ? null
-                          : Text(_hata!, style: const TextStyle(color: Renk.hata, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _kutu(Widget icerik) => Container(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+    decoration: BoxDecoration(
+      color: Renk.yuzey,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Renk.cizgi),
+      boxShadow: const [BoxShadow(color: Color(0x141C1917), blurRadius: 24, offset: Offset(0, 8))],
+    ),
+    child: icerik,
+  );
+
+  Widget _kart() {
+    return _kutu(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.shield_outlined, size: 17, color: Renk.marka),
+              ),
+              const SizedBox(width: 10),
+              const Text('Oturum aç', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              const Text('PIN ile', style: TextStyle(fontSize: 12, color: Renk.soluk)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AnimatedBuilder(
+            animation: _salla,
+            builder: (_, child) {
+              final t = _salla.value;
+              final dx = t == 0 ? 0.0 : 10 * (1 - t) * ((t * 10).floor().isEven ? 1 : -1);
+              return Transform.translate(offset: Offset(dx, 0), child: child);
+            },
+            child: Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Renk.ic,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _hata != null ? Renk.hataKenar : Colors.transparent),
+              ),
+              child: Row(
+                children: [
+                  for (var i = 0; i < (_pin.length < 4 ? 4 : _pin.length); i++)
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      width: 11,
+                      height: 11,
+                      margin: const EdgeInsets.only(right: 9),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: i < _pin.length ? Renk.yazi : const Color(0xFFCBD5E1)),
                     ),
-                  ),
-                  _TusTakimi(
-                    bas: _bas,
-                    sil: _sil,
-                    gir: _gir,
-                    girAktif: _pin.length >= 4 && !_bekliyor,
-                    bekliyor: _bekliyor,
-                  ),
-                ]),
+                  const Spacer(),
+                  Text(_pin.length >= 4 ? '${_pin.length} hane' : 'en az 4 hane', style: const TextStyle(fontSize: 12, color: Renk.soluk)),
+                ],
+              ),
+            ),
+          ),
+          if (_hata != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                _hata!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Renk.hata, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          const SizedBox(height: 12),
+          for (final satir in const [
+            ['1', '2', '3'],
+            ['4', '5', '6'],
+            ['7', '8', '9'],
+          ])
+            Row(children: [for (final h in satir) _tus(h, () => _bas(h))]),
+          Row(children: [_tus('Sil', _sil, kirmizi: true), _tus('0', () => _bas('0')), _tus('Temizle', _temizle, kirmizi: true)]),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: _pin.length >= 4 && !_bekliyor ? _gir : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF4F5BD5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                textStyle: const TextStyle(fontFamily: yaziTipi, fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              child: _bekliyor
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
+                  : const Text('Oturum aç'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tus(String etiket, VoidCallback bas, {bool kirmizi = false}) => Expanded(
+    child: Padding(
+      padding: const EdgeInsets.all(4),
+      child: Material(
+        color: Renk.yuzey,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: bas,
+          child: Container(
+            height: 54,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Renk.cizgi),
+            ),
+            child: Text(
+              etiket,
+              style: TextStyle(
+                fontSize: kirmizi ? 14.5 : 21,
+                fontWeight: kirmizi ? FontWeight.w600 : FontWeight.w600,
+                color: kirmizi ? Renk.hata : Renk.yazi,
               ),
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _TusTakimi extends StatelessWidget {
-  const _TusTakimi({required this.bas, required this.sil, required this.gir, required this.girAktif, required this.bekliyor});
-  final void Function(String) bas;
-  final VoidCallback sil;
-  final VoidCallback gir;
-  final bool girAktif;
-  final bool bekliyor;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget tus(Widget icerik, VoidCallback? f, {Color? zemin, Color? renk}) => Padding(
-          padding: const EdgeInsets.all(6),
-          child: Material(
-            color: zemin ?? Renk.yuzey,
-            borderRadius: koseYuvarlak,
-            child: InkWell(
-              borderRadius: koseYuvarlak,
-              onTap: f,
-              child: Container(
-                height: 68,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-                child: DefaultTextStyle.merge(
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: renk ?? Renk.yazi),
-                  child: IconTheme(data: IconThemeData(color: renk ?? Renk.yazi, size: 26), child: icerik),
-                ),
-              ),
-            ),
-          ),
-        );
-
-    final satirlar = [
-      ['1', '2', '3'],
-      ['4', '5', '6'],
-      ['7', '8', '9'],
-    ];
-
-    return Column(children: [
-      for (final s in satirlar)
-        Row(children: [for (final h in s) Expanded(child: tus(Text(h), () => bas(h)))]),
-      Row(children: [
-        Expanded(child: tus(const Icon(Icons.backspace_outlined), sil)),
-        Expanded(child: tus(const Text('0'), () => bas('0'))),
-        Expanded(
-          child: tus(
-            bekliyor
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
-                : const Icon(Icons.arrow_forward_rounded),
-            girAktif ? gir : null,
-            zemin: girAktif ? Renk.marka : Renk.markaAcik,
-            renk: Colors.white,
-          ),
-        ),
-      ]),
-    ]);
-  }
+    ),
+  );
 }

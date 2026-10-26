@@ -9,11 +9,15 @@ import '../core/modeller.dart';
 import 'adisyon_ekrani.dart';
 import 'ortak.dart';
 
-/// Masa panosu (sipariş girişi) ve kasa listesi.
-///
-/// Veri `GET /api/v1/orders/board`'dan gelir; ekran açıkken birkaç
-/// saniyede bir tazelenir. Son pano diske yazılır: uygulama açılır açılmaz
-/// masalar görünür, ağ yanıtı gelince güncellenir.
+/// MASA PANOSU — web'deki /panel/siparisler (Board.vue) ile birebir:
+///  • sekmeler: Boş Masalar · Açık Masalar · alanlar · Şahıslar · Paket & Kanal
+///  • alan başlığında "● n dolu ● n boş"
+///  • masa kartı renkleri web'in durum sözlüğünden (MASA_KART/HAP/VURGU):
+///      boş → yeşil · rezerve → mavi · dolu → kırmızı ·
+///      30 dk'dır sipariş yok → turuncu · hesap istendi → marka mavisi
+///  • sağ altta "x/y masa dolu · n şahıs" özeti
+/// Veri `GET /api/v1/orders/board`; ekran açıkken 5 sn'de bir tazelenir,
+/// son pano diskte tutulur (açılışta beklemeden çizilir).
 class MasaPanosu extends StatefulWidget {
   const MasaPanosu({super.key, this.kasaKipi = false});
   final bool kasaKipi;
@@ -22,14 +26,22 @@ class MasaPanosu extends StatefulWidget {
   State<MasaPanosu> createState() => _MasaPanosuState();
 }
 
-class _MasaPanosuState extends State<MasaPanosu> {
-  static const _paket = '__paket__';
-  static const _cari = '__cari__';
+enum _Durum { bos, rezerve, dolu, bekliyor, hesap }
 
+/// Web'deki MASA_KART / MASA_HAP / MASA_VURGU sözlüğü.
+({Color kenar, Color zemin, Color hap, Color vurgu, String etiket}) _renk(_Durum d) => switch (d) {
+      _Durum.bos => (kenar: Renk.basari.withValues(alpha: .55), zemin: Renk.basariZemin, hap: Renk.basari, vurgu: Renk.basari, etiket: 'BOŞ'),
+      _Durum.rezerve => (kenar: Renk.bilgi.withValues(alpha: .55), zemin: Renk.bilgiZemin, hap: Renk.bilgi, vurgu: Renk.bilgi, etiket: 'REZERVE'),
+      _Durum.dolu => (kenar: Renk.hataKenar, zemin: Renk.hataZemin, hap: Renk.hata, vurgu: Renk.hata, etiket: 'AÇIK ADİSYON'),
+      _Durum.bekliyor => (kenar: Renk.uyariKenar, zemin: Renk.uyariZemin, hap: Renk.uyari, vurgu: Renk.uyari, etiket: 'AÇIK ADİSYON'),
+      _Durum.hesap => (kenar: Renk.marka.withValues(alpha: .55), zemin: Renk.markaAcik, hap: Renk.marka, vurgu: Renk.marka, etiket: 'HESAP İSTENDİ'),
+    };
+
+class _MasaPanosuState extends State<MasaPanosu> {
   Pano? _pano;
   bool _baglantiYok = false;
   bool _yukleniyor = false;
-  String? _alan;
+  String _sekme = 'bos';
   Timer? _zamanlayici;
   bool _acilisYapiliyor = false;
 
@@ -70,6 +82,44 @@ class _MasaPanosuState extends State<MasaPanosu> {
     }
   }
 
+  Duration get _fark => context.durum.oturum?.saatFarki ?? Duration.zero;
+
+  /* ───────── Durum hesapları (web Board.vue ile aynı) ───────── */
+
+  String? _sonSiparis(Masa m) {
+    String? en;
+    for (final a in m.adisyonlar) {
+      final iso = a.acilis;
+      if (iso != null && (en == null || iso.compareTo(en) > 0)) en = iso;
+    }
+    return en;
+  }
+
+  String? _acilis(Masa m) {
+    String? en;
+    for (final a in m.adisyonlar) {
+      final iso = _metin(a.ham['created_at']) ?? a.acilis;
+      if (iso != null && (en == null || iso.compareTo(en) < 0)) en = iso;
+    }
+    return en;
+  }
+
+  static String? _metin(Object? v) => v?.toString();
+
+  bool _bayat(Masa m) {
+    final son = _sonSiparis(m);
+    return son != null && gecenDakika(son, saatFarki: _fark) > 30;
+  }
+
+  _Durum _durum(Masa m) {
+    if (!m.dolu && m.bagli == null) return m.rezervasyon != null ? _Durum.rezerve : _Durum.bos;
+    if (m.adisyonlar.any((a) => a.hesapIstendi)) return _Durum.hesap;
+    if (_bayat(m)) return _Durum.bekliyor;
+    return _Durum.dolu;
+  }
+
+  /* ───────── Eylemler ───────── */
+
   Future<void> _adisyonuAc(int id) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => AdisyonEkrani(adisyonId: id, kasaKipi: widget.kasaKipi),
@@ -90,7 +140,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('${m.ad} · adisyonlar', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              child: Text('${m.ad} · adisyonlar', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
             for (final a in m.adisyonlar)
               ListTile(
@@ -147,6 +197,8 @@ class _MasaPanosuState extends State<MasaPanosu> {
     _yenile();
   }
 
+  /* ───────── Görünüm ───────── */
+
   @override
   Widget build(BuildContext context) {
     final pano = _pano;
@@ -157,39 +209,103 @@ class _MasaPanosuState extends State<MasaPanosu> {
       ]);
     }
 
-    final o = context.durum.oturum!;
-    final saatFarki = o.saatFarki;
+    final bosSayi = pano.masalar.where((m) => _durum(m) == _Durum.bos || _durum(m) == _Durum.rezerve).length;
+    final acikSayi = pano.masalar.where((m) => m.dolu).length;
+    final cariAcik = pano.cariler.where((c) => c.adisyonlar.isNotEmpty).length;
+
+    final sekmeler = <(String, String, IconData, int)>[
+      if (!widget.kasaKipi) ('bos', 'Boş Masalar', Icons.restaurant_rounded, bosSayi),
+      ('acik', 'Açık Masalar', Icons.receipt_long_outlined, acikSayi),
+      if (!widget.kasaKipi)
+        for (final a in pano.alanlar) ('alan:$a', a, Icons.restaurant_rounded, pano.masalar.where((m) => m.alan == a).length),
+      if (pano.cariler.isNotEmpty) ('cari', 'Şahıslar', Icons.people_alt_outlined, pano.cariler.length),
+      if (pano.kanalSiparisleri.isNotEmpty) ('kanal', 'Paket & Kanal', Icons.local_shipping_outlined, pano.kanalSiparisleri.length),
+    ];
+    if (!sekmeler.any((s) => s.$1 == _sekme)) _sekme = sekmeler.first.$1;
 
     return Stack(children: [
       Column(children: [
         BaglantiSeridi(gorunur: _baglantiYok),
-        if (pano.talepler.isNotEmpty || pano.onayBekleyen.isNotEmpty) _uyarilar(pano),
-        Expanded(child: widget.kasaKipi ? _kasaListesi(pano, saatFarki) : _masalar(pano, saatFarki)),
-      ]),
-      if (_acilisYapiliyor)
-        const Positioned.fill(child: ColoredBox(color: Color(0x33000000), child: Center(child: CircularProgressIndicator()))),
-      if (!widget.kasaKipi && o.yetki('orders.create'))
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            heroTag: 'hizli',
-            shape: RoundedRectangleBorder(borderRadius: koseYuvarlak),
-            backgroundColor: Renk.marka,
-            foregroundColor: Colors.white,
-            onPressed: () => _yeniAdisyon({'channel': 'pickup', 'service_type': 'takeaway'}),
-            icon: const Icon(Icons.shopping_bag_outlined),
-            label: const Text('Gel-al satış'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+          child: _SekmeSeridi(
+            sekmeler: sekmeler,
+            secili: _sekme,
+            bas: (k) => setState(() => _sekme = k),
           ),
         ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _yenile,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 84),
+              children: [
+                if (pano.talepler.isNotEmpty || pano.onayBekleyen.isNotEmpty) _uyarilar(pano),
+                ..._icerik(pano),
+              ],
+            ),
+          ),
+        ),
+      ]),
+      if (_acilisYapiliyor)
+        const Positioned.fill(child: ColoredBox(color: Color(0x22000000), child: Center(child: CircularProgressIndicator()))),
+      Positioned(
+        right: 14,
+        bottom: 14,
+        child: _OzetCipi(dolu: acikSayi, toplam: pano.masalar.length, sahis: cariAcik),
+      ),
     ]);
   }
 
+  List<Widget> _icerik(Pano pano) {
+    if (_sekme == 'cari') return [_cariler(pano.cariler)];
+    if (_sekme == 'kanal') return [_kanalBolumu(pano.kanalSiparisleri)];
+
+    final alanlar = _sekme.startsWith('alan:') ? [_sekme.substring(5)] : pano.alanlar;
+    final suz = switch (_sekme) {
+      'bos' => (Masa m) => !m.dolu && m.bagli == null,
+      'acik' => (Masa m) => m.dolu,
+      _ => (Masa m) => true,
+    };
+
+    final w = <Widget>[];
+    for (final a in alanlar) {
+      final hepsi = pano.masalar.where((m) => m.alan == a).toList();
+      final gorunen = hepsi.where(suz).toList();
+      if (gorunen.isEmpty) continue;
+      // Web gibi: sayaç o sekmede GÖRÜNEN masaları sayar.
+      w.add(_AlanBasligi(ad: a, dolu: gorunen.where((m) => m.dolu).length, bos: gorunen.where((m) => !m.dolu).length));
+      final herhangiDolu = gorunen.any((m) => m.dolu || m.bagli != null);
+      w.add(GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 18),
+        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 215,
+          mainAxisExtent: herhangiDolu ? 206 : 138,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: gorunen.length,
+        itemBuilder: (_, i) => _masaKarti(gorunen[i]),
+      ));
+    }
+    if (w.isEmpty) {
+      w.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: Text(_sekme == 'acik' ? 'Açık masa yok.' : 'Gösterilecek masa yok.', style: const TextStyle(color: Renk.soluk)),
+        ),
+      ));
+    }
+    // Web'de "Boş Masalar" sekmesinin altında paket siparişleri de listelenir.
+    if (_sekme == 'bos') w.add(_kanalBolumu(pano.kanalSiparisleri));
+    return w;
+  }
+
   Widget _uyarilar(Pano pano) {
-    return Container(
-      width: double.infinity,
-      color: Renk.yuzey,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Wrap(spacing: 8, runSpacing: 8, children: [
         for (final a in pano.onayBekleyen)
           _UyariKarti(
@@ -201,7 +317,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
           ),
         for (final t in pano.talepler)
           _UyariKarti(
-            ikon: t.tur == 'bill' ? Icons.receipt_long_rounded : Icons.notifications_active_rounded,
+            ikon: Icons.notifications_active_outlined,
             renk: Renk.uyari,
             metin: '${t.masa} · ${t.etiket}',
             dugme: 'Tamam',
@@ -211,314 +327,448 @@ class _MasaPanosuState extends State<MasaPanosu> {
     );
   }
 
-  /* ───────── Masalar ───────── */
+  /* ── Masa kartı ── */
 
-  Widget _masalar(Pano pano, Duration saatFarki) {
-    final sekmeler = [
-      ...pano.alanlar,
-      if (pano.kanalSiparisleri.isNotEmpty) _paket,
-      if (pano.cariler.isNotEmpty) _cari,
-    ];
-    if (sekmeler.isEmpty) {
-      return const Center(child: Text('Bu şubede tanımlı masa yok.', style: TextStyle(color: Renk.soluk)));
-    }
-    final alan = sekmeler.contains(_alan) ? _alan! : sekmeler.first;
+  Widget _masaKarti(Masa m) {
+    final d = _durum(m);
+    final r = _renk(d);
+    final bagli = m.bagli;
 
-    final Widget icerik;
-    if (alan == _paket) {
-      icerik = _adisyonIzgarasi(pano.kanalSiparisleri, saatFarki);
-    } else if (alan == _cari) {
-      icerik = _cariIzgarasi(pano.cariler, saatFarki);
-    } else {
-      final masalar = pano.masalar.where((m) => m.alan == alan).toList();
-      icerik = GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 168,
-          mainAxisExtent: 112,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: masalar.length,
-        itemBuilder: (_, i) => _MasaKarti(masa: masalar[i], saatFarki: saatFarki, dokun: () => _masayaDokun(masalar[i])),
-      );
-    }
-
-    return Column(children: [
-      if (sekmeler.length > 1)
-        Container(
-          color: Renk.yuzey,
-          height: 52,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            children: [
-              for (final s in sekmeler)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _SekmeDugmesi(
-                    etiket: s == _paket ? 'Paket / Diğer' : s == _cari ? 'Cariler' : s,
-                    sayi: s == _paket
-                        ? pano.kanalSiparisleri.length
-                        : s == _cari
-                            ? pano.cariler.where((c) => c.adisyonlar.isNotEmpty).length
-                            : pano.masalar.where((m) => m.alan == s && m.dolu).length,
-                    secili: s == alan,
-                    bas: () => setState(() => _alan = s),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      Expanded(child: RefreshIndicator(onRefresh: _yenile, child: icerik)),
-    ]);
-  }
-
-  Widget _adisyonIzgarasi(List<AdisyonOzet> l, Duration saatFarki) => GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 220, mainAxisExtent: 112, crossAxisSpacing: 10, mainAxisSpacing: 10),
-        itemCount: l.length,
-        itemBuilder: (_, i) => _AdisyonKarti(adisyon: l[i], saatFarki: saatFarki, dokun: () => _adisyonuAc(l[i].id)),
-      );
-
-  Widget _cariIzgarasi(List<CariKart> l, Duration saatFarki) => GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 220, mainAxisExtent: 112, crossAxisSpacing: 10, mainAxisSpacing: 10),
-        itemCount: l.length,
-        itemBuilder: (_, i) {
-          final c = l[i];
-          return _KartCercevesi(
-            dolu: c.adisyonlar.isNotEmpty,
-            renk: Renk.marka,
-            dokun: () => c.adisyonlar.isNotEmpty ? _adisyonuAc(c.adisyonlar.first.id) : _yeniAdisyon({'receivable_id': c.id}),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(c.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              const Spacer(),
-              if (c.adisyonlar.isNotEmpty)
-                Text(para(c.adisyonlar.first.kalan), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-              if (c.borc > 0) Text('Borç: ${para(c.borc)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            ]),
-          );
-        },
-      );
-
-  /* ───────── Kasa ───────── */
-
-  Widget _kasaListesi(Pano pano, Duration saatFarki) {
-    final l = pano.acikAdisyonlar
-      ..sort((a, b) {
-        if (a.hesapIstendi != b.hesapIstendi) return a.hesapIstendi ? -1 : 1;
-        return b.kalan.compareTo(a.kalan);
-      });
-    final toplam = l.fold<int>(0, (t, a) => t + a.kalan);
-
-    return Column(children: [
+    final ust = Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
-        color: Renk.yuzey,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(children: [
-          Text('${l.length} açık adisyon', style: const TextStyle(fontWeight: FontWeight.w700)),
-          const Spacer(),
-          const Text('Bekleyen: ', style: TextStyle(color: Renk.soluk)),
-          Text(para(toplam), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-        ]),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(color: r.hap, borderRadius: BorderRadius.circular(999)),
+        child: Text.rich(
+          TextSpan(children: [
+            TextSpan(text: m.ad),
+            if (m.numara != null)
+              TextSpan(text: '  #${m.numara}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Colors.white70)),
+          ]),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
+        ),
       ),
-      const Divider(),
-      Expanded(
-        child: l.isEmpty
-            ? const Center(child: Text('Ödeme bekleyen adisyon yok.', style: TextStyle(color: Renk.soluk)))
-            : RefreshIndicator(
-                onRefresh: _yenile,
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 260, mainAxisExtent: 120, crossAxisSpacing: 10, mainAxisSpacing: 10),
-                  itemCount: l.length,
-                  itemBuilder: (_, i) => _AdisyonKarti(adisyon: l[i], saatFarki: saatFarki, dokun: () => _adisyonuAc(l[i].id)),
-                ),
-              ),
-      ),
+      const SizedBox(height: 3),
+      Text(bagli != null ? 'BİRLEŞİK' : r.etiket,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: r.vurgu, letterSpacing: .4)),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(m.alan, style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+        if (m.kapasite != null) ...[
+          const Text('  ·  ', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+          const Icon(Icons.people_outline_rounded, size: 13, color: Renk.soluk),
+          const SizedBox(width: 2),
+          Text('${m.kapasite}', style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+        ],
+      ]),
     ]);
-  }
-}
 
-/* ───────── Kartlar ───────── */
-
-class _KartCercevesi extends StatelessWidget {
-  const _KartCercevesi({required this.child, required this.dokun, required this.dolu, required this.renk, this.kenar});
-  final Widget child;
-  final VoidCallback dokun;
-  final bool dolu;
-  final Color renk;
-  final Color? kenar;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: dolu ? renk : Renk.yuzey,
-      borderRadius: koseYuvarlak,
-      child: InkWell(
-        borderRadius: koseYuvarlak,
-        onTap: dokun,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: koseYuvarlak,
-            border: Border.all(color: kenar ?? (dolu ? renk : Renk.cizgi), width: kenar != null ? 2 : 1),
+    final Widget alt;
+    if (bagli != null) {
+      alt = Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const Icon(Icons.link_rounded, color: Renk.marka),
+        const SizedBox(height: 4),
+        Text('${bagli['table_name'] ?? ''} ile birleşik',
+            textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.marka)),
+      ]);
+    } else if (!m.dolu) {
+      final rez = m.rezervasyon;
+      alt = Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        if (rez != null) ...[
+          Text('${rez['time'] ?? ''} · ${rez['name'] ?? ''}',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.bilgi)),
+          const SizedBox(height: 4),
+        ],
+        Icon(Icons.add_rounded, color: r.vurgu, size: 22),
+        Text(m.servisDisi ? 'Servis dışı' : 'Adisyon aç', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: r.vurgu)),
+      ]);
+    } else {
+      final kalan = m.adisyonlar.fold<int>(0, (t, a) => t + a.kalan);
+      final kalem = m.adisyonlar.fold<int>(0, (t, a) => t + a.kalemSayisi);
+      final servis = m.adisyonlar.fold<int>(0, (t, a) => t + a.servisEdilen);
+      final kisi = m.adisyonlar.fold<int>(0, (t, a) => t + (a.kisi ?? 0));
+      final acilis = _acilis(m);
+      final son = _sonSiparis(m);
+      final bayat = _bayat(m);
+      alt = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Row(children: [
+            Expanded(
+              child: Column(children: [
+                const Text('Adisyon', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+                Text(para(kalan), maxLines: 1, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: r.vurgu)),
+              ]),
+            ),
+            Expanded(
+              child: Column(children: [
+                const Text('Süre', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+                Text(sureMetni(gecenDakika(acilis, saatFarki: _fark)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: kalem == 0 ? 0 : servis / kalem,
+              minHeight: 5,
+              backgroundColor: Renk.yazi.withValues(alpha: .06),
+              color: r.vurgu,
+            ),
           ),
-          child: DefaultTextStyle.merge(
-            style: TextStyle(color: dolu ? Colors.white : Renk.yazi),
-            child: child,
+          const SizedBox(height: 6),
+          DefaultTextStyle.merge(
+            style: const TextStyle(fontSize: 11.5, color: Renk.ikinci),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.schedule_rounded, size: 13, color: Renk.soluk),
+              const SizedBox(width: 3),
+              Text(saatMetni(acilis)),
+              const SizedBox(width: 9),
+              const Icon(Icons.restaurant_rounded, size: 13, color: Renk.soluk),
+              const SizedBox(width: 3),
+              Text('$servis/$kalem'),
+              if (kisi > 0) ...[
+                const SizedBox(width: 9),
+                const Icon(Icons.people_outline_rounded, size: 13, color: Renk.soluk),
+                const SizedBox(width: 3),
+                Text('$kisi'),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 3),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.history_rounded, size: 13, color: bayat ? Renk.uyari : Renk.soluk),
+            const SizedBox(width: 3),
+            Text('Son ${sureMetni(gecenDakika(son, saatFarki: _fark))}',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: bayat ? Renk.uyari : Renk.ikinci)),
+          ]),
+          if (m.adisyonlar.first.acan != null) ...[
+            const SizedBox(height: 3),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
+              const SizedBox(width: 3),
+              const Text('Açan: ', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+              Flexible(
+                child: Text(m.adisyonlar.first.acan!,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: Renk.yazi)),
+              ),
+            ]),
+          ],
+        ]),
+      );
+    }
+
+    return Opacity(
+      opacity: m.servisDisi ? .5 : 1,
+      child: Material(
+        color: r.zemin,
+        borderRadius: kartYuvarlak,
+        child: InkWell(
+          borderRadius: kartYuvarlak,
+          onTap: () => _masayaDokun(m),
+          child: Container(
+            decoration: BoxDecoration(borderRadius: kartYuvarlak, border: Border.all(color: r.kenar)),
+            child: Column(children: [
+              Padding(padding: const EdgeInsets.fromLTRB(8, 10, 8, 8), child: ust),
+              Divider(height: 1, color: r.kenar.withValues(alpha: .6)),
+              Expanded(child: alt),
+            ]),
           ),
         ),
       ),
     );
   }
+
+  /* ── Paket / Gel-Al / Kiosk ── */
+
+  Widget _kanalBolumu(List<AdisyonOzet> l) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(color: Renk.yuzey, borderRadius: kartYuvarlak, border: Border.all(color: Renk.cizgi)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(children: [
+            const Icon(Icons.inventory_2_outlined, size: 18, color: Renk.marka),
+            const SizedBox(width: 8),
+            const Text('Paket / Gel-Al / Kiosk siparişleri', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 8),
+            _Sayac(l.length),
+            const Spacer(),
+            if (!widget.kasaKipi && context.durum.oturum!.yetki('orders.create'))
+              TextButton.icon(
+                onPressed: () => _yeniAdisyon({'channel': 'pickup', 'service_type': 'takeaway'}),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Gel-al satış'),
+              ),
+          ]),
+        ),
+        const Divider(),
+        Padding(
+          padding: const EdgeInsets.all(10),
+          child: l.isEmpty
+              ? const Padding(padding: EdgeInsets.all(18), child: Center(child: Text('Paket sipariş yok.', style: TextStyle(color: Renk.soluk))))
+              : GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 420, mainAxisExtent: 128, crossAxisSpacing: 10, mainAxisSpacing: 10),
+                  itemCount: l.length,
+                  itemBuilder: (_, i) => _KanalKarti(adisyon: l[i], fark: _fark, dokun: () => _adisyonuAc(l[i].id)),
+                ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _cariler(List<CariKart> l) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 260, mainAxisExtent: 118, crossAxisSpacing: 8, mainAxisSpacing: 8),
+      itemCount: l.length,
+      itemBuilder: (_, i) {
+        final c = l[i];
+        final acik = c.adisyonlar.isNotEmpty;
+        final r = _renk(acik ? _Durum.dolu : _Durum.bos);
+        return Material(
+          color: r.zemin,
+          borderRadius: kartYuvarlak,
+          child: InkWell(
+            borderRadius: kartYuvarlak,
+            onTap: () => acik ? _adisyonuAc(c.adisyonlar.first.id) : _yeniAdisyon({'receivable_id': c.id}),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(borderRadius: kartYuvarlak, border: Border.all(color: r.kenar)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.person_outline_rounded, size: 18, color: r.vurgu),
+                  const SizedBox(width: 6),
+                  Expanded(
+                      child: Text(c.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
+                ]),
+                const Spacer(),
+                if (acik)
+                  Text(para(c.adisyonlar.first.kalan), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: r.vurgu))
+                else
+                  Text('Adisyon aç', style: TextStyle(fontWeight: FontWeight.w700, color: r.vurgu)),
+                if (c.borc > 0) Text('Borç: ${para(c.borc)}', style: const TextStyle(fontSize: 12, color: Renk.hata, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-class _MasaKarti extends StatelessWidget {
-  const _MasaKarti({required this.masa, required this.saatFarki, required this.dokun});
-  final Masa masa;
-  final Duration saatFarki;
-  final VoidCallback dokun;
+/* ───────── Bileşenler ───────── */
+
+class _SekmeSeridi extends StatelessWidget {
+  const _SekmeSeridi({required this.sekmeler, required this.secili, required this.bas});
+  final List<(String, String, IconData, int)> sekmeler;
+  final String secili;
+  final ValueChanged<String> bas;
 
   @override
   Widget build(BuildContext context) {
-    final m = masa;
-    final bagli = m.bagli;
-    final rez = m.rezervasyon;
-
-    if (bagli != null) {
-      return _KartCercevesi(
-        dolu: true,
-        renk: const Color(0xFF8B80E3),
-        dokun: dokun,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(m.ad, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const Spacer(),
-          Row(children: [
-            const Icon(Icons.link_rounded, size: 16, color: Colors.white),
-            const SizedBox(width: 4),
-            Expanded(child: Text('${bagli['table_name'] ?? ''} ile birleşik', maxLines: 1, overflow: TextOverflow.ellipsis)),
-          ]),
-        ]),
+    return LayoutBuilder(builder: (context, k) {
+      // Web'de sekmeler eşit genişlikte; sığmazsa yatay kayar.
+      final esit = k.maxWidth / sekmeler.length >= 150;
+      final ogeler = [
+        for (final (anahtar, etiket, ikon, sayi) in sekmeler)
+          _Sekme(etiket: etiket, ikon: ikon, sayi: sayi, secili: anahtar == secili, bas: () => bas(anahtar), esnek: esit),
+      ];
+      return Container(
+        height: 40,
+        decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+        clipBehavior: Clip.antiAlias,
+        child: esit
+            ? Row(children: ogeler)
+            : ListView(scrollDirection: Axis.horizontal, children: ogeler),
       );
-    }
+    });
+  }
+}
 
-    if (!m.dolu) {
-      return Opacity(
-        opacity: m.servisDisi ? .45 : 1,
-        child: _KartCercevesi(
-          dolu: false,
-          renk: Renk.yuzey,
-          kenar: rez != null ? Renk.bilgi : null,
-          dokun: dokun,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(m.ad, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const Spacer(),
-            if (rez != null) ...[
-              Text('Rezerve ${rez['time'] ?? ''}', style: const TextStyle(color: Renk.bilgi, fontWeight: FontWeight.w700)),
-              Text('${rez['name'] ?? ''} · ${rez['party'] ?? ''} kişi',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Renk.soluk)),
-            ] else
-              Text(m.servisDisi ? 'Servis dışı' : 'Boş', style: const TextStyle(color: Renk.soluk, fontWeight: FontWeight.w500)),
-          ]),
+class _Sekme extends StatelessWidget {
+  const _Sekme({required this.etiket, required this.ikon, required this.sayi, required this.secili, required this.bas, required this.esnek});
+  final String etiket;
+  final IconData ikon;
+  final int sayi;
+  final bool secili;
+  final VoidCallback bas;
+  final bool esnek;
+
+  @override
+  Widget build(BuildContext context) {
+    final icerik = InkWell(
+      onTap: bas,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: secili ? Renk.markaAcik.withValues(alpha: .6) : null,
+          border: Border(
+            bottom: BorderSide(color: secili ? Renk.marka : Colors.transparent, width: 2),
+            right: const BorderSide(color: Renk.cizgi),
+          ),
         ),
-      );
-    }
-
-    final a = m.adisyonlar.first;
-    final renk = a.hesapIstendi ? Renk.uyari : a.onayBekliyor ? Renk.bilgi : Renk.marka;
-    final kalan = m.adisyonlar.fold<int>(0, (t, x) => t + x.kalan);
-    final dk = gecenDakika(a.acilis, saatFarki: saatFarki);
-
-    return _KartCercevesi(
-      dolu: true,
-      renk: renk,
-      dokun: dokun,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(m.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-          if (m.adisyonlar.length > 1)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4)),
-              child: Text('${m.adisyonlar.length}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-            ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+          Icon(ikon, size: 16, color: secili ? Renk.marka : Renk.ikinci),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(etiket,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: secili ? Renk.marka : Renk.yazi)),
+          ),
+          const SizedBox(width: 6),
+          _Sayac(sayi, dolu: secili),
         ]),
+      ),
+    );
+    return esnek ? Expanded(child: icerik) : icerik;
+  }
+}
+
+class _Sayac extends StatelessWidget {
+  const _Sayac(this.sayi, {this.dolu = false});
+  final int sayi;
+  final bool dolu;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(color: dolu ? Renk.marka : Renk.ic, borderRadius: BorderRadius.circular(5)),
+        child: Text('$sayi', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: dolu ? Colors.white : Renk.ikinci)),
+      );
+}
+
+class _AlanBasligi extends StatelessWidget {
+  const _AlanBasligi({required this.ad, required this.dolu, required this.bos});
+  final String ad;
+  final int dolu;
+  final int bos;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget nokta(Color c, String m) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+          const SizedBox(width: 4),
+          Text(m, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: c)),
+        ]);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: BorderRadius.circular(8)),
+          child: const Icon(Icons.restaurant_rounded, size: 16, color: Renk.marka),
+        ),
+        const SizedBox(width: 10),
+        Text(ad, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         const Spacer(),
-        Text(para(kalan), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
-        Text(
-          a.hesapIstendi ? 'Hesap istendi · ${sureMetni(dk)}' : '${a.kalemSayisi} kalem · ${sureMetni(dk)}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.white70),
-        ),
+        nokta(Renk.hata, '$dolu dolu'),
+        const SizedBox(width: 10),
+        nokta(Renk.basari, '$bos boş'),
       ]),
     );
   }
 }
 
-class _AdisyonKarti extends StatelessWidget {
-  const _AdisyonKarti({required this.adisyon, required this.saatFarki, required this.dokun});
+class _KanalKarti extends StatelessWidget {
+  const _KanalKarti({required this.adisyon, required this.fark, required this.dokun});
   final AdisyonOzet adisyon;
-  final Duration saatFarki;
+  final Duration fark;
   final VoidCallback dokun;
 
   @override
   Widget build(BuildContext context) {
     final a = adisyon;
-    final dk = gecenDakika(a.acilis, saatFarki: saatFarki);
-    return _KartCercevesi(
-      dolu: false,
-      renk: Renk.yuzey,
-      kenar: a.hesapIstendi ? Renk.uyari : null,
-      dokun: dokun,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(a.baslik, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-          if (a.hesapIstendi) const Icon(Icons.receipt_long_rounded, size: 18, color: Renk.uyari),
-        ]),
-        Text(a.durumEtiket, style: const TextStyle(fontSize: 12, color: Renk.soluk)),
-        const Spacer(),
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(child: Text('${a.kalemSayisi} kalem · ${sureMetni(dk)}', style: const TextStyle(fontSize: 12, color: Renk.soluk))),
-          Text(para(a.kalan), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        ]),
-      ]),
+    final (odemeRenk, odemeIkon) = switch (a.odemeDurumu) {
+      'paid' => (Renk.basari, Icons.check_circle_outline_rounded),
+      'partial' => (Renk.uyari, Icons.timelapse_rounded),
+      _ => (Renk.soluk, Icons.shopping_cart_outlined),
+    };
+    return Material(
+      color: Renk.yuzey,
+      borderRadius: kartYuvarlak,
+      child: InkWell(
+        borderRadius: kartYuvarlak,
+        onTap: dokun,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          decoration: BoxDecoration(borderRadius: kartYuvarlak, border: Border.all(color: Renk.cizgi), boxShadow: kartGolge),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              if (a.kaynakEtiket.isNotEmpty)
+                Rozet(a.kaynakEtiket, renk: Renk.bilgi, zemin: Renk.bilgiZemin, kenar: Renk.bilgiKenar, ikon: Icons.people_outline_rounded),
+              const SizedBox(width: 6),
+              if (a.servisTuruEtiket.isNotEmpty)
+                Rozet(a.servisTuruEtiket, renk: Renk.uyari, zemin: Renk.uyariZemin, kenar: Renk.uyariKenar, ikon: Icons.shopping_cart_outlined),
+              const Spacer(),
+              Text('#${a.id}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Renk.soluk)),
+            ]),
+            const SizedBox(height: 6),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(a.baslik, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text('${a.kalemSayisi} kalem  ·  ${sureMetni(gecenDakika(a.acilis, saatFarki: fark))}',
+                      style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+                ]),
+              ),
+              Text(para(a.toplam), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+            ]),
+            const Spacer(),
+            const Divider(),
+            const SizedBox(height: 6),
+            Row(children: [
+              Rozet(a.durumEtiket, renk: Renk.bilgi, zemin: Renk.bilgiZemin, kenar: Renk.bilgiKenar, ikon: Icons.arrow_forward_rounded),
+              const SizedBox(width: 6),
+              Rozet(a.odemeEtiket, renk: odemeRenk, ikon: odemeIkon),
+              const Spacer(),
+              Text('${a.servisEdilen}/${a.kalemSayisi} servis', style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+            ]),
+          ]),
+        ),
+      ),
     );
   }
 }
 
-class _SekmeDugmesi extends StatelessWidget {
-  const _SekmeDugmesi({required this.etiket, required this.sayi, required this.secili, required this.bas});
-  final String etiket;
-  final int sayi;
-  final bool secili;
-  final VoidCallback bas;
+class _OzetCipi extends StatelessWidget {
+  const _OzetCipi({required this.dolu, required this.toplam, required this.sahis});
+  final int dolu;
+  final int toplam;
+  final int sahis;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: secili ? Renk.marka : Renk.zemin,
-      borderRadius: koseYuvarlak,
-      child: InkWell(
-        borderRadius: koseYuvarlak,
-        onTap: bas,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(children: [
-            Text(etiket, style: TextStyle(fontWeight: FontWeight.w700, color: secili ? Colors.white : Renk.yazi)),
-            if (sayi > 0) ...[
-              const SizedBox(width: 6),
-              Text('$sayi', style: TextStyle(fontWeight: FontWeight.w800, color: secili ? Colors.white70 : Renk.marka)),
-            ],
-          ]),
-        ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4))],
       ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.qr_code_2_rounded, size: 16, color: Colors.white70),
+        const SizedBox(width: 8),
+        Text('$dolu/$toplam', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+        const SizedBox(width: 6),
+        const Text('masa dolu', style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+        if (sahis > 0) ...[
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: .15), borderRadius: BorderRadius.circular(6)),
+            child: Text('$sahis şahıs', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+          ),
+        ],
+      ]),
     );
   }
 }
@@ -536,14 +786,14 @@ class _UyariKarti extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
       decoration: BoxDecoration(
-        color: renk.withValues(alpha: .1),
+        color: renk.withValues(alpha: .08),
         borderRadius: koseYuvarlak,
-        border: Border.all(color: renk.withValues(alpha: .4)),
+        border: Border.all(color: renk.withValues(alpha: .35)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(ikon, size: 18, color: renk),
         const SizedBox(width: 8),
-        Text(metin, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(metin, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
         const SizedBox(width: 8),
         TextButton(onPressed: basildi, child: Text(dugme)),
       ]),

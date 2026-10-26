@@ -112,8 +112,8 @@ class Api {
 
   String yeniIslemKimligi() => _uuid.v4();
 
-  Future<dynamic> get(String yol, {Map<String, dynamic>? sorgu, Duration? zamanAsimi}) =>
-      _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi);
+  Future<dynamic> get(String yol, {Map<String, dynamic>? sorgu, Duration? zamanAsimi, Map<String, String>? basliklar}) =>
+      _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi, basliklar: basliklar);
 
   Future<dynamic> post(String yol, [Object? govde, Map<String, String>? basliklar]) =>
       _istek('POST', yol, govde: govde ?? const {}, basliklar: basliklar);

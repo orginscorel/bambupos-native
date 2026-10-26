@@ -21,18 +21,28 @@ class Oturum {
   bool get kilitli => _cihaz['kilitli'] == true;
 
   String get isletme => _metin(_json(ham['isletme'])['ad']) ?? '';
+  String get isletmeKod => _metin(_json(ham['isletme'])['kod']) ?? '';
   String? get sube => _metin(_json(ham['sube'])['ad']);
   int get subeId => tamSayi(_json(ham['sube'])['id']);
 
   Json? get _operator => ham['operator'] is Map ? _json(ham['operator']) : null;
   bool get operatorVar => _operator != null;
   String get operatorAd => _metin(_operator?['name']) ?? '';
+  String get operatorRol => _metin(_operator?['rol']) ?? '';
 
   late final Set<String> yetkiler =
       (ham['yetkiler'] is List ? (ham['yetkiler'] as List).map((e) => e.toString()) : const <String>[]).toSet();
 
   bool yetki(String anahtar) => yetkiler.contains(anahtar);
   bool get carilerAcik => _json(ham['ozellikler'])['cariler'] == true;
+
+  /// İşletme Yönetimi › Eklentiler. Liste hiç gelmediyse (eski sunucu)
+  /// varsayılan AÇIK sayılır — sunucu zaten kapalı özelliğin verisini vermez.
+  bool eklenti(String anahtar, {bool varsayilan = true}) {
+    final e = ham['eklentiler'];
+    if (e is! Map || !e.containsKey(anahtar)) return varsayilan;
+    return e[anahtar] == true;
+  }
 
   /// Sunucu saati ile cihaz saati arasındaki fark (süre rozetleri doğru olsun).
   Duration get saatFarki {
@@ -57,6 +67,13 @@ class AdisyonOzet {
   String get durumEtiket => _metin(ham['status_label']) ?? '';
   bool get acik => ham['is_open'] == true;
   int get kalemSayisi => tamSayi(ham['items_count']);
+  int get servisEdilen => tamSayi(ham['served_count']);
+  String get kaynakEtiket => _metin(ham['source_label']) ?? '';
+  String get servisTuruEtiket => _metin(ham['service_type_label']) ?? '';
+  String get servisTuru => _metin(ham['service_type']) ?? '';
+  String get odemeDurumu => _metin(ham['payment_state']) ?? 'unpaid';
+  String get odemeEtiket => _metin(ham['payment_label']) ?? '';
+  List<String> get bagliMasalar => (ham['linked_table_names'] is List) ? (ham['linked_table_names'] as List).map((e) => e.toString()).toList() : const [];
   int get toplam => tamSayi(ham['total_minor']);
   int get odenen => tamSayi(ham['paid_minor']);
   int get kalan => tamSayi(ham['remaining_minor']);
@@ -83,6 +100,8 @@ class Masa {
   int get id => tamSayi(ham['id']);
   String get ad => _metin(ham['name']) ?? '';
   String get alan => _metin(ham['area_name']) ?? 'Salon';
+  int? get numara => ham['number'] == null ? null : tamSayi(ham['number']);
+  int? get kapasite => ham['capacity'] == null ? null : tamSayi(ham['capacity']);
   int get alanSira => tamSayi(ham['area_sort'], 9999);
   String get durum => _metin(ham['status']) ?? 'available';
   late final List<AdisyonOzet> adisyonlar = _liste(ham['orders']).map(AdisyonOzet.new).toList();
@@ -178,6 +197,14 @@ class Kalem {
 
   /// Henüz hazırlığa gitmemiş satır (silinebilir, iptal gerekmez).
   bool get taslak => durum == 'placed' && bekleyenAdet >= adet;
+  int get birimFiyat => tamSayi(ham['unit_price_minor']) + tamSayi(ham['options_price_minor']);
+  String? get ikramNedeni => _metin(ham['comp_reason']);
+  /// Kalemin ilk eklenme saati ve ekleyeni (web: kalem dökümü).
+  ({String? saat, String? kisi}) get ilkEkleme {
+    final d = _liste(ham['dokum']);
+    if (d.isEmpty) return (saat: null, kisi: null);
+    return (saat: _metin(d.first['saat']), kisi: _metin(d.first['kisi']));
+  }
 }
 
 class Adisyon extends AdisyonOzet {
@@ -186,6 +213,7 @@ class Adisyon extends AdisyonOzet {
   late final List<Kalem> kalemler = _liste(ham['items']).map(Kalem.new).toList();
   List<Kalem> get aktifKalemler => kalemler.where((k) => k.aktif).toList();
   int get gonderilmemis => aktifKalemler.fold(0, (t, k) => t + (k.hazirliksiz ? 0 : k.bekleyenAdet));
+  late final List<Json> olaylar = _liste(ham['events']);
 }
 
 /* ───────────── Katalog ───────────── */

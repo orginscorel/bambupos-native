@@ -51,14 +51,15 @@ class _SahteSunucu implements HttpClientAdapter {
 }
 
 Future<void> _fontlar() async {
-  // Flutter SDK'nın kendi Material yazı tipleri (flutter/bin/cache/...).
+  // Uygulamanın gömülü yazı tipi (web ile aynı): Poppins.
+  final poppins = FontLoader('Poppins');
+  for (final w in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+    poppins.addFont(Future.value(ByteData.sublistView(File('assets/fonts/Poppins-$w.ttf').readAsBytesSync())));
+  }
+  await poppins.load();
+  // Material simgeleri Flutter SDK'nın kendi kopyasından.
   final artifacts = File(Platform.resolvedExecutable).parent.parent.parent.path; // .../artifacts/engine/<platform>/flutter_tester
   final kok = Platform.environment['FLUTTER_FONTLARI'] ?? '$artifacts/material_fonts';
-  final roboto = FontLoader('Roboto');
-  for (final f in ['Roboto-Regular', 'Roboto-Medium', 'Roboto-Bold', 'Roboto-Black']) {
-    roboto.addFont(Future.value(ByteData.sublistView(File('$kok/$f.ttf').readAsBytesSync())));
-  }
-  await roboto.load();
   final ikon = FontLoader('MaterialIcons')
     ..addFont(Future.value(ByteData.sublistView(File('$kok/MaterialIcons-Regular.otf').readAsBytesSync())));
   await ikon.load();
@@ -76,7 +77,7 @@ Widget _uygulama(UygulamaDurumu d, Widget ekran) => DurumKapsami(
       durum: d,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: temaKur(yaziTipi: 'Roboto'),
+        theme: temaKur(),
         locale: const Locale('tr', 'TR'),
         supportedLocales: const [Locale('tr', 'TR')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -109,7 +110,14 @@ Future<void> _bekle(WidgetTester t) async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   if (_dizin != null) setUpAll(_fontlar);
+  // Görsel önbelleği (cached_network_image) geçici klasör ister.
+  setUp(() {
+    final gecici = Directory.systemTemp.createTempSync('bbpos-onbellek').path;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/path_provider'), (_) async => gecici);
+  });
 
   const tablet = Size(1280, 800);
   const telefon = Size(412, 900);
@@ -162,6 +170,10 @@ void main() {
       await _bekle(t);
       await _yaz(t, '4-adisyon-$ad');
       await t.pumpWidget(const SizedBox());
+      d.ajan?.dispose();
+      // Görsel önbelleğinin kendi zamanlayıcıları bitsin.
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await t.pump(const Duration(seconds: 30));
     }, skip: _dizin == null);
   }
 }

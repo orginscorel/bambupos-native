@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ajan.dart';
 import 'api.dart';
 import 'modeller.dart';
 
@@ -29,6 +30,9 @@ class UygulamaDurumu extends ChangeNotifier {
   Asama asama = Asama.acilis;
   Oturum? oturum;
   String? sonHata;
+
+  /// Ağ taraması + fiş basma (cihaz oturumu doğrulanınca başlar).
+  YazdirmaAjani? ajan;
 
   Timer? _kalpAtisi;
   Timer? _yenidenDene;
@@ -75,6 +79,10 @@ class UygulamaDurumu extends ChangeNotifier {
       final veri = await api.get('/api/v1/uygulama/oturum');
       oturum = Oturum((veri as Map).cast<String, dynamic>());
       sonHata = null;
+      if (ajan == null) {
+        ajan = YazdirmaAjani(api, surum);
+        ajan!.baslat();
+      }
       _gec(oturum!.operatorVar ? Asama.calisma : Asama.pin);
     } on ApiHata catch (e) {
       if (e.oturumYok || e.yetkiYok) {
@@ -130,6 +138,8 @@ class UygulamaDurumu extends ChangeNotifier {
   void _oturumDustu() {
     if (asama == Asama.aktivasyon) return;
     oturum = null;
+    ajan?.dispose();
+    ajan = null;
     _gec(Asama.aktivasyon);
   }
 
