@@ -44,7 +44,8 @@ jobs:
           channel: stable
           cache: true
       - id: surum
-        run: echo "surum=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "surum=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')" >> "$GITHUB_OUTPUT"
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
