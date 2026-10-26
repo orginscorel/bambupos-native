@@ -26,6 +26,8 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
   int _kalan = 0;
   bool _bagli = true;
   Timer? _saniye;
+  int _sayac = 0;
+  bool _mesgul = false;
   late final Api _api = context.api;
 
   @override
@@ -34,10 +36,14 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
     _yukle();
     _saniye = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+      _sayac++;
       if (_kalan <= 1) {
         _yukle();
       } else {
         setState(() => _kalan--);
+        // 2 sn'de bir "okutuldu mu" yoklaması: okutulduysa sunucu yeni
+        // kodu döner ve QR süre dolmadan değişir (web ekranı ile aynı).
+        if (_sayac.isEven && _paket != null) _yukle(yokla: true);
       }
     });
   }
@@ -48,12 +54,25 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
     super.dispose();
   }
 
-  Future<void> _yukle() async {
+  Future<void> _yukle({bool yokla = false}) async {
+    // Yoklama üst üste binmez; tam yükleme (kip değişimi, süre dolumu) hep geçer.
+    if (_mesgul && yokla) return;
+    _mesgul = true;
+    final mola = _mola;
     try {
-      final r = await _api.get('/api/v1/uygulama/mesai-qr', sorgu: {if (_mola) 'kip': 'mola'});
-      if (!mounted || r is! Map) return;
+      final eski = _paket;
+      final son = yokla && eski != null ? eski['kod']?.toString() : null;
+      final r = await _api.get('/api/v1/uygulama/mesai-qr', sorgu: {
+        'kip': mola ? 'mola' : 'mesai',
+        'son': ?son,
+      });
+      // Yanıt gelene kadar kip değiştiyse eski kipin karesi basılmaz.
+      if (!mounted || r is! Map || mola != _mola) return;
       setState(() {
-        _paket = r.cast<String, dynamic>();
+        final yeni = r.cast<String, dynamic>();
+        _paket = yeni['ayni'] == true && _paket != null
+            ? {..._paket!, 'kalan': yeni['kalan'], 'saat': yeni['saat'], 'tarih': yeni['tarih']}
+            : yeni;
         _kalan = tamSayi(r['kalan'], 10).clamp(1, 60);
         _hata = null;
         _bagli = true;
@@ -65,6 +84,8 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
         _kalan = 5;
         if (_paket == null || e.kod == 404) _hata = e.mesaj;
       });
+    } finally {
+      _mesgul = false;
     }
   }
 
