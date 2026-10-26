@@ -121,6 +121,13 @@ class UygulamaDurumu extends ChangeNotifier {
         ajan = YazdirmaAjani(api, surum);
         ajan!.baslat();
       }
+      // UYGULAMA KAPANIP AÇILINCA PIN (2026-10-26 işletme isteği): soğuk
+      // açılışta önceki personel oturumu düşürülür, cihaz eşli kalır. Öne
+      // gelme (arka plandan dönüş) bunu YAPMAZ — yalnız ilk açılış.
+      if (ilk && oturum!.operatorVar) {
+        await kilitle();
+        return;
+      }
       _gec(oturum!.operatorVar ? Asama.calisma : Asama.pin);
     } on ApiHata catch (e) {
       if (e.oturumYok || e.yetkiYok) {

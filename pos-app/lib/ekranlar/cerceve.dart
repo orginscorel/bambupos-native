@@ -7,6 +7,7 @@ import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
 import 'ortak.dart';
+import 'surum_notlari.dart';
 
 /// WEB POS KABUĞU — resources/css/pos-kabuk.css + PosUst.vue + PanelSerit.vue
 /// birebiri. Ölçüler tarayıcıdan okundu (2026-10-26, 390 / 820 / 1280 px):
@@ -115,6 +116,11 @@ class MarkaIsareti extends StatelessWidget {
 
 /* ═══════════════════════ ÜST ÇUBUK (.pg-ust) ═══════════════════════ */
 
+/// Başlık bloğu: arama kutusu yoksa kalan genişliği kaplar; varsa en çok
+/// 320 px (arama kutusu Expanded'dır).
+Widget _baslikAlani({required bool esnek, required Widget child}) =>
+    esnek ? Expanded(child: child) : ConstrainedBox(constraints: const BoxConstraints(maxWidth: 320), child: child);
+
 class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
   const UstCubuk({super.key, required this.baslik, this.altSatir, this.rozet, this.sol, this.orta, this.sag = const [], this.zil = false});
 
@@ -150,46 +156,56 @@ class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
             children: [
               ?sol,
               MarkaIsareti(yazi: !telefon),
-              if (!telefon && (orta == null || g >= 1100)) ...[
-                Container(width: 1, height: 30, margin: const EdgeInsets.only(left: 16, right: 14), color: Kabuk.line),
-                Flexible(
-                  flex: orta == null ? 1 : 0,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        baslik,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Kabuk.ink),
-                      ),
-                      if (altSatir != null && altSatir!.isNotEmpty)
-                        Text(
-                          altSatir!.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Kabuk.soft, letterSpacing: .5),
+              // Başlık + rozet tek esnek blokta: kalan boşluk SAĞA taşmaz,
+              // zil ve tema düğmesi her genişlikte sağ uçta durur (web .pg-ust).
+              _baslikAlani(
+                esnek: orta == null,
+                child: Row(
+                  mainAxisSize: orta == null ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    if (!telefon && (orta == null || g >= 1100)) ...[
+                      Container(width: 1, height: 30, margin: const EdgeInsets.only(left: 16, right: 14), color: Kabuk.line),
+                      Flexible(
+                        flex: 1,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              baslik,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Kabuk.ink),
+                            ),
+                            if (altSatir != null && altSatir!.isNotEmpty)
+                              Text(
+                                altSatir!.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Kabuk.soft, letterSpacing: .5),
+                              ),
+                          ],
                         ),
+                      ),
                     ],
-                  ),
+                    if (rozet != null && g >= 900) ...[
+                      const SizedBox(width: 14),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(color: Kabuk.sunken, borderRadius: BorderRadius.circular(6)),
+                        child: Text(
+                          rozet!.toUpperCase(),
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Kabuk.soft, letterSpacing: .9),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-              if (rozet != null && g >= 900) ...[
-                const SizedBox(width: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(color: Kabuk.sunken, borderRadius: BorderRadius.circular(6)),
-                  child: Text(
-                    rozet!.toUpperCase(),
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Kabuk.soft, letterSpacing: .9),
-                  ),
-                ),
-              ],
-              if (orta != null) ...[const SizedBox(width: 14), Expanded(child: orta!)] else const Spacer(),
+              ),
+              if (orta != null) ...[const SizedBox(width: 14), Expanded(child: orta!)],
               ...sag,
               if (zil) const BildirimZili(),
-            const TemaDugmesi(),
+              const TemaDugmesi(),
             ],
           ),
         ),
@@ -383,27 +399,35 @@ class AltCubuk extends StatelessWidget {
         ],
         if (g > 1100 && surum != null) ...[
           const SizedBox(width: 8),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text.rich(
-                TextSpan(
-                  children: [
+          // Web: sürüme dokununca sürüm notları açılır.
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => surumNotlariAc(context),
+            child: Tooltip(
+              message: 'Sürüm notlarını aç',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text.rich(
                     TextSpan(
-                      text: 'BamBum',
-                      style: TextStyle(color: Kabuk.soft),
+                      children: [
+                        TextSpan(
+                          text: 'BamBum',
+                          style: TextStyle(color: Kabuk.soft),
+                        ),
+                        TextSpan(
+                          text: 'POS',
+                          style: TextStyle(color: Kabuk.ink, fontWeight: FontWeight.w800),
+                        ),
+                      ],
                     ),
-                    TextSpan(
-                      text: 'POS',
-                      style: TextStyle(color: Kabuk.ink, fontWeight: FontWeight.w800),
-                    ),
-                  ],
-                ),
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                  Text('v$surum', style: TextStyle(fontSize: 11, color: Kabuk.soft)),
+                ],
               ),
-              Text('v$surum', style: TextStyle(fontSize: 11, color: Kabuk.soft)),
-            ],
+            ),
           ),
         ],
       ],
@@ -907,22 +931,21 @@ Future<void> tumBolumlerAc(BuildContext context, List<CekmeceOgesi> ogeler) {
   );
 }
 
-
 /// Web .pg-tema: 36×36, çerçevesiz, 8 px köşe; simge temayı söyler.
 class TemaDugmesi extends StatelessWidget {
   const TemaDugmesi({super.key});
 
   @override
   Widget build(BuildContext context) => Tooltip(
-        message: koyuTema.value ? 'Açık temaya geç' : 'Koyu temaya geç',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: temaDegistir,
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Icon(koyuTema.value ? Icons.dark_mode_outlined : Icons.light_mode_outlined, size: 18, color: koyuTema.value ? Kabuk.ink : Kabuk.soft),
-          ),
-        ),
-      );
+    message: koyuTema.value ? 'Açık temaya geç' : 'Koyu temaya geç',
+    child: InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: temaDegistir,
+      child: SizedBox(
+        width: 36,
+        height: 36,
+        child: Icon(koyuTema.value ? Icons.dark_mode_outlined : Icons.light_mode_outlined, size: 18, color: koyuTema.value ? Kabuk.ink : Kabuk.soft),
+      ),
+    ),
+  );
 }

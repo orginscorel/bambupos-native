@@ -4,6 +4,7 @@ import '../core/modeller.dart';
 import 'cerceve.dart';
 import 'borclar_ekrani.dart';
 import 'gecmis_ekrani.dart';
+import 'gorevler_ekrani.dart';
 import 'giderler_ekrani.dart';
 import 'guncelleme.dart';
 import 'gun_sonu_ekrani.dart';
@@ -12,6 +13,7 @@ import 'kasa_kapanisi.dart';
 import 'kds_ekrani.dart';
 import 'masa_panosu.dart';
 import 'masalar_ekrani.dart';
+import 'mesailer_ekrani.dart';
 import 'mesai_qr_ekrani.dart';
 import 'teslimat_ekrani.dart';
 import 'ortak.dart';
@@ -34,6 +36,8 @@ enum PosEkrani {
       izin: 'kds.view', istasyonlar: ['hookah'], ozellik: 'nargile', serit: 'nargile'),
   komi('runner', 'Komi', 'Servis ekranı', Icons.notifications_none_rounded, '/panel/komi', izin: 'kds.deliver', ozellik: 'hazirlik_takibi'),
   teslimat('delivery', 'Teslimat', 'Teslimat', Icons.local_shipping_outlined, '/panel/teslimat', izin: 'delivery.view', ozellik: 'delivery'),
+  gorevler('tasks', 'Görevler', 'Görevler', Icons.assignment_outlined, '/panel/gorevler', izin: 'tasks.view'),
+  mesailer('mesailer', 'Mesailer', 'Mesailer', Icons.schedule_rounded, '/panel/mesai', izin: 'staff.view', ozellik: 'shifts'),
   /// Tüm personel: mesai başlatmak yetki değil zorunluluk (web ile aynı karar).
   mesaiQr('mesai-qr', 'Mesai / mola QR', 'Mesai QR', Icons.schedule_rounded, '/panel/mesai-qr', izin: null, ozellik: 'shifts'),
   borclar('receivables', 'Borçlar / Şahıslar', 'Borçlar / Şahıslar', Icons.inbox_outlined, '/panel/borclar', izin: 'receivables.view', ozellik: 'receivables', para: true),
@@ -69,7 +73,7 @@ enum PosEkrani {
 
 /// usePanelNav CEKMECE_GIZLI_ANAHTAR: "Tümü" kutusunda görünmeyenler
 /// (şeritte kısayolu olan ya da yönetimde duran bölümler).
-const _cekmeceGizli = {'inventory', 'wifi', 'discounts', 'catalog', 'runner', 'barista', 'kds', 'tables', 'staff', 'shifts', 'tasks', 'settings'};
+const _cekmeceGizli = {'inventory', 'wifi', 'discounts', 'catalog', 'runner', 'barista', 'kds', 'tables', 'staff', 'shifts', 'tasks', 'mesailer', 'settings'};
 
 /// Cihazın istasyonu → açılışta gelen ana ekran.
 PosEkrani anaEkran(Oturum o) => switch (o.istasyon) {
@@ -156,7 +160,8 @@ Widget posAltSerit(BuildContext context, {required PosEkrani? secili, required v
           durum: c['iyi'] == false ? 'uyari' : 'iyi',
         ),
     ],
-    surum: o.panelSurum.isEmpty ? null : o.panelSurum,
+    // Uygulamanın kendi sürümü; dokununca sürüm notları (uygulama + panel).
+    surum: durum.surum,
   );
 }
 
@@ -233,5 +238,7 @@ class _KabukState extends State<Kabuk> {
         PosEkrani.giderler => const GiderlerEkrani(),
         PosEkrani.gunSonu => const GunSonuEkrani(),
         PosEkrani.mesaiQr => const MesaiQrEkrani(),
+        PosEkrani.gorevler => const GorevlerEkrani(),
+        PosEkrani.mesailer => const MesailerEkrani(),
       };
 }

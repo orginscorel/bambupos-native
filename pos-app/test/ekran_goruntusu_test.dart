@@ -125,7 +125,8 @@ void main() {
   const tablet = Size(1280, 800);
   const telefon = Size(412, 900);
 
-  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon)]) {
+  const dikey = Size(800, 1280);
+  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('dikey', dikey)]) {
     testWidgets('aktivasyon $ad', (t) async {
       await _boyut(t, boyut);
       final d = await _durum();
