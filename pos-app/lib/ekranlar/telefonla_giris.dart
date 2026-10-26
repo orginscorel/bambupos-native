@@ -110,7 +110,7 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
           width: 30,
           height: 30,
           decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: BorderRadius.circular(8)),
-          child: const Icon(Icons.qr_code_scanner_rounded, size: 17, color: Renk.marka),
+          child: Icon(Icons.qr_code_scanner_rounded, size: 17, color: Renk.marka),
         ),
         const SizedBox(width: 10),
         const Text('Telefonla oturum aç', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
@@ -128,12 +128,12 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
             boxShadow: const [BoxShadow(color: Color(0x141C1917), blurRadius: 14, offset: Offset(0, 4))],
           ),
           child: _adres == null
-              ? Center(child: Text(_mesaj, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Renk.soluk)))
+              ? Center(child: Text(_mesaj, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Renk.soluk)))
               : QrImageView(data: _adres!, padding: EdgeInsets.zero, gapless: true),
         ),
       ),
       const SizedBox(height: 8),
-      Text(_sureMetni, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.ikinci)),
+      Text(_sureMetni, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.ikinci)),
       const SizedBox(height: 4),
       Center(
         child: SizedBox(
@@ -150,7 +150,7 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
         ),
       ),
       const SizedBox(height: 10),
-      const Text.rich(
+      Text.rich(
         TextSpan(children: [
           TextSpan(text: 'Telefonunuzun kamerasıyla kareyi okutun. Telefonda '),
           TextSpan(text: 'hangi hesapla giriş yaptıysanız', style: TextStyle(fontWeight: FontWeight.w700, color: Renk.yazi)),
@@ -165,13 +165,13 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: Renk.ic, borderRadius: BorderRadius.circular(10)),
           child: Column(children: [
-            const Text('YENİ CİHAZ BAĞLAMAK İÇİN',
+            Text('YENİ CİHAZ BAĞLAMAK İÇİN',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Renk.soluk, letterSpacing: .8)),
             const SizedBox(height: 4),
             Text(kod, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 4)),
             const SizedBox(height: 2),
             Text('${context.api.taban.host}/baglan adresine gidip bu kodu yazın.',
-                textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
           ]),
         ),
       ],

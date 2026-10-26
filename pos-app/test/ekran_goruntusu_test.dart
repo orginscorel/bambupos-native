@@ -81,7 +81,8 @@ Widget _uygulama(UygulamaDurumu d, Widget ekran) => DurumKapsami(
         locale: const Locale('tr', 'TR'),
         supportedLocales: const [Locale('tr', 'TR')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: RepaintBoundary(key: _sinir, child: ekran),
+        builder: (_, c) => RepaintBoundary(key: _sinir, child: c),
+        home: ekran,
       ),
     );
 
@@ -111,6 +112,8 @@ Future<void> _bekle(WidgetTester t) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // KOYU=1 → koyu tema görüntüleri.
+  koyuTema.value = Platform.environment['KOYU'] == '1';
   if (_dizin != null) setUpAll(_fontlar);
   // Görsel önbelleği (cached_network_image) geçici klasör ister.
   setUp(() {
@@ -155,6 +158,17 @@ void main() {
         await t.pumpWidget(_uygulama(d, const Kabuk()));
         await _bekle(t);
         await _yaz(t, '3-pano-$istasyon-$ad');
+        if (istasyon == 'order_entry') {
+          await t.tap(find.text('Ayşe Yıldız').last);
+          await _bekle(t);
+          expect(find.text('Personel değiştir'), findsOneWidget);
+          await _yaz(t, '6-kisi-$ad');
+          await t.tapAt(const Offset(5, 300));
+          await _bekle(t);
+          await t.tap(find.text('Tümü'));
+          await _bekle(t);
+          await _yaz(t, '8-tumu-$ad');
+        }
         await t.pumpWidget(const SizedBox());
       }, skip: _dizin == null);
     }

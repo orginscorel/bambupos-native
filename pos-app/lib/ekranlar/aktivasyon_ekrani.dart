@@ -156,7 +156,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
     final kalan = _bitis?.difference(DateTime.now());
 
     final kodKutusu = Column(mainAxisSize: MainAxisSize.min, children: [
-      const Text('Cihaz tanımlama kodu', style: TextStyle(color: Renk.soluk, fontWeight: FontWeight.w600)),
+      Text('Cihaz tanımlama kodu', style: TextStyle(color: Renk.soluk, fontWeight: FontWeight.w600)),
       const SizedBox(height: 12),
       if (_durum == 'yukleniyor')
         const SizedBox(height: 96, child: Center(child: CircularProgressIndicator()))
@@ -175,7 +175,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
                   border: Border.all(color: Renk.marka.withValues(alpha: .25)),
                 ),
                 child: Text(h,
-                    style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: Renk.marka, letterSpacing: 0)),
+                    style: TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: Renk.marka, letterSpacing: 0)),
               ),
           ]),
         ),
@@ -183,7 +183,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
       _durumSatiri(kalan),
       if (_hata != null) ...[
         const SizedBox(height: 10),
-        Text(_hata!, textAlign: TextAlign.center, style: const TextStyle(color: Renk.hata, fontWeight: FontWeight.w600)),
+        Text(_hata!, textAlign: TextAlign.center, style: TextStyle(color: Renk.hata, fontWeight: FontWeight.w600)),
       ],
       const SizedBox(height: 16),
       TextButton.icon(
@@ -229,7 +229,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Sunucu: ${context.api.taban.host}', style: const TextStyle(color: Renk.soluk, fontSize: 12)),
+                Text('Sunucu: ${context.api.taban.host}', style: TextStyle(color: Renk.soluk, fontSize: 12)),
               ]),
             ),
           ),

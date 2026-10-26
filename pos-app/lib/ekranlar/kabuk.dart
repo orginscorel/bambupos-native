@@ -1,45 +1,163 @@
 import 'package:flutter/material.dart';
 
-import '../app/tema.dart';
 import '../core/modeller.dart';
 import 'cerceve.dart';
+import 'borclar_ekrani.dart';
+import 'gecmis_ekrani.dart';
+import 'giderler_ekrani.dart';
 import 'guncelleme.dart';
+import 'gun_sonu_ekrani.dart';
+import 'kasa_ekrani.dart';
+import 'kasa_kapanisi.dart';
 import 'kds_ekrani.dart';
 import 'masa_panosu.dart';
+import 'masalar_ekrani.dart';
+import 'mesai_qr_ekrani.dart';
+import 'teslimat_ekrani.dart';
 import 'ortak.dart';
 
-/// POS ekranları. Uygulama YALNIZ bunları içerir; işletme yönetimi,
-/// raporlar, ayarlar web/konsolda kalır.
+/// Panelin OPERASYON ekranları — web resources/js/config/navigation.ts ile
+/// AYNI sıra, anahtar, yol, izin, istasyon ve özellik bayrağı. Yönetim
+/// ekranları (Menü, Stok, Raporlar, Personel, Ayarlar, Rezervasyon …) bilerek
+/// yok — onlar İşletme Yönetimi'nde (kullanıcı kararı 2026-10-26).
 enum PosEkrani {
-  siparis('Siparişler', 'Sipariş girişi ekranı', Icons.shopping_cart_outlined),
-  kasa('Kasa', 'Kasa ekranı', Icons.point_of_sale_outlined),
-  mutfak('Hazırlık', 'Hazırlık ekranı', Icons.soup_kitchen_outlined),
-  komi('Servis', 'Servis ekranı', Icons.room_service_outlined);
+  siparis('orders', 'Siparişler', 'Sipariş girişi ekranı', Icons.content_paste_rounded, '/panel/siparisler', izin: 'orders.view'),
+  gecmis('orders-gecmis', 'Önceki adisyonlar', 'Önceki adisyonlar', Icons.history_rounded, '/panel/siparisler/gecmis', izin: 'orders.view'),
+  masalar('tables', 'Masalar', 'Masalar', Icons.qr_code_2_rounded, '/panel/masalar', izin: 'tables.view'),
+  kasa('cashier', 'Kasa', 'Kasa ekranı', Icons.shopping_cart_outlined, '/panel/kasa', izin: 'payments.take', para: true),
+  kasaKapanis('cash-desk', 'Kasa Kapanışı', 'Kasa kapanışı', Icons.account_balance_wallet_outlined, '/panel/kasa/yonetim', izin: 'cash.view', para: true),
+  mutfak('kds', 'Mutfak', 'Mutfak ekranı', Icons.soup_kitchen_outlined, '/panel/mutfak',
+      izin: 'kds.view', istasyonlar: ['kitchen'], ozellik: 'hazirlik_takibi', serit: 'kitchen'),
+  barista('barista', 'Barista', 'Barista ekranı', Icons.coffee_outlined, '/panel/barista',
+      izin: 'kds.view', istasyonlar: ['barista'], ozellik: 'hazirlik_takibi', serit: 'barista'),
+  nargile('nargile', 'Nargile', 'Nargile ekranı', Icons.local_fire_department_outlined, '/panel/nargile',
+      izin: 'kds.view', istasyonlar: ['hookah'], ozellik: 'nargile', serit: 'nargile'),
+  komi('runner', 'Komi', 'Servis ekranı', Icons.notifications_none_rounded, '/panel/komi', izin: 'kds.deliver', ozellik: 'hazirlik_takibi'),
+  teslimat('delivery', 'Teslimat', 'Teslimat', Icons.local_shipping_outlined, '/panel/teslimat', izin: 'delivery.view', ozellik: 'delivery'),
+  /// Tüm personel: mesai başlatmak yetki değil zorunluluk (web ile aynı karar).
+  mesaiQr('mesai-qr', 'Mesai / mola QR', 'Mesai QR', Icons.schedule_rounded, '/panel/mesai-qr', izin: null, ozellik: 'shifts'),
+  borclar('receivables', 'Borçlar / Şahıslar', 'Borçlar / Şahıslar', Icons.inbox_outlined, '/panel/borclar', izin: 'receivables.view', ozellik: 'receivables', para: true),
+  giderler('expenses', 'Giderler', 'Giderler', Icons.receipt_outlined, '/panel/gelir-gider', izin: 'cash.close', para: true),
+  gunSonu('eod', 'Gün Sonu', 'Gün sonu', Icons.assignment_outlined, '/panel/gun-sonu', izin: 'reports.view', para: true);
 
-  const PosEkrani(this.etiket, this.rozet, this.ikon);
+  const PosEkrani(this.anahtar, this.etiket, this.rozet, this.ikon, this.yol,
+      {required this.izin, this.istasyonlar = const [], this.ozellik, this.serit, this.para = false});
+  final String anahtar;
   final String etiket;
   final String rozet;
   final IconData ikon;
+  final String yol;
+  final String? izin;
+  final List<String> istasyonlar;
+  final String? ozellik;
+
+  /// KDS ekranının kulvarı (kitchen / barista / nargile).
+  final String? serit;
+
+  /// Tutar gösteren ekran: para görmeyen istasyonda (mutfak/komi) sunucu
+  /// da açmaz (TerminalStation::showsMoney).
+  final bool para;
+
+  static PosEkrani? yoldan(String yol) {
+    final y = yol.split('?').first.replaceAll(RegExp(r'/+$'), '');
+    for (final e in values) {
+      if (e.yol == y) return e;
+    }
+    return null;
+  }
 }
 
-/// Cihaz → ilk (ana) ekran; kişi → ek ekranlar.
+/// usePanelNav CEKMECE_GIZLI_ANAHTAR: "Tümü" kutusunda görünmeyenler
+/// (şeritte kısayolu olan ya da yönetimde duran bölümler).
+const _cekmeceGizli = {'inventory', 'wifi', 'discounts', 'catalog', 'runner', 'barista', 'kds', 'tables', 'staff', 'shifts', 'tasks', 'settings'};
+
+/// Cihazın istasyonu → açılışta gelen ana ekran.
+PosEkrani anaEkran(Oturum o) => switch (o.istasyon) {
+      'kasa' => PosEkrani.kasa,
+      'kitchen' => PosEkrani.mutfak,
+      'barista' => PosEkrani.barista,
+      'nargile' => PosEkrani.nargile,
+      'komi' => PosEkrani.komi,
+      _ => PosEkrani.siparis,
+    };
+
+/// usePanelNav süzgeci birebir: izin → istasyon kapsamı → özellik bayrağı.
+bool ekranGorunur(Oturum o, PosEkrani e) {
+  if (e.izin != null && !o.yetki(e.izin!)) return false;
+  final ist = o.istasyonlar;
+  if (e.istasyonlar.isNotEmpty && ist.isNotEmpty && !e.istasyonlar.any(ist.contains)) return false;
+  if (e.ozellik != null && !o.eklenti(e.ozellik!)) return false;
+  if (e.para && !o.paraGorur) return false;
+  return true;
+}
+
+/// Açılabilir ekranlar: cihazın ana ekranı + kişinin görebildikleri.
 List<PosEkrani> ekranlariHesapla(Oturum o) {
-  final ana = switch (o.istasyon) {
-    'kasa' => PosEkrani.kasa,
-    'kitchen' || 'barista' || 'nargile' => PosEkrani.mutfak,
-    'komi' => PosEkrani.komi,
-    _ => PosEkrani.siparis,
-  };
+  final ana = anaEkran(o);
+  return [ana, ...PosEkrani.values.where((e) => e != ana && ekranGorunur(o, e))];
+}
 
-  final izinli = <PosEkrani>[
-    if (o.yetki('orders.view')) PosEkrani.siparis,
-    if (o.yetki('payments.take') && o.paraGorur) PosEkrani.kasa,
-    if (o.yetki('kds.view')) PosEkrani.mutfak,
-    if (o.yetki('kds.deliver')) PosEkrani.komi,
-  ];
+/// "Tümü" kutusu: web çekmecesi (aynı sıra, gizli anahtarlar hariç).
+List<PosEkrani> cekmeceEkranlari(Oturum o) =>
+    PosEkrani.values.where((e) => ekranGorunur(o, e) && !_cekmeceGizli.contains(e.anahtar)).toList();
 
-  // Cihazın ekranı her zaman ilk sırada (yetki sunucuda ayrıca denetlenir).
-  return [ana, ...izinli.where((e) => e != ana)];
+/// Başka bir ekrandan (ör. adisyon "Kasaya git") kabuğa ekran değiştirme isteği.
+final ekranIstegi = ValueNotifier<PosEkrani?>(null);
+
+/// Web PanelSeritHost: tüm POS ekranlarında ortak alt şerit (kısayollar,
+/// "Tümü" kutusu, kişi menüsü, cihaz durumu). Künye/kısayollar sunucudan.
+Widget posAltSerit(BuildContext context, {required PosEkrani? secili, required void Function(PosEkrani) git}) {
+  final durum = context.durum;
+  final o = durum.oturum!;
+  final ekranlar = ekranlariHesapla(o);
+  final kim = o.seritKimlik;
+  final kisi = (kim['kisi'] as String?) ?? o.operatorAd;
+  final rol = (kim['rol'] as String?) ?? o.operatorRol;
+  final sube = (kim['sube'] as String?) ?? o.sube;
+
+  final kisayollar = <SeritKisayol>[];
+  for (final k in o.seritKisayol) {
+    final hedef = PosEkrani.yoldan('${k['yol'] ?? ''}');
+    if (hedef == null || !ekranlar.contains(hedef)) continue;
+    kisayollar.add(SeritKisayol(
+      ad: '${k['ad'] ?? hedef.etiket}',
+      kisa: '${k['kisa'] ?? k['ad'] ?? hedef.etiket}',
+      ikon: k['ikon'] is String ? webSimge(k['ikon'] as String) : hedef.ikon,
+      renk: k['renk'] as String?,
+      secili: hedef == secili,
+      bas: () => git(hedef),
+    ));
+  }
+  final cekmece = cekmeceEkranlari(o);
+
+  return AltCubuk(
+    isletme: (kim['isletme'] as String?) ?? o.isletme,
+    cihaz: (kim['cihaz'] as String?) ?? '${o.cihazAd} · ${platformAdi()}',
+    kisi: kisi,
+    rol: rol,
+    kisiMenusu: (_) => KisiMenusuIci(
+      ad: kisi,
+      rol: rol,
+      alt: [o.isletme, sube ?? ''].where((s) => s.isNotEmpty).join(' · '),
+      personelDegistir: durum.kilitle,
+    ),
+    kisayollar: kisayollar,
+    tumu: cekmece.isEmpty
+        ? null
+        : () => tumBolumlerAc(context, [
+              for (final e in cekmece) CekmeceOgesi(ad: e.etiket, ikon: e.ikon, secili: e == secili, bas: () => git(e)),
+            ]),
+    cihazlar: [
+      for (final c in o.seritCihaz)
+        SeritCihaz(
+          ad: '${c['ad'] ?? ''}',
+          ikon: webSimge(c['ikon'] as String?),
+          balon: '${c['balon'] ?? ''}',
+          durum: c['iyi'] == false ? 'uyari' : 'iyi',
+        ),
+    ],
+    surum: o.panelSurum.isEmpty ? null : o.panelSurum,
+  );
 }
 
 class Kabuk extends StatefulWidget {
@@ -50,7 +168,28 @@ class Kabuk extends StatefulWidget {
 }
 
 class _KabukState extends State<Kabuk> {
-  int _secili = 0;
+  PosEkrani? _secili;
+
+  void _git(PosEkrani e) => setState(() => _secili = e);
+
+  void _istek() {
+    final e = ekranIstegi.value;
+    if (e == null) return;
+    ekranIstegi.value = null;
+    _git(e);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    ekranIstegi.addListener(_istek);
+  }
+
+  @override
+  void dispose() {
+    ekranIstegi.removeListener(_istek);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,60 +200,38 @@ class _KabukState extends State<Kabuk> {
       builder: (context, _) {
         final o = durum.oturum!;
         final ekranlar = ekranlariHesapla(o);
-        if (_secili >= ekranlar.length) _secili = 0;
-        final ekran = ekranlar[_secili];
-
-        final rozet = switch (ekran) {
-          PosEkrani.mutfak => '${o.istasyonEtiket} ekranı',
-          _ => ekran.rozet,
-        };
+        final ekran = ekranlar.contains(_secili) ? _secili! : ekranlar.first;
+        final sube = (o.seritKimlik['sube'] as String?) ?? o.sube;
 
         return Scaffold(
           appBar: UstCubuk(
             baslik: o.isletme,
-            altSatir: [o.sube ?? '', o.isletmeKod].where((s) => s.isNotEmpty).join(' · '),
-            rozet: rozet,
-            sag: [
-              IconButton(
-                tooltip: 'Ekranı kilitle (personel çıkışı)',
-                onPressed: () => durum.kilitle(),
-                icon: const Icon(Icons.lock_outline_rounded, color: Renk.hata),
-              ),
-            ],
+            altSatir: [sube ?? '', o.isletmeKod].where((s) => s.isNotEmpty).join(' · '),
+            rozet: ekran.rozet,
+            zil: true,
           ),
-          bottomNavigationBar: AltCubuk(
-            ust: '${o.isletme} · ${o.cihazAd} · ${platformAdi()}',
-            alt: o.operatorAd,
-            rol: o.operatorRol,
-            orta: [
-              for (var i = 0; i < ekranlar.length; i++)
-                AltDugme(
-                  ikon: ekranlar[i].ikon,
-                  etiket: ekranlar[i].etiket,
-                  secili: ekranlar.length > 1 && i == _secili,
-                  bas: () => setState(() => _secili = i),
-                ),
-            ],
-          ),
+          bottomNavigationBar: posAltSerit(context, secili: ekran, git: _git),
           body: Column(children: [
             const GuncellemeSeridi(),
-            Expanded(
-              child: KeyedSubtree(
-                key: ValueKey(ekran),
-                child: switch (ekran) {
-                  PosEkrani.siparis => const MasaPanosu(),
-                  PosEkrani.kasa => const MasaPanosu(kasaKipi: true),
-                  PosEkrani.mutfak => KdsEkrani(
-                      kip: 'kitchen',
-                      serit: const {'kitchen', 'barista', 'nargile'}.contains(o.istasyon) ? o.istasyon : null,
-                    ),
-                  PosEkrani.komi => const KdsEkrani(kip: 'runner'),
-                },
-              ),
-            ),
+            Expanded(child: KeyedSubtree(key: ValueKey(ekran), child: _govde(ekran))),
           ]),
         );
       },
     );
   }
+
+  Widget _govde(PosEkrani e) => switch (e) {
+        PosEkrani.siparis => const MasaPanosu(),
+        PosEkrani.kasa => const KasaEkrani(),
+        PosEkrani.masalar => const MasalarEkrani(),
+        PosEkrani.mutfak || PosEkrani.barista || PosEkrani.nargile => KdsEkrani(kip: 'kitchen', serit: e.serit),
+        PosEkrani.komi => const KdsEkrani(kip: 'runner'),
+        PosEkrani.gecmis => const GecmisEkrani(),
+        PosEkrani.kasaKapanis => const KasaKapanisiEkrani(),
+        PosEkrani.teslimat => const TeslimatEkrani(),
+        PosEkrani.borclar => const BorclarEkrani(),
+        PosEkrani.giderler => const GiderlerEkrani(),
+        PosEkrani.gunSonu => const GunSonuEkrani(),
+        PosEkrani.mesaiQr => const MesaiQrEkrani(),
+      };
 }

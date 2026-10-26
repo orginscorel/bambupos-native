@@ -47,13 +47,14 @@ class Api {
   static Future<Api> kur({
     String tabanUrl = varsayilanTaban,
     required String kullaniciAjani,
+    Map<String, String> ekBasliklar = const {},
   }) async {
     final dizin = await getApplicationSupportDirectory();
     final jar = PersistCookieJar(
       storage: FileStorage('${dizin.path}${Platform.pathSeparator}cerezler${Platform.pathSeparator}'),
     );
 
-    return _kur(tabanUrl, kullaniciAjani, jar);
+    return _kur(tabanUrl, kullaniciAjani, jar, ekBasliklar);
   }
 
   /// Test: istekler gerçek ağa değil verilen bağdaştırıcıya gider.
@@ -61,7 +62,7 @@ class Api {
   static Api bellekte(HttpClientAdapter bagdastirici, {String tabanUrl = varsayilanTaban}) =>
       _kur(tabanUrl, 'BamBumPOS-Test', CookieJar()).._dio.httpClientAdapter = bagdastirici;
 
-  static Api _kur(String tabanUrl, String kullaniciAjani, CookieJar jar) {
+  static Api _kur(String tabanUrl, String kullaniciAjani, CookieJar jar, [Map<String, String> ekBasliklar = const {}]) {
     final dio = Dio(BaseOptions(
       baseUrl: tabanUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -74,6 +75,7 @@ class Api {
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
         'User-Agent': kullaniciAjani,
+        ...ekBasliklar,
       },
     ));
 
@@ -121,6 +123,18 @@ class Api {
   Future<dynamic> put(String yol, [Object? govde]) => _istek('PUT', yol, govde: govde ?? const {});
 
   Future<dynamic> delete(String yol, [Object? govde]) => _istek('DELETE', yol, govde: govde);
+
+  /// İkili dosya (QR görseli, PDF …) indirir. Oturum çereziyle gider.
+  Future<Uint8List?> indir(String yol, {Map<String, dynamic>? sorgu}) async {
+    try {
+      final r = await _dio.get<List<int>>(yol,
+          queryParameters: sorgu, options: Options(responseType: ResponseType.bytes, headers: {'Accept': '*/*'}));
+      if ((r.statusCode ?? 0) >= 200 && (r.statusCode ?? 0) < 300 && r.data != null) return Uint8List.fromList(r.data!);
+      throw ApiHata(r.statusCode, _mesaj(r.statusCode ?? 0, null));
+    } on DioException {
+      throw ApiHata(null, 'Sunucuya ulaşılamıyor. İnternet bağlantısını kontrol edin.');
+    }
+  }
 
   /// ETag'li GET: değişmediyse (304) null döner, çağıran elindekini kullanır.
   Future<({dynamic veri, String? etag})?> getEtagli(String yol, String? etag,

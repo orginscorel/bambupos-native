@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -48,10 +49,47 @@ class UygulamaDurumu extends ChangeNotifier {
     final bilgi = await PackageInfo.fromPlatform();
     final tercih = await SharedPreferences.getInstance();
     final dizin = await getApplicationSupportDirectory();
-    final api = await Api.kur(kullaniciAjani: _kullaniciAjani(bilgi.version));
+    final api = await Api.kur(kullaniciAjani: _kullaniciAjani(bilgi.version), ekBasliklar: await _cihazBasliklari(bilgi.version));
     final d = UygulamaDurumu._(api, bilgi.version, tercih, dizin.path);
     api.oturumDustu = d._oturumDustu;
     return d;
+  }
+
+  /// WEB İLE AYNI CİHAZ KÜNYESİ: sunucu (PosSerit::cihazKunyesi) cihaz adını
+  /// tarayıcının Client Hints başlıklarından okur — "Lenovo TB-X606F ·
+  /// Android 13". Uygulama aynı başlıkları cihazın gerçek bilgisiyle gönderir.
+  static Future<Map<String, String>> _cihazBasliklari(String surum) async {
+    var model = '', platform = '', surumNo = '';
+    try {
+      final b = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final a = await b.androidInfo;
+        final marka = a.manufacturer.isEmpty ? '' : '${a.manufacturer[0].toUpperCase()}${a.manufacturer.substring(1)}';
+        model = a.model.toLowerCase().contains(a.manufacturer.toLowerCase()) ? a.model : '$marka ${a.model}'.trim();
+        platform = 'Android';
+        surumNo = a.version.release;
+      } else if (Platform.isIOS) {
+        final a = await b.iosInfo;
+        model = a.utsname.machine.startsWith('iPad') ? 'Apple iPad' : 'Apple iPhone';
+        platform = 'iOS';
+        surumNo = a.systemVersion;
+      } else if (Platform.isWindows) {
+        platform = 'Windows';
+        surumNo = (await b.windowsInfo).majorVersion.toString();
+      } else if (Platform.isMacOS) {
+        final a = await b.macOsInfo;
+        model = a.model;
+        platform = 'macOS';
+        surumNo = a.osRelease.split('.').first;
+      }
+    } catch (_) {}
+    String q(String v) => '"${v.replaceAll('"', '')}"';
+    return {
+      if (model.isNotEmpty) 'Sec-CH-UA-Model': q(model),
+      if (platform.isNotEmpty) 'Sec-CH-UA-Platform': q(platform),
+      if (surumNo.isNotEmpty) 'Sec-CH-UA-Platform-Version': q(surumNo),
+      'Sec-CH-UA': '"BamBumPOS";v="${surum.split('.').first}"',
+    };
   }
 
   static String _kullaniciAjani(String surum) {

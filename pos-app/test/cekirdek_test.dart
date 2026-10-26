@@ -63,17 +63,29 @@ void main() {
         'isletme': {'ad': 'Test'},
         'operator': {'id': 5, 'name': 'Ali'},
         'yetkiler': yetkiler,
+        'eklentiler': {'shifts': false},
       });
 
-  test('cihaz ana ekranı belirler, kişi ek ekranları açar', () {
-    expect(ekranlariHesapla(oturum('order_entry', ['orders.view'])), [PosEkrani.siparis]);
-    expect(ekranlariHesapla(oturum('kasa', ['orders.view', 'payments.take'])), [PosEkrani.kasa, PosEkrani.siparis]);
-    expect(ekranlariHesapla(oturum('kitchen', ['kds.view'], para: false)), [PosEkrani.mutfak]);
-    // Mutfak cihazına müdür girerse sipariş ve servis de açılır.
-    expect(ekranlariHesapla(oturum('kitchen', ['kds.view', 'orders.view', 'kds.deliver'], para: false)),
-        [PosEkrani.mutfak, PosEkrani.siparis, PosEkrani.komi]);
-    // Para görmeyen cihazda kasa sekmesi çıkmaz.
+  test('cihaz ana ekranı belirler, kişi ek ekranları açar (web izin/eklenti kuralları)', () {
+    expect(ekranlariHesapla(oturum('order_entry', ['orders.view'])), [PosEkrani.siparis, PosEkrani.gecmis]);
+    expect(ekranlariHesapla(oturum('kasa', ['orders.view', 'payments.take'])),
+        [PosEkrani.kasa, PosEkrani.siparis, PosEkrani.gecmis]);
+    // Mutfak cihazına müdür girerse sipariş ve servis de açılır; para görmeyen cihazda kasa yok.
+    expect(ekranlariHesapla(oturum('kitchen', ['kds.view', 'orders.view', 'kds.deliver', 'payments.take'], para: false)),
+        [PosEkrani.mutfak, PosEkrani.siparis, PosEkrani.gecmis, PosEkrani.barista, PosEkrani.nargile, PosEkrani.komi]);
     expect(ekranlariHesapla(oturum('komi', ['kds.deliver', 'payments.take'], para: false)), [PosEkrani.komi]);
+  });
+
+  test('kapalı eklentinin ekranı açılmaz', () {
+    final o = Oturum({
+      'cihaz': {'id': 1, 'istasyon': 'order_entry', 'para': true},
+      'operator': {'id': 5, 'name': 'Ali'},
+      'yetkiler': ['orders.view', 'receivables.view', 'delivery.view'],
+      'eklentiler': {'receivables': false, 'delivery': true},
+    });
+    // Mesai / mola QR herkese açık (yetki aranmaz), yalnız vardiya eklentisine bağlı.
+    expect(ekranlariHesapla(o), [PosEkrani.siparis, PosEkrani.gecmis, PosEkrani.teslimat, PosEkrani.mesaiQr]);
+    expect(cekmeceEkranlari(o), contains(PosEkrani.mesaiQr));
   });
 
   test('pano: açık adisyonlar tekilleşir', () {

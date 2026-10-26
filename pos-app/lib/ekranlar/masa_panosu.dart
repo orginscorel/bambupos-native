@@ -209,17 +209,26 @@ class _MasaPanosuState extends State<MasaPanosu> {
       ]);
     }
 
-    final bosSayi = pano.masalar.where((m) => _durum(m) == _Durum.bos || _durum(m) == _Durum.rezerve).length;
-    final acikSayi = pano.masalar.where((m) => m.dolu).length;
+    // Web viewTabs (pano.md §4): açık masa = adisyonu olan ya da birleşik masa.
+    final o = context.durum.oturum!;
+    final sekmeliKip = o.eklenti('adisyon_sekmeleri', varsayilan: false);
+    final acikSayi = pano.masalar.where((m) => m.dolu || m.bagli != null).length;
+    final bosSayi = pano.masalar.length - acikSayi;
     final cariAcik = pano.cariler.where((c) => c.adisyonlar.isNotEmpty).length;
+    final alanlar = pano.alanlar;
 
     final sekmeler = <(String, String, IconData, int)>[
-      if (!widget.kasaKipi) ('bos', 'Boş Masalar', Icons.restaurant_rounded, bosSayi),
-      ('acik', 'Açık Masalar', Icons.receipt_long_outlined, acikSayi),
-      if (!widget.kasaKipi)
-        for (final a in pano.alanlar) ('alan:$a', a, Icons.restaurant_rounded, pano.masalar.where((m) => m.alan == a).length),
-      if (pano.cariler.isNotEmpty) ('cari', 'Şahıslar', Icons.people_alt_outlined, pano.cariler.length),
-      if (pano.kanalSiparisleri.isNotEmpty) ('kanal', 'Paket & Kanal', Icons.local_shipping_outlined, pano.kanalSiparisleri.length),
+      if (sekmeliKip) ...[
+        ('bos', 'Boş Masalar', Icons.restaurant_rounded, bosSayi),
+        ('acik', 'Açık Masalar', Icons.receipt_long_outlined, acikSayi),
+      ],
+      if (alanlar.length >= 2)
+        for (final a in alanlar) ('alan:$a', a, Icons.restaurant_rounded, pano.masalar.where((m) => m.alan == a).length)
+      else if (!sekmeliKip)
+        ('all', 'Masalar', Icons.restaurant_rounded, pano.masalar.length),
+      if (o.eklenti('receivables', varsayilan: false) && pano.cariler.isNotEmpty) ('cari', 'Şahıslar', Icons.people_alt_outlined, pano.cariler.length),
+      if (o.eklenti('delivery', varsayilan: false) || pano.kanalSiparisleri.isNotEmpty)
+        ('kanal', 'Paket & Kanal', Icons.local_shipping_outlined, pano.kanalSiparisleri.length),
     ];
     if (!sekmeler.any((s) => s.$1 == _sekme)) _sekme = sekmeler.first.$1;
 
@@ -259,12 +268,21 @@ class _MasaPanosuState extends State<MasaPanosu> {
 
   List<Widget> _icerik(Pano pano) {
     if (_sekme == 'cari') return [_cariler(pano.cariler)];
-    if (_sekme == 'kanal') return [_kanalBolumu(pano.kanalSiparisleri)];
+    if (_sekme == 'kanal') {
+      if (pano.kanalSiparisleri.isNotEmpty) return [_kanalBolumu(pano.kanalSiparisleri)];
+      return [
+        const _BosDurum(
+          ikon: Icons.local_shipping_outlined,
+          baslik: 'Masa dışı sipariş yok',
+          metin: 'Paket, gel-al ve kiosk siparişleri burada listelenir. Yeni sipariş için “Paket / Gel-Al / Kiosk” düğmesini kullanın.',
+        ),
+      ];
+    }
 
     final alanlar = _sekme.startsWith('alan:') ? [_sekme.substring(5)] : pano.alanlar;
     final suz = switch (_sekme) {
       'bos' => (Masa m) => !m.dolu && m.bagli == null,
-      'acik' => (Masa m) => m.dolu,
+      'acik' => (Masa m) => m.dolu || m.bagli != null,
       _ => (Masa m) => true,
     };
 
@@ -291,15 +309,20 @@ class _MasaPanosuState extends State<MasaPanosu> {
       ));
     }
     if (w.isEmpty) {
-      w.add(Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48),
-        child: Center(
-          child: Text(_sekme == 'acik' ? 'Açık masa yok.' : 'Gösterilecek masa yok.', style: const TextStyle(color: Renk.soluk)),
-        ),
-      ));
+      w.add(_sekme.startsWith('alan:')
+          ? const _BosDurum(
+              ikon: Icons.restaurant_rounded,
+              baslik: 'Bu alanda masa yok',
+              metin: 'Seçili alanda masa tanımlı değil. Tüm salonu görmek için “Tüm masalar”a geçin.',
+            )
+          : const _BosDurum(
+              ikon: Icons.qr_code_2_rounded,
+              baslik: 'Masa bulunamadı',
+              metin: 'Masalar sayfasından masa ve alan (Bahçe, Oyun Alanı, Aile Alanı…) tanımlayabilirsiniz.',
+            ));
     }
-    // Web'de "Boş Masalar" sekmesinin altında paket siparişleri de listelenir.
-    if (_sekme == 'bos') w.add(_kanalBolumu(pano.kanalSiparisleri));
+    // Web: masa sekmelerinin hepsinde, masaların altında kanal siparişleri.
+    if (pano.kanalSiparisleri.isNotEmpty) w.add(_kanalBolumu(pano.kanalSiparisleri));
     return w;
   }
 
@@ -342,21 +365,21 @@ class _MasaPanosuState extends State<MasaPanosu> {
           TextSpan(children: [
             TextSpan(text: m.ad),
             if (m.numara != null)
-              TextSpan(text: '  #${m.numara}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Colors.white70)),
+              TextSpan(text: '  #${m.numara}', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Renk.durumUstu.withValues(alpha: .7))),
           ]),
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
+          style: TextStyle(color: Renk.durumUstu, fontWeight: FontWeight.w700, fontSize: 12.5),
         ),
       ),
       const SizedBox(height: 3),
       Text(bagli != null ? 'BİRLEŞİK' : r.etiket,
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: r.vurgu, letterSpacing: .4)),
       Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(m.alan, style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+        Text(m.alan, style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
         if (m.kapasite != null) ...[
-          const Text('  ·  ', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
-          const Icon(Icons.people_outline_rounded, size: 13, color: Renk.soluk),
+          Text('  ·  ', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+          Icon(Icons.people_outline_rounded, size: 13, color: Renk.soluk),
           const SizedBox(width: 2),
-          Text('${m.kapasite}', style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+          Text('${m.kapasite}', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
         ],
       ]),
     ]);
@@ -364,17 +387,17 @@ class _MasaPanosuState extends State<MasaPanosu> {
     final Widget alt;
     if (bagli != null) {
       alt = Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const Icon(Icons.link_rounded, color: Renk.marka),
+        Icon(Icons.link_rounded, color: Renk.marka),
         const SizedBox(height: 4),
         Text('${bagli['table_name'] ?? ''} ile birleşik',
-            textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.marka)),
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.marka)),
       ]);
     } else if (!m.dolu) {
       final rez = m.rezervasyon;
       alt = Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         if (rez != null) ...[
           Text('${rez['time'] ?? ''} · ${rez['name'] ?? ''}',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.bilgi)),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.bilgi)),
           const SizedBox(height: 4),
         ],
         Icon(Icons.add_rounded, color: r.vurgu, size: 22),
@@ -394,13 +417,13 @@ class _MasaPanosuState extends State<MasaPanosu> {
           Row(children: [
             Expanded(
               child: Column(children: [
-                const Text('Adisyon', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+                Text('Adisyon', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
                 Text(para(kalan), maxLines: 1, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: r.vurgu)),
               ]),
             ),
             Expanded(
               child: Column(children: [
-                const Text('Süre', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+                Text('Süre', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
                 Text(sureMetni(gecenDakika(acilis, saatFarki: _fark)),
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               ]),
@@ -418,18 +441,18 @@ class _MasaPanosuState extends State<MasaPanosu> {
           ),
           const SizedBox(height: 6),
           DefaultTextStyle.merge(
-            style: const TextStyle(fontSize: 11.5, color: Renk.ikinci),
+            style: TextStyle(fontSize: 11.5, color: Renk.ikinci),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.schedule_rounded, size: 13, color: Renk.soluk),
+              Icon(Icons.schedule_rounded, size: 13, color: Renk.soluk),
               const SizedBox(width: 3),
               Text(saatMetni(acilis)),
               const SizedBox(width: 9),
-              const Icon(Icons.restaurant_rounded, size: 13, color: Renk.soluk),
+              Icon(Icons.restaurant_rounded, size: 13, color: Renk.soluk),
               const SizedBox(width: 3),
               Text('$servis/$kalem'),
               if (kisi > 0) ...[
                 const SizedBox(width: 9),
-                const Icon(Icons.people_outline_rounded, size: 13, color: Renk.soluk),
+                Icon(Icons.people_outline_rounded, size: 13, color: Renk.soluk),
                 const SizedBox(width: 3),
                 Text('$kisi'),
               ],
@@ -445,12 +468,12 @@ class _MasaPanosuState extends State<MasaPanosu> {
           if (m.adisyonlar.first.acan != null) ...[
             const SizedBox(height: 3),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
+              Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
               const SizedBox(width: 3),
-              const Text('Açan: ', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+              Text('Açan: ', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
               Flexible(
                 child: Text(m.adisyonlar.first.acan!,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: Renk.yazi)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: Renk.yazi)),
               ),
             ]),
           ],
@@ -489,7 +512,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Row(children: [
-            const Icon(Icons.inventory_2_outlined, size: 18, color: Renk.marka),
+            Icon(Icons.inventory_2_outlined, size: 18, color: Renk.marka),
             const SizedBox(width: 8),
             const Text('Paket / Gel-Al / Kiosk siparişleri', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
             const SizedBox(width: 8),
@@ -507,7 +530,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
         Padding(
           padding: const EdgeInsets.all(10),
           child: l.isEmpty
-              ? const Padding(padding: EdgeInsets.all(18), child: Center(child: Text('Paket sipariş yok.', style: TextStyle(color: Renk.soluk))))
+              ? Padding(padding: EdgeInsets.all(18), child: Center(child: Text('Paket sipariş yok.', style: TextStyle(color: Renk.soluk))))
               : GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -553,7 +576,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
                   Text(para(c.adisyonlar.first.kalan), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: r.vurgu))
                 else
                   Text('Adisyon aç', style: TextStyle(fontWeight: FontWeight.w700, color: r.vurgu)),
-                if (c.borc > 0) Text('Borç: ${para(c.borc)}', style: const TextStyle(fontSize: 12, color: Renk.hata, fontWeight: FontWeight.w600)),
+                if (c.borc > 0) Text('Borç: ${para(c.borc)}', style: TextStyle(fontSize: 12, color: Renk.hata, fontWeight: FontWeight.w600)),
               ]),
             ),
           ),
@@ -581,7 +604,7 @@ class _SekmeSeridi extends StatelessWidget {
           _Sekme(etiket: etiket, ikon: ikon, sayi: sayi, secili: anahtar == secili, bas: () => bas(anahtar), esnek: esit),
       ];
       return Container(
-        height: 40,
+        height: 42,
         decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
         clipBehavior: Clip.antiAlias,
         child: esit
@@ -606,12 +629,13 @@ class _Sekme extends StatelessWidget {
     final icerik = InkWell(
       onTap: bas,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: secili ? Renk.markaAcik.withValues(alpha: .6) : null,
+          color: secili ? Renk.ic : null,
           border: Border(
-            bottom: BorderSide(color: secili ? Renk.marka : Colors.transparent, width: 2),
-            right: const BorderSide(color: Renk.cizgi),
+            bottom: BorderSide(color: secili ? const Color(0xFF1F53C5) : Colors.transparent, width: 2),
+            right: BorderSide(color: Renk.cizgi),
           ),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
@@ -621,7 +645,7 @@ class _Sekme extends StatelessWidget {
             child: Text(etiket,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: secili ? Renk.marka : Renk.yazi)),
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: secili ? Renk.marka : Renk.yazi)),
           ),
           const SizedBox(width: 6),
           _Sayac(sayi, dolu: secili),
@@ -665,7 +689,7 @@ class _AlanBasligi extends StatelessWidget {
           width: 28,
           height: 28,
           decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: BorderRadius.circular(8)),
-          child: const Icon(Icons.restaurant_rounded, size: 16, color: Renk.marka),
+          child: Icon(Icons.restaurant_rounded, size: 16, color: Renk.marka),
         ),
         const SizedBox(width: 10),
         Text(ad, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -709,7 +733,7 @@ class _KanalKarti extends StatelessWidget {
               if (a.servisTuruEtiket.isNotEmpty)
                 Rozet(a.servisTuruEtiket, renk: Renk.uyari, zemin: Renk.uyariZemin, kenar: Renk.uyariKenar, ikon: Icons.shopping_cart_outlined),
               const Spacer(),
-              Text('#${a.id}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Renk.soluk)),
+              Text('#${a.id}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Renk.soluk)),
             ]),
             const SizedBox(height: 6),
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -717,7 +741,7 @@ class _KanalKarti extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(a.baslik, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   Text('${a.kalemSayisi} kalem  ·  ${sureMetni(gecenDakika(a.acilis, saatFarki: fark))}',
-                      style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+                      style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
                 ]),
               ),
               Text(para(a.toplam), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
@@ -730,7 +754,7 @@ class _KanalKarti extends StatelessWidget {
               const SizedBox(width: 6),
               Rozet(a.odemeEtiket, renk: odemeRenk, ikon: odemeIkon),
               const Spacer(),
-              Text('${a.servisEdilen}/${a.kalemSayisi} servis', style: const TextStyle(fontSize: 11.5, color: Renk.soluk)),
+              Text('${a.servisEdilen}/${a.kalemSayisi} servis', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
             ]),
           ]),
         ),
@@ -799,4 +823,23 @@ class _UyariKarti extends StatelessWidget {
       ]),
     );
   }
+}
+
+class _BosDurum extends StatelessWidget {
+  const _BosDurum({required this.ikon, required this.baslik, required this.metin});
+  final IconData ikon;
+  final String baslik;
+  final String metin;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+        child: Column(children: [
+          Icon(ikon, size: 32, color: Renk.soluk),
+          const SizedBox(height: 8),
+          Text(baslik, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(metin, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+        ]),
+      );
 }

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../app/tema.dart';
@@ -14,27 +15,23 @@ class UrunSecimi {
   final String etiket;
 }
 
-/// Varyant + seçenek + adet + not. Zorunlu gruplar seçilmeden "Ekle" kapalı.
-Future<UrunSecimi?> urunSecimiAc(BuildContext context, Urun urun) {
-  final genis = MediaQuery.sizeOf(context).width >= 700;
-  final icerik = _UrunSecimi(urun: urun);
-  if (genis) {
-    return showDialog<UrunSecimi>(
-      context: context,
-      builder: (_) => Dialog(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720), child: icerik)),
-    );
-  }
-  return showModalBottomSheet<UrunSecimi>(
+/// Ürün yapılandırma penceresi — web Detail.vue §4.1 birebir:
+/// "Boyut / Porsiyon" varyantları, seçenek grupları (tek seçim / en çok n /
+/// çoklu), ücretsiz seçenek limiti, adet sınırları, not.
+Future<UrunSecimi?> urunSecimiAc(BuildContext context, Urun urun, {String kanal = 'table'}) {
+  return showDialog<UrunSecimi>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => FractionallySizedBox(heightFactor: .9, child: icerik),
+    builder: (_) => Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 512, maxHeight: 760), child: _UrunSecimi(urun: urun, kanal: kanal)),
+    ),
   );
 }
 
 class _UrunSecimi extends StatefulWidget {
-  const _UrunSecimi({required this.urun});
+  const _UrunSecimi({required this.urun, required this.kanal});
   final Urun urun;
+  final String kanal;
 
   @override
   State<_UrunSecimi> createState() => _UrunSecimiState();
@@ -42,8 +39,8 @@ class _UrunSecimi extends StatefulWidget {
 
 class _UrunSecimiState extends State<_UrunSecimi> {
   int? _varyant;
-  final Map<int, Set<int>> _secim = {};
-  int _adet = 1;
+  final Map<int, List<int>> _secim = {}; // seçim sırası korunur
+  late int _adet = widget.urun.minAdet;
   final _not = TextEditingController();
 
   Urun get u => widget.urun;
@@ -55,8 +52,8 @@ class _UrunSecimiState extends State<_UrunSecimi> {
       _varyant = u.varyantlar.firstWhere((v) => v.varsayilan, orElse: () => u.varyantlar.first).id;
     }
     for (final g in u.gruplar) {
-      _secim[g.id] = g.secenekler.where((s) => s.varsayilan).map((s) => s.id).toSet();
-      if (g.tekli && _secim[g.id]!.length > 1) _secim[g.id] = {_secim[g.id]!.first};
+      final v = g.secenekler.where((s) => s.varsayilan).map((s) => s.id).toList();
+      _secim[g.id] = g.tekli && v.length > 1 ? [v.first] : v;
     }
   }
 
@@ -66,40 +63,37 @@ class _UrunSecimiState extends State<_UrunSecimi> {
     super.dispose();
   }
 
+  /// Grup fiyatı: seçilenler pahalıdan ucuza; ilk `free_limit` tanesi ücretsiz.
+  int _grupFiyati(SecenekGrubu g) {
+    final f = [
+      for (final s in g.secenekler)
+        if (_secim[g.id]!.contains(s.id)) s.fiyat,
+    ]..sort((a, b) => b.compareTo(a));
+    return f.skip(g.ucretsizLimit).fold(0, (t, x) => t + x);
+  }
+
   int get _birim {
-    var f = u.fiyat;
+    var f = u.kanalFiyati(widget.kanal);
     if (_varyant != null) {
       final v = u.varyantlar.firstWhere((v) => v.id == _varyant);
-      if (v.fiyat > 0) f = v.fiyat;
+      f = v.fiyat;
     }
     for (final g in u.gruplar) {
-      for (final s in g.secenekler) {
-        if (_secim[g.id]!.contains(s.id)) f += s.fiyat;
-      }
+      f += _grupFiyati(g);
     }
     return f;
   }
 
-  String? _eksik() {
-    for (final g in u.gruplar) {
-      final n = _secim[g.id]!.length;
-      final enAz = g.zorunlu ? (g.enAz < 1 ? 1 : g.enAz) : g.enAz;
-      if (n < enAz) return '“${g.ad}” için seçim yapın';
-    }
-    return null;
-  }
+  bool get _zorunluEksik => u.gruplar.any((g) => g.zorunlu && g.secenekler.isNotEmpty && _secim[g.id]!.isEmpty);
+  bool get _adetGecerli => _adet >= u.minAdet && _adet <= u.maxAdet;
 
   void _dokun(SecenekGrubu g, Secenek s) {
     setState(() {
       final sec = _secim[g.id]!;
       if (g.tekli) {
-        if (sec.contains(s.id) && !g.zorunlu) {
-          sec.clear();
-        } else {
-          sec
-            ..clear()
-            ..add(s.id);
-        }
+        sec
+          ..clear()
+          ..add(s.id);
       } else if (sec.contains(s.id)) {
         sec.remove(s.id);
       } else if (g.enCok == null || g.enCok == 0 || sec.length < g.enCok!) {
@@ -110,150 +104,150 @@ class _UrunSecimiState extends State<_UrunSecimi> {
 
   @override
   Widget build(BuildContext context) {
-    final eksik = _eksik();
-
-    return Column(children: [
+    final gorsel = u.gorsel;
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+        padding: const EdgeInsets.fromLTRB(20, 14, 8, 6),
         child: Row(children: [
-          Expanded(child: Text(u.ad, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+          Expanded(child: Text(u.ad, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
         ]),
       ),
-      const Divider(),
-      Expanded(
-        child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 12), children: [
-          if (u.varyantlar.length > 1) ...[
-            const _Baslik('Seçenek'),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final v in u.varyantlar)
-                _SecimKutusu(
-                  etiket: v.ad,
-                  ek: para(v.fiyat > 0 ? v.fiyat : u.fiyat),
-                  secili: _varyant == v.id,
-                  bas: () => setState(() => _varyant = v.id),
+      Flexible(
+        child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(20, 4, 20, 12), children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (gorsel != null) ...[
+              InkWell(
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (ctx) => Dialog(child: InkWell(onTap: () => Navigator.pop(ctx), child: CachedNetworkImage(imageUrl: u.ham['image_url']?.toString() ?? gorsel))),
                 ),
-            ]),
-            const SizedBox(height: 18),
-          ],
-          for (final g in u.gruplar) ...[
-            _Baslik(g.ad,
-                ek: g.zorunlu ? 'Zorunlu' : (g.tekli ? 'Tek seçim' : (g.enCok != null && g.enCok! > 0 ? 'En çok ${g.enCok}' : 'Çoklu'))),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final s in g.secenekler)
-                _SecimKutusu(
-                  etiket: s.ad,
-                  ek: s.fiyat > 0 ? '+${para(s.fiyat)}' : null,
-                  secili: _secim[g.id]!.contains(s.id),
-                  bas: () => _dokun(g, s),
-                ),
-            ]),
-            const SizedBox(height: 18),
-          ],
-          const _Baslik('Not'),
-          TextField(controller: _not, maxLength: 255, decoration: const InputDecoration(hintText: 'Örn. az pişmiş, soğansız')),
-        ]),
-      ),
-      const Divider(),
-      SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            _AdetSecici(adet: _adet, degisti: (a) => setState(() => _adet = a)),
-            const SizedBox(width: 12),
+                child: ClipRRect(borderRadius: koseYuvarlak, child: CachedNetworkImage(imageUrl: gorsel, width: 64, height: 64, fit: BoxFit.cover)),
+              ),
+              const SizedBox(width: 12),
+            ],
             Expanded(
-              child: FilledButton(
-                onPressed: eksik != null
-                    ? null
-                    : () {
-                        final v = _varyant == null ? null : u.varyantlar.firstWhere((x) => x.id == _varyant);
-                        Navigator.pop(
-                          context,
-                          UrunSecimi(
-                            varyantId: _varyant,
-                            secenekler: _secim.values.expand((e) => e).toList(),
-                            adet: _adet,
-                            not: _not.text.trim().isEmpty ? null : _not.text.trim(),
-                            birimFiyat: _birim,
-                            etiket: v != null && u.varyantlar.length > 1 ? '${u.ad} (${v.ad})' : u.ad,
-                          ),
-                        );
-                      },
-                child: Text(eksik ?? 'Ekle · ${para(_birim * _adet)}'),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Renk.bilgiZemin, borderRadius: koseYuvarlak, border: Border.all(color: Renk.bilgiKenar)),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.error_outline_rounded, size: 18, color: Renk.bilgi),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: u.ad, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        const TextSpan(text: ' adisyona eklenecek. Adedi seçip onaylayın; yanlışsa '),
+                        const TextSpan(text: 'Vazgeç', style: TextStyle(fontWeight: FontWeight.w700)),
+                        const TextSpan(text: ' ile başka ürün seçin.'),
+                      ]),
+                      style: TextStyle(fontSize: 13, color: Renk.yazi),
+                    ),
+                  ),
+                ]),
               ),
             ),
           ]),
-        ),
+          if (u.varyantlar.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('Boyut / Porsiyon', style: TextStyle(fontWeight: FontWeight.w600)),
+            for (final v in u.varyantlar)
+              RadioListTile<int>(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: v.id,
+                groupValue: _varyant,
+                onChanged: (x) => setState(() => _varyant = x),
+                title: Text('${v.ad} — ${para(v.fiyat)}'),
+              ),
+          ],
+          for (final g in u.gruplar.where((g) => g.secenekler.isNotEmpty)) ...[
+            const SizedBox(height: 14),
+            Text.rich(TextSpan(children: [
+              TextSpan(text: g.ad, style: const TextStyle(fontWeight: FontWeight.w600)),
+              if (g.zorunlu) TextSpan(text: ' *', style: TextStyle(color: Renk.hata)),
+              TextSpan(
+                text: g.tekli ? '  (tek seçim)' : (g.enCok != null && g.enCok! > 0 ? '  (en çok ${g.enCok})' : '  (çoklu seçim)'),
+                style: TextStyle(fontSize: 12, color: Renk.soluk),
+              ),
+            ])),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final s in g.secenekler)
+                InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => _dokun(g, s),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _secim[g.id]!.contains(s.id) ? Renk.marka : Renk.yuzey,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _secim[g.id]!.contains(s.id) ? Renk.marka : Renk.cizgiKoyu),
+                    ),
+                    child: Text(
+                      s.fiyat > 0 ? '${s.ad} +${para(s.fiyat)}' : s.ad,
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: _secim[g.id]!.contains(s.id) ? Colors.white : Renk.yazi),
+                    ),
+                  ),
+                ),
+            ]),
+          ],
+          const SizedBox(height: 16),
+          Row(children: [
+            const Text('Adet', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            IconButton.outlined(
+              tooltip: 'Azalt',
+              onPressed: _adet > u.minAdet ? () => setState(() => _adet--) : null,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded),
+            ),
+            SizedBox(width: 44, child: Text('$_adet', textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+            IconButton.outlined(
+              tooltip: 'Artır',
+              onPressed: _adet < u.maxAdet ? () => setState(() => _adet++) : null,
+              icon: const Icon(Icons.keyboard_arrow_up_rounded),
+            ),
+            const Spacer(),
+            Text(para(_birim * _adet), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Renk.marka)),
+          ]),
+          const SizedBox(height: 14),
+          const Text('Not', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          TextField(controller: _not, maxLength: 255, decoration: const InputDecoration(hintText: 'ör. az pişmiş, soğansız')),
+        ]),
+      ),
+      const Divider(),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+        child: Row(children: [
+          if (_zorunluEksik)
+            Expanded(child: Text('Zorunlu (*) seçimleri tamamlayın.', style: TextStyle(fontSize: 12, color: Renk.hata)))
+          else
+            const Spacer(),
+          OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Vazgeç')),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: _zorunluEksik || !_adetGecerli
+                ? null
+                : () {
+                    final v = _varyant == null ? null : u.varyantlar.firstWhere((x) => x.id == _varyant);
+                    Navigator.pop(
+                      context,
+                      UrunSecimi(
+                        varyantId: _varyant,
+                        secenekler: _secim.values.expand((e) => e).toList(),
+                        adet: _adet,
+                        not: _not.text.trim().isEmpty ? null : _not.text.trim(),
+                        birimFiyat: _birim,
+                        etiket: v != null && u.varyantlar.length > 1 ? '${u.ad} (${v.ad})' : u.ad,
+                      ),
+                    );
+                  },
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Adisyona ekle'),
+          ),
+        ]),
       ),
     ]);
-  }
-}
-
-class _Baslik extends StatelessWidget {
-  const _Baslik(this.metin, {this.ek});
-  final String metin;
-  final String? ek;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(children: [
-          Text(metin, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          if (ek != null) ...[
-            const SizedBox(width: 8),
-            Text(ek!, style: const TextStyle(color: Renk.soluk, fontSize: 12)),
-          ],
-        ]),
-      );
-}
-
-class _SecimKutusu extends StatelessWidget {
-  const _SecimKutusu({required this.etiket, this.ek, required this.secili, required this.bas});
-  final String etiket;
-  final String? ek;
-  final bool secili;
-  final VoidCallback bas;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: secili ? Renk.markaAcik : Renk.yuzey,
-      borderRadius: koseYuvarlak,
-      child: InkWell(
-        borderRadius: koseYuvarlak,
-        onTap: bas,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48, minWidth: 96),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: koseYuvarlak,
-            border: Border.all(color: secili ? Renk.marka : Renk.cizgi, width: secili ? 2 : 1),
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(etiket, style: TextStyle(fontWeight: FontWeight.w700, color: secili ? Renk.marka : Renk.yazi)),
-            if (ek != null) Text(ek!, style: const TextStyle(fontSize: 12, color: Renk.soluk)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _AdetSecici extends StatelessWidget {
-  const _AdetSecici({required this.adet, required this.degisti});
-  final int adet;
-  final ValueChanged<int> degisti;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(border: Border.all(color: Renk.cizgi), borderRadius: koseYuvarlak),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(onPressed: adet > 1 ? () => degisti(adet - 1) : null, icon: const Icon(Icons.remove_rounded)),
-        SizedBox(width: 32, child: Text('$adet', textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
-        IconButton(onPressed: adet < 100 ? () => degisti(adet + 1) : null, icon: const Icon(Icons.add_rounded)),
-      ]),
-    );
   }
 }

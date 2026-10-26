@@ -187,11 +187,11 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
     return Material(
       color: Renk.markaAcik,
       child: Container(
-        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Renk.markaKenar))),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.markaKenar))),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
-            const Icon(Icons.system_update_rounded, color: Renk.marka, size: 20),
+            Icon(Icons.system_update_rounded, color: Renk.marka, size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Text(

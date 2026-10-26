@@ -36,6 +36,16 @@ class Oturum {
   bool yetki(String anahtar) => yetkiler.contains(anahtar);
   bool get carilerAcik => _json(ham['ozellikler'])['cariler'] == true;
 
+  /// Web alt şeridinin sunucu verisi (posSerit): künye, kısayollar, cihaz durumu.
+  Json get serit => _json(ham['serit']);
+  Json get seritKimlik => _json(serit['kimlik']);
+  List<Json> get seritKisayol => _liste(serit['kisayol']);
+  List<Json> get seritCihaz => _liste(serit['cihaz']);
+  String get panelSurum => _metin(serit['surum']) ?? '';
+
+  /// Kişinin KDS istasyon aileleri (web auth.stations); boş = kısıt yok.
+  List<String> get istasyonlar => (ham['istasyonlar'] is List) ? (ham['istasyonlar'] as List).map((e) => '$e').toList() : const [];
+
   /// İşletme Yönetimi › Eklentiler. Liste hiç gelmediyse (eski sunucu)
   /// varsayılan AÇIK sayılır — sunucu zaten kapalı özelliğin verisini vermez.
   bool eklenti(String anahtar, {bool varsayilan = true}) {
@@ -252,6 +262,7 @@ class SecenekGrubu {
   String get ad => _metin(ham['name']) ?? '';
   bool get tekli => (_metin(ham['selection_type']) ?? 'single') == 'single';
   bool get zorunlu => ham['is_required'] == true;
+  int get ucretsizLimit => tamSayi(ham['free_limit']);
   int get enAz => tamSayi(ham['min_select']);
   int? get enCok => ham['max_select'] == null ? null : tamSayi(ham['max_select']);
   late final List<Secenek> secenekler = _liste(ham['options']).map(Secenek.new).toList();
@@ -276,7 +287,30 @@ class Urun {
   late final List<Varyant> varyantlar = _liste(ham['variants']).map(Varyant.new).toList();
   late final List<SecenekGrubu> gruplar = _liste(ham['option_groups']).map(SecenekGrubu.new).toList();
 
-  bool get secimGerekir => varyantlar.length > 1 || gruplar.isNotEmpty;
+  bool get secimGerekir => varyantlar.length > 1 || gruplar.any((g) => g.secenekler.isNotEmpty);
+  int get minAdet => tamSayi(ham['min_order_qty'], 1).clamp(1, 100);
+  int get maxAdet => ham['max_order_qty'] == null ? 99 : tamSayi(ham['max_order_qty'], 99);
+
+  /// Web: kanal fiyatı (kiosk / paket–gel al / qr), yoksa indirimli ya da liste fiyatı.
+  int kanalFiyati(String kanal) {
+    final alan = switch (kanal) {
+      'kiosk' => 'kiosk_price_minor',
+      'package' || 'pickup' => 'package_price_minor',
+      'qr' => 'qr_price_minor',
+      _ => null,
+    };
+    if (alan != null && ham[alan] != null) return tamSayi(ham[alan]);
+    return fiyat;
+  }
+
+  /// Kart fiyat etiketi: varyant>1 ise "min – max" (eşitse tek), değilse kanal fiyatı.
+  String fiyatEtiketi(String kanal) {
+    if (varyantlar.length > 1) {
+      final f = varyantlar.map((v) => v.fiyat).toList()..sort();
+      return f.first == f.last ? para(f.first) : '${para(f.first, simge: false)} – ${para(f.last)}';
+    }
+    return para(kanalFiyati(kanal));
+  }
 
   /// Varsayılan varyantla görünen fiyat.
   int get gorunenFiyat {

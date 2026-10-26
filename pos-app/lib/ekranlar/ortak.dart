@@ -86,13 +86,13 @@ class BaglantiBekleniyor extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.wifi_off_rounded, size: 56, color: Renk.soluk),
+            Icon(Icons.wifi_off_rounded, size: 56, color: Renk.soluk),
             const SizedBox(height: 16),
             const Text('Bağlantı bekleniyor', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text(mesaj ?? 'Sunucuya ulaşılamıyor.', textAlign: TextAlign.center, style: const TextStyle(color: Renk.soluk)),
+            Text(mesaj ?? 'Sunucuya ulaşılamıyor.', textAlign: TextAlign.center, style: TextStyle(color: Renk.soluk)),
             const SizedBox(height: 4),
-            const Text('Bağlantı gelince kendiliğinden devam eder.', style: TextStyle(color: Renk.soluk)),
+            Text('Bağlantı gelince kendiliğinden devam eder.', style: TextStyle(color: Renk.soluk)),
             const SizedBox(height: 20),
             OutlinedButton.icon(
               onPressed: () => context.durum.oturumuYenile(ilk: true),
@@ -185,4 +185,111 @@ Future<bool> onayla(BuildContext context, String baslik, String metin, {String o
     ),
   );
   return r ?? false;
+}
+
+/// Web'deki başlıklı bildirim (useToast: success(başlık, metin) / danger(...)).
+extension BaslikliBildirim on BuildContext {
+  void bildir2(String baslik, String metin, {bool hata = false}) {
+    final m = ScaffoldMessenger.maybeOf(this);
+    m?.hideCurrentSnackBar();
+    m?.showSnackBar(SnackBar(
+      backgroundColor: hata ? Renk.hata : Renk.yazi,
+      duration: Duration(milliseconds: hata ? 4000 : 2400),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(baslik, style: const TextStyle(fontWeight: FontWeight.w700)),
+        if (metin.isNotEmpty) Text(metin, style: const TextStyle(fontSize: 13)),
+      ]),
+    ));
+  }
+}
+
+/// Web'deki çekmece (BaseDrawer): geniş ekranda sağdan açılan panel,
+/// telefonda tam yükseklikte alt sayfa. [icerik] çekmeceyi kapatmak için
+/// `Navigator.pop(context, sonuc)` kullanır.
+Future<T?> cekmeceAc<T>(BuildContext context, {required String baslik, required Widget Function(BuildContext) icerik, double genislik = 480}) {
+  final genis = MediaQuery.sizeOf(context).width >= 760;
+  Widget cerceve(BuildContext ctx) => Material(
+        color: Renk.yuzey,
+        child: SafeArea(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(
+              height: 56,
+              padding: const EdgeInsets.only(left: 18, right: 6),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi))),
+              child: Row(children: [
+                Expanded(child: Text(baslik, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+                IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close_rounded)),
+              ]),
+            ),
+            Expanded(child: icerik(ctx)),
+          ]),
+        ),
+      );
+  if (!genis) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: false,
+      builder: (ctx) => FractionallySizedBox(heightFactor: .94, child: cerceve(ctx)),
+    );
+  }
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: baslik,
+    barrierColor: const Color(0x8C0F172A),
+    transitionDuration: const Duration(milliseconds: 180),
+    pageBuilder: (ctx, _, _) => Align(
+      alignment: Alignment.centerRight,
+      child: SizedBox(width: genislik, height: double.infinity, child: cerceve(ctx)),
+    ),
+    transitionBuilder: (_, a, _, child) => SlideTransition(
+      position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+  );
+}
+
+/// Etiketli form alanı (web FormField: etiket · alan · ipucu/hata).
+class FormAlani extends StatelessWidget {
+  const FormAlani({super.key, required this.etiket, required this.child, this.zorunlu = false, this.ipucu, this.hata});
+  final String etiket;
+  final Widget child;
+  final bool zorunlu;
+  final String? ipucu;
+  final String? hata;
+
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text.rich(TextSpan(children: [
+          TextSpan(text: etiket),
+          if (zorunlu) TextSpan(text: ' *', style: TextStyle(color: Renk.hata)),
+        ]), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Renk.yazi)),
+        const SizedBox(height: 5),
+        child,
+        if (hata != null)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(hata!, style: TextStyle(fontSize: 12, color: Renk.hata)))
+        else if (ipucu != null)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(ipucu!, style: TextStyle(fontSize: 12, color: Renk.soluk))),
+      ]);
+}
+
+/// Açılır seçim kutusu (web BaseSelect). Değer `null` = yer tutucu.
+class Secici<T> extends StatelessWidget {
+  const Secici({super.key, required this.deger, required this.secenekler, required this.degisti, this.yerTutucu});
+  final T? deger;
+  final List<(T, String)> secenekler;
+  final ValueChanged<T?> degisti;
+  final String? yerTutucu;
+
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<T>(
+        initialValue: secenekler.any((s) => s.$1 == deger) ? deger : null,
+        isExpanded: true,
+        hint: yerTutucu == null ? null : Text(yerTutucu!, style: TextStyle(color: Renk.soluk, fontSize: 14)),
+        borderRadius: koseYuvarlak,
+        items: [for (final (v, e) in secenekler) DropdownMenuItem<T>(value: v, child: Text(e, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)))],
+        onChanged: degisti,
+      );
 }

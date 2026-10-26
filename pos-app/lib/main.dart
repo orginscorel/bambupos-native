@@ -21,6 +21,7 @@ Future<void> main() async {
   // Kasa/mutfak ekranı uykuya geçmesin.
   WakelockPlus.enable().ignore();
 
+  await temaYukle();
   final durum = await UygulamaDurumu.kur();
   runApp(BamBumPosUygulamasi(durum: durum));
   durum.baslat();
@@ -53,25 +54,28 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
   Widget build(BuildContext context) {
     return DurumKapsami(
       durum: widget.durum,
-      child: MaterialApp(
-        title: 'BamBumPOS',
-        debugShowCheckedModeBanner: false,
-        theme: temaKur(),
-        locale: const Locale('tr', 'TR'),
-        supportedLocales: const [Locale('tr', 'TR')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: ListenableBuilder(
-          listenable: widget.durum,
-          builder: (context, _) => AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: switch (widget.durum.asama) {
-              Asama.acilis => const AcilisEkrani(key: ValueKey('acilis')),
-              Asama.baglantiYok => BaglantiBekleniyor(key: const ValueKey('baglanti'), mesaj: widget.durum.sonHata),
-              Asama.aktivasyon => const AktivasyonEkrani(key: ValueKey('aktivasyon')),
-              Asama.pin => const PinEkrani(key: ValueKey('pin')),
-              // Cihaz/istasyon değişirse kabuk sıfırdan kurulsun.
-              Asama.calisma => Kabuk(key: ValueKey('kabuk-${widget.durum.oturum?.cihazId}-${widget.durum.oturum?.istasyon}')),
-            },
+      child: ValueListenableBuilder<bool>(
+        valueListenable: koyuTema,
+        builder: (context, _, _) => MaterialApp(
+          title: 'BamBumPOS',
+          debugShowCheckedModeBanner: false,
+          theme: temaKur(),
+          locale: const Locale('tr', 'TR'),
+          supportedLocales: const [Locale('tr', 'TR')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: ListenableBuilder(
+            listenable: widget.durum,
+            builder: (context, _) => AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: switch (widget.durum.asama) {
+                Asama.acilis => const AcilisEkrani(key: ValueKey('acilis')),
+                Asama.baglantiYok => BaglantiBekleniyor(key: const ValueKey('baglanti'), mesaj: widget.durum.sonHata),
+                Asama.aktivasyon => const AktivasyonEkrani(key: ValueKey('aktivasyon')),
+                Asama.pin => const PinEkrani(key: ValueKey('pin')),
+                // Cihaz/istasyon değişirse kabuk sıfırdan kurulsun.
+                Asama.calisma => Kabuk(key: ValueKey('kabuk-${widget.durum.oturum?.cihazId}-${widget.durum.oturum?.istasyon}')),
+              },
+            ),
           ),
         ),
       ),

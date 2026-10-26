@@ -132,7 +132,7 @@ class _OdemeState extends State<_Odeme> {
           IconButton(onPressed: _gonderiliyor ? null : () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
         ]),
         const SizedBox(height: 4),
-        Text('Kalan: ${para(_kalan)}', style: const TextStyle(color: Renk.soluk, fontWeight: FontWeight.w600)),
+        Text('Kalan: ${para(_kalan)}', style: TextStyle(color: Renk.soluk, fontWeight: FontWeight.w600)),
         const SizedBox(height: 14),
         Row(children: [
           yontem('cash', 'Nakit', Icons.payments_outlined),
@@ -144,12 +144,12 @@ class _OdemeState extends State<_Odeme> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(color: Renk.zemin, borderRadius: koseYuvarlak),
           child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(_yontem == 'cash' ? 'Alınan' : 'Tahsil edilecek', style: const TextStyle(color: Renk.soluk, fontSize: 12)),
+            Text(_yontem == 'cash' ? 'Alınan' : 'Tahsil edilecek', style: TextStyle(color: Renk.soluk, fontSize: 12)),
             Text(para(_tutar), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
             if (_paraUstu > 0)
-              Text('Para üstü: ${para(_paraUstu)}', style: const TextStyle(color: Renk.basari, fontWeight: FontWeight.w800, fontSize: 16)),
+              Text('Para üstü: ${para(_paraUstu)}', style: TextStyle(color: Renk.basari, fontWeight: FontWeight.w800, fontSize: 16)),
             if (_tutar < _kalan)
-              Text('Kısmi ödeme · kalacak ${para(_kalan - _tutar)}', style: const TextStyle(color: Renk.uyari, fontWeight: FontWeight.w600)),
+              Text('Kısmi ödeme · kalacak ${para(_kalan - _tutar)}', style: TextStyle(color: Renk.uyari, fontWeight: FontWeight.w600)),
           ]),
         ),
         const SizedBox(height: 10),
@@ -171,7 +171,7 @@ class _OdemeState extends State<_Odeme> {
         if (_hata != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(_hata!, style: const TextStyle(color: Renk.hata, fontWeight: FontWeight.w600)),
+            child: Text(_hata!, style: TextStyle(color: Renk.hata, fontWeight: FontWeight.w600)),
           ),
         const SizedBox(height: 12),
         FilledButton(
