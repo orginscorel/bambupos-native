@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Koyu / açık tema anahtarı (web: <html data-theme>, localStorage `theme`).
+/// Koyu / açık tema anahtarı (web: `<html data-theme>`, localStorage `theme`).
 /// Değişince kök uygulama bütün ağacı yeniden çizer; renkler aşağıdaki
 /// getter'lardan okunduğu için ekran durumu (açık adisyon vb.) kaybolmaz.
 final koyuTema = ValueNotifier<bool>(false);
@@ -178,6 +178,7 @@ ThemeData temaKur({String? yaziTipiAdi}) {
 
 /// Web'deki küçük rozet (b-green, b-slate …): yumuşak zemin + kenar + koyu yazı.
 class Rozet extends StatelessWidget {
+  // ignore: prefer_initializing_formals — dışarıya `renk` adı korunur.
   const Rozet(this.metin, {super.key, Color? renk, this.zemin, this.kenar, this.ikon, this.dolu = false, this.buyuk = false}) : _renk = renk;
   final String metin;
   final Color? _renk;
