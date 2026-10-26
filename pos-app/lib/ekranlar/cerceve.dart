@@ -208,6 +208,7 @@ class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
               ...sag,
               if (zil) const BildirimZili(),
               const TemaDugmesi(),
+              const KilitDugmesi(),
             ],
           ),
         ),
@@ -1121,6 +1122,26 @@ Future<void> tumBolumlerAc(BuildContext context, List<CekmeceOgesi> ogeler) {
 }
 
 /// Web .pg-tema: 36×36, çerçevesiz, 8 px köşe; simge temayı söyler.
+/// Web .pg-eylem.kilit: ekranı kilitler, PIN ekranına döner (cihaz eşli kalır).
+/// Yalnız bir personel girişliyken çizilir.
+class KilitDugmesi extends StatelessWidget {
+  const KilitDugmesi({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = context.durum;
+    if (d.oturum?.operatorVar != true) return const SizedBox.shrink();
+    return Tooltip(
+      message: 'Ekranı kilitle — geri dönmek için PIN gerekir',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: d.kilitle,
+        child: SizedBox(width: 36, height: 36, child: Icon(Icons.lock_outline_rounded, size: 18, color: Kabuk.soft)),
+      ),
+    );
+  }
+}
+
 class TemaDugmesi extends StatelessWidget {
   const TemaDugmesi({super.key});
 

@@ -20,7 +20,7 @@ class GorevlerEkrani extends StatefulWidget {
 }
 
 const _durumAdlari = {'open': 'Açık', 'in_progress': 'Devam ediyor', 'done': 'Tamamlandı'};
-const _oncelikAdlari = {'low': 'Düşük', 'normal': 'Normal', 'high': 'Yüksek'};
+const _oncelikAdlari = {'low': 'Düşük', 'normal': 'Normal', 'high': 'Yüksek', 'urgent': 'Acil'};
 const _aylar = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
 class _GorevlerEkraniState extends State<GorevlerEkrani> {
@@ -278,12 +278,12 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
         if (atanan['position'] != null)
           Text('${atanan['position']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Kabuk.soft)),
       ] else
-        Text('—', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Kabuk.soft)),
+        Text('Herkese açık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Kabuk.soft)),
     ]);
 
     final oncRenk = switch (oncelik) {
       'normal' => Kabuk.brand,
-      'high' => Kabuk.negative,
+      'high' || 'urgent' => Kabuk.negative,
       _ => Kabuk.soft,
     };
     final onc = _rozet(

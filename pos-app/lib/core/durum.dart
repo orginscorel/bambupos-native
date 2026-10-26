@@ -108,7 +108,11 @@ class UygulamaDurumu extends ChangeNotifier {
   Future<void> baslat() async {
     await oturumuYenile(ilk: true);
     _kalpAtisi?.cancel();
-    _kalpAtisi = Timer.periodic(const Duration(seconds: 45), (_) => _nabiz());
+    // Konsol › Cihazlar "Aktif" penceresi 60 sn: 10 sn'de bir atış, her
+    // 4. atışta bir (40 sn) oturum yenileme.
+    var tur = 0;
+    _nabiz(yenile: false);
+    _kalpAtisi = Timer.periodic(const Duration(seconds: 10), (_) => _nabiz(yenile: ++tur % 4 == 0));
   }
 
   /// Sunucudan cihaz + operatör + yetkiyi okur ve doğru ekrana geçer.
@@ -188,7 +192,7 @@ class UygulamaDurumu extends ChangeNotifier {
     _gec(Asama.aktivasyon);
   }
 
-  Future<void> _nabiz() async {
+  Future<void> _nabiz({bool yenile = true}) async {
     if (asama == Asama.aktivasyon || asama == Asama.acilis) return;
     try {
       await api.post('/terminal/heartbeat');
@@ -196,7 +200,7 @@ class UygulamaDurumu extends ChangeNotifier {
       // Kalp atışı kaçarsa bir sonraki turda denenir.
     }
     // Operatörün boşta kalma süresi dolduysa / yetkisi değiştiyse yansısın.
-    await oturumuYenile();
+    if (yenile) await oturumuYenile();
   }
 
   void _gec(Asama yeni) {
