@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ajan.dart';
+import 'bildirim_merkezi.dart';
 import 'api.dart';
 import 'modeller.dart';
 
@@ -34,6 +35,9 @@ class UygulamaDurumu extends ChangeNotifier {
 
   /// Ağ taraması + fiş basma (cihaz oturumu doğrulanınca başlar).
   YazdirmaAjani? ajan;
+
+  /// Zil + baloncuk + ses + sistem bildirimi (kabuk açıkken yoklar).
+  late final BildirimMerkezi bildirim = BildirimMerkezi(api, _tercih);
 
   Timer? _kalpAtisi;
   Timer? _yenidenDene;

@@ -119,6 +119,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:PYTHONUTF8 = '1'   # konsol cp1252: Türkçe/oklu çıktı patlamasın
           $surum = "${{ needs.denetim.outputs.surum }}"
           $w7 = "build\windows7"
           Copy-Item "build\windows\x64\runner\Release" $w7 -Recurse

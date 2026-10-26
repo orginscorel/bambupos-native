@@ -8,6 +8,7 @@ import 'app/tema.dart';
 import 'core/durum.dart';
 import 'core/eski_windows.dart';
 import 'ekranlar/aktivasyon_ekrani.dart';
+import 'ekranlar/bildirim_baloncuklari.dart';
 import 'ekranlar/kabuk.dart';
 import 'ekranlar/pin_ekrani.dart';
 import 'ekranlar/ortak.dart';
@@ -65,6 +66,11 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
           locale: const Locale('tr', 'TR'),
           supportedLocales: const [Locale('tr', 'TR')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          // Bildirim baloncukları her ekranın (adisyon dahil) üstünde.
+          builder: (context, child) => Stack(children: [
+            ?child,
+            BildirimBaloncuklari(merkez: widget.durum.bildirim),
+          ]),
           home: ListenableBuilder(
             listenable: widget.durum,
             builder: (context, _) => AnimatedSwitcher(

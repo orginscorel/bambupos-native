@@ -270,15 +270,32 @@ class _KabukState extends State<Kabuk> {
     _git(e);
   }
 
+  late final _bildirim = context.durum.bildirim;
+
   @override
   void initState() {
     super.initState();
     ekranIstegi.addListener(_istek);
+    _bildirim
+      ..adresAc = _adresAc
+      ..baslat();
+  }
+
+  /// Bildirimin adresi bir POS ekranıysa oraya geç (açık adisyonu kapatarak).
+  void _adresAc(String adres) {
+    final yol = Uri.tryParse(adres)?.path ?? adres;
+    final e = PosEkrani.yoldan(yol);
+    if (!mounted || e == null || !ekranlariHesapla(context.durum.oturum!).contains(e)) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    _git(e);
   }
 
   @override
   void dispose() {
     ekranIstegi.removeListener(_istek);
+    _bildirim
+      ..adresAc = null
+      ..durdur();
     super.dispose();
   }
 

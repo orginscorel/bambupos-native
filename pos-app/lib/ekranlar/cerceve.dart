@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app/tema.dart';
-import '../core/api.dart';
 import '../core/bicim.dart';
 import 'ortak.dart';
 import 'surum_notlari.dart';
@@ -226,42 +225,29 @@ class BildirimZili extends StatefulWidget {
 }
 
 class _BildirimZiliState extends State<BildirimZili> {
-  int _okunmamis = 0;
-  List<Map<String, dynamic>> _liste = const [];
-  Timer? _t;
-  late final Api _api = context.api;
+  // Yoklama BildirimMerkezi'nde (kabuk açıkken); zil yalnız gösterir.
+  late final _m = context.durum.bildirim;
+  int get _okunmamis => _m.okunmamis;
+  List<Map<String, dynamic>> get _liste => _m.liste;
 
   @override
   void initState() {
     super.initState();
-    _yukle();
-    _t = Timer.periodic(const Duration(seconds: 20), (_) => _yukle());
+    _m.addListener(_tazele);
   }
 
   @override
   void dispose() {
-    _t?.cancel();
+    _m.removeListener(_tazele);
     super.dispose();
   }
 
-  Future<void> _yukle() async {
-    try {
-      final r = (await _api.get('/api/v1/notifications') as Map);
-      if (!mounted) return;
-      setState(() {
-        _okunmamis = tamSayi(r['unread_count']);
-        _liste = (r['items'] as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
-      });
-    } on ApiHata {
-      // Zil sessizce bekler.
-    }
+  void _tazele() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _ac(BuildContext context) async {
-    if (_okunmamis > 0) {
-      _api.post('/api/v1/notifications/read-all').then((_) => _yukle()).catchError((_) {});
-      setState(() => _okunmamis = 0);
-    }
+    if (_okunmamis > 0) _m.hepsiOkundu();
     final kutu = context.findRenderObject() as RenderBox?;
     final konum = kutu?.localToGlobal(Offset.zero) ?? Offset.zero;
     await showMenu<void>(
@@ -283,6 +269,16 @@ class _BildirimZiliState extends State<BildirimZili> {
               ),
               const Spacer(),
               Text('${_liste.length} kayıt', style: TextStyle(fontSize: 12, color: Kabuk.soft)),
+              const SizedBox(width: 6),
+              // Web "bu cihazda ses" tercihi.
+              StatefulBuilder(
+                builder: (ctx, yenile) => IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: _m.sesAcik ? 'Sesi kapat' : 'Sesi aç',
+                  onPressed: () => yenile(() => _m.sesAcik = !_m.sesAcik),
+                  icon: Icon(_m.sesAcik ? Icons.volume_up_rounded : Icons.volume_off_rounded, size: 18, color: Kabuk.soft),
+                ),
+              ),
             ],
           ),
         ),

@@ -59,7 +59,26 @@ WIN7_APISET |= {'api-ms-win-security-base-l1-1-0.dll', 'api-ms-win-security-lsal
 
 
 def ikililer(dizin):
-    return sorted(f for f in glob.glob(os.path.join(dizin, '*')) if f.lower().endswith(('.exe', '.dll')))
+    """Programın AÇILIŞTA yüklediği dosyalar: BamBumPOS.exe'den başlayıp
+    paketteki DLL'lere uzanan doğrudan içe aktarma zinciri. FFI ile sonradan
+    açılan DLL'ler (dartjni, flutter_local_notifications_windows) zincirde
+    yoktur; Windows 7'de yüklenemezlerse Dart tarafı hatayı yakalar."""
+    paket = {os.path.basename(f).lower(): f for f in glob.glob(os.path.join(dizin, '*'))
+             if f.lower().endswith(('.exe', '.dll'))}
+    exe = [k for k in paket if k.endswith('.exe')]
+    sira, gorulen = list(exe), set(exe)
+    while sira:
+        k = sira.pop()
+        pe = ac(paket[k])
+        for e in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', []):
+            d = e.dll.decode().lower()
+            if d in paket and d not in gorulen:
+                gorulen.add(d)
+                sira.append(d)
+        pe.close()
+    if SHIM.lower() in paket:
+        gorulen.add(SHIM.lower())
+    return sorted(paket[k] for k in gorulen)
 
 
 def ac(yol):
@@ -142,6 +161,7 @@ def yamala(dizin, def_yolu):
 
 def denetle(dizin):
     paket = {os.path.basename(y).lower(): y for y in ikililer(dizin)}
+
     disa = {}
     for ad, yol in paket.items():
         pe = ac(yol)
