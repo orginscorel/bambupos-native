@@ -44,3 +44,7 @@ jobs:
           gh release create "ios-${{ github.run_number }}" out/Runner-imzasiz.ipa \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" \
             --title "Personel iOS ${{ github.run_number }}" --notes "İmzasız derleme" --prerelease
+  imza:
+    needs: ios
+    uses: ./.github/workflows/ios-imza.yml
+    secrets: inherit
