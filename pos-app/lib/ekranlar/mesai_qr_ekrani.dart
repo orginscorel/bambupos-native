@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
+import '../core/durum.dart';
 import 'ortak.dart';
 
 /// MESAİ / MOLA QR — web /mesai-ekran/{token} (mesai/ekran.blade.php) birebiri.
@@ -29,10 +30,13 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
   int _sayac = 0;
   bool _mesgul = false;
   late final Api _api = context.api;
+  // QR ekranı duvarda açık kalır: açıkken boşta kilit devreye girmez.
+  late final UygulamaDurumu _durum = context.durum;
 
   @override
   void initState() {
     super.initState();
+    _durum.kilitMuaf++;
     _yukle();
     _saniye = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -51,6 +55,7 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
   @override
   void dispose() {
     _saniye?.cancel();
+    _durum.kilitMuaf--;
     super.dispose();
   }
 

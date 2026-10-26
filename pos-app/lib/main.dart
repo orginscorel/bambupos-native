@@ -45,11 +45,18 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
   void initState() {
     super.initState();
     _yasam = AppLifecycleListener(onResume: widget.durum.onPlanaGeldi);
+    HardwareKeyboard.instance.addHandler(_tus);
+  }
+
+  bool _tus(KeyEvent _) {
+    widget.durum.etkinlik();
+    return false;
   }
 
   @override
   void dispose() {
     _yasam.dispose();
+    HardwareKeyboard.instance.removeHandler(_tus);
     super.dispose();
   }
 
@@ -67,10 +74,18 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
           supportedLocales: const [Locale('tr', 'TR')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           // Bildirim baloncukları her ekranın (adisyon dahil) üstünde.
-          builder: (context, child) => Stack(children: [
-            ?child,
-            BildirimBaloncuklari(merkez: widget.durum.bildirim),
-          ]),
+          // Dinleyici her dokunuşu "etkinlik" sayar (boşta kilit sayacı).
+          builder: (context, child) => Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) => widget.durum.etkinlik(),
+            onPointerMove: (_) => widget.durum.etkinlik(),
+            onPointerHover: (_) => widget.durum.etkinlik(),
+            onPointerSignal: (_) => widget.durum.etkinlik(),
+            child: Stack(children: [
+              ?child,
+              BildirimBaloncuklari(merkez: widget.durum.bildirim),
+            ]),
+          ),
           home: ListenableBuilder(
             listenable: widget.durum,
             builder: (context, _) => AnimatedSwitcher(

@@ -41,6 +41,27 @@ class UygulamaDurumu extends ChangeNotifier {
 
   Timer? _kalpAtisi;
   Timer? _yenidenDene;
+  Timer? _bostaDenetim;
+
+  /// BOŞTA KİLİT (web useTerminalIdleLock ile aynı, 3 dk): personel girişliyken
+  /// ekrana dokunulmazsa operatör düşer, PIN ekranı gelir.
+  static const bostaKilitSuresi = Duration(minutes: 3);
+  DateTime _sonEtkinlik = DateTime.now();
+
+  /// Sürekli açık kalması gereken ekranlar (Mesai QR) kilidi erteler.
+  int kilitMuaf = 0;
+
+  /// Dokunma / fare / klavye — main.dart'taki dinleyici çağırır.
+  void etkinlik() => _sonEtkinlik = DateTime.now();
+
+  void _bostaDenetle() {
+    if (asama != Asama.calisma || !(oturum?.operatorVar ?? false)) return;
+    if (kilitMuaf > 0) {
+      _sonEtkinlik = DateTime.now();
+      return;
+    }
+    if (DateTime.now().difference(_sonEtkinlik) >= bostaKilitSuresi) kilitle();
+  }
 
   @visibleForTesting
   factory UygulamaDurumu.test(Api api, SharedPreferences tercih, String dizin) {
@@ -117,6 +138,8 @@ class UygulamaDurumu extends ChangeNotifier {
     var tur = 0;
     _nabiz(yenile: false);
     _kalpAtisi = Timer.periodic(const Duration(seconds: 10), (_) => _nabiz(yenile: ++tur % 4 == 0));
+    _bostaDenetim?.cancel();
+    _bostaDenetim = Timer.periodic(const Duration(seconds: 5), (_) => _bostaDenetle());
   }
 
   /// Sunucudan cihaz + operatör + yetkiyi okur ve doğru ekrana geçer.
@@ -208,6 +231,8 @@ class UygulamaDurumu extends ChangeNotifier {
   }
 
   void _gec(Asama yeni) {
+    // Çalışma ekranına her girişte sayaç baştan (PIN az önce girildi).
+    if (yeni == Asama.calisma && asama != Asama.calisma) _sonEtkinlik = DateTime.now();
     asama = yeni;
     notifyListeners();
   }
@@ -248,6 +273,7 @@ class UygulamaDurumu extends ChangeNotifier {
   void dispose() {
     _kalpAtisi?.cancel();
     _yenidenDene?.cancel();
+    _bostaDenetim?.cancel();
     super.dispose();
   }
 }
