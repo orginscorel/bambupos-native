@@ -7,7 +7,7 @@ name: iOS
 on:
   push:
     branches: [personel-app]
-    paths-ignore: ['**.md']
+    paths-ignore: ['**.md', 'imza/**']
   workflow_dispatch:
 permissions:
   contents: write

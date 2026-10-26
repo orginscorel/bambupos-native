@@ -1,0 +1,98 @@
+# BamBumPOS Personel — iPhone İMZA (Ad Hoc). Yeniden derlemez:
+# en son imzasız derlemeyi (ios-<n> sürümü) imza/adhoc.mobileprovision ile imzalar.
+# Tetik: derleme bittiğinde ya da sunucu yeni profil ittiğinde.
+# Gizliler: IOS_P12_B64 (dağıtım sertifikası), IOS_P12_PASS
+name: iOS imza
+on:
+  push:
+    branches: [personel-app]
+    paths: ['imza/adhoc.mobileprovision']
+  workflow_run:
+    workflows: [iOS]
+    types: [completed]
+    branches: [personel-app]
+permissions:
+  contents: write
+jobs:
+  imza:
+    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: personel-app
+      - name: Profil var mı
+        id: p
+        run: |
+          if [ -f imza/adhoc.mobileprovision ]; then echo "var=1" >> $GITHUB_OUTPUT; else echo "Profil yok (henüz kayıtlı iPhone yok) — imza atlanıyor"; fi
+      - name: Son imzasız derlemeyi indir
+        if: steps.p.outputs.var == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName -q '[.[] | select(.tagName|test("^ios-[0-9]+$"))][0].tagName')
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          gh release download "$TAG" --repo "${{ github.repository }}" -p Runner-imzasiz.ipa -D in
+      - name: Anahtarlığı hazırla
+        if: steps.p.outputs.var == '1'
+        env:
+          P12: ${{ secrets.IOS_P12_B64 }}
+          PASS: ${{ secrets.IOS_P12_PASS }}
+        run: |
+          KC=$RUNNER_TEMP/imza.keychain-db; KP=$(uuidgen)
+          echo "$P12" | base64 --decode > $RUNNER_TEMP/d.p12
+          security create-keychain -p "$KP" $KC
+          security set-keychain-settings -lut 1800 $KC
+          security unlock-keychain -p "$KP" $KC
+          security import $RUNNER_TEMP/d.p12 -P "$PASS" -A -t cert -f pkcs12 -k $KC
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" $KC >/dev/null
+          security list-keychains -d user -s $KC $(security list-keychains -d user | tr -d '"')
+          rm -f $RUNNER_TEMP/d.p12
+      - name: İmzala
+        if: steps.p.outputs.var == '1'
+        run: |
+          set -e
+          cd in && unzip -q Runner-imzasiz.ipa && APP=Payload/Runner.app
+          cp ../imza/adhoc.mobileprovision $APP/embedded.mobileprovision
+          security cms -D -i $APP/embedded.mobileprovision > prof.plist
+          /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' prof.plist > ent.plist
+          KIMLIK=$(security find-identity -v -p codesigning | grep -o '"iPhone Distribution[^"]*\|"Apple Distribution[^"]*\|"iOS Distribution[^"]*' | head -1 | tr -d '"')
+          echo "Kimlik: $KIMLIK"
+          find $APP/Frameworks -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) 2>/dev/null | while read f; do
+            codesign -f -s "$KIMLIK" --timestamp=none "$f"; done
+          find $APP/PlugIns -maxdepth 1 -name '*.appex' 2>/dev/null | while read f; do
+            codesign -f -s "$KIMLIK" --timestamp=none "$f"; done
+          codesign -f -s "$KIMLIK" --entitlements ent.plist --timestamp=none $APP
+          codesign -v --deep --strict $APP
+          zip -qry ../BamBumPOS-Personel.ipa Payload
+          SURUM=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' $APP/Info.plist)
+          DERLEME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' $APP/Info.plist)
+          cd .. && cat > manifest.plist <<PL
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict><key>items</key><array><dict>
+          <key>assets</key><array>
+          <dict><key>kind</key><string>software-package</string><key>url</key><string>https://bambumpos.com/indir/personel/ios/BamBumPOS-Personel.ipa?v=$DERLEME-${{ github.run_number }}</string></dict>
+          <dict><key>kind</key><string>display-image</string><key>url</key><string>https://bambumpos.com/indir/personel/ios/simge-57.png</string></dict>
+          <dict><key>kind</key><string>full-size-image</string><key>url</key><string>https://bambumpos.com/indir/personel/ios/simge-512.png</string></dict>
+          </array>
+          <key>metadata</key><dict>
+          <key>bundle-identifier</key><string>com.bambumpos.personel</string>
+          <key>bundle-version</key><string>$SURUM ($DERLEME)</string>
+          <key>kind</key><string>software</string>
+          <key>title</key><string>BamBumPOS Personel</string>
+          </dict></dict></array></dict></plist>
+          PL
+          sed -i '' 's/^          //' manifest.plist
+      - name: Yayınla
+        if: steps.p.outputs.var == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ios-imzali-${{ github.run_number }}" BamBumPOS-Personel.ipa manifest.plist \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Personel iOS imzalı ${{ github.run_number }} ($TAG)" --notes "Ad Hoc imzalı" --prerelease
+      - name: Temizle
+        if: always()
+        run: security delete-keychain $RUNNER_TEMP/imza.keychain-db 2>/dev/null || true
