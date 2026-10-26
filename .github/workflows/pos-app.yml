@@ -1,0 +1,200 @@
+name: POS uygulaması (Android · iOS · Windows · macOS)
+
+# BamBumPOS POS uygulaması — Flutter, NATİVE derleme (webview DEĞİL).
+# Kaynak: pos-app/. Her platform kendi makinesinde derlenir; `pos-v*`
+# etiketinde dört paket tek GitHub Release'te yayımlanır.
+#
+# İMZA:
+#  - Android: ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD secret'ları
+#    varsa KALICI anahtarla imzalanır (güncellemeler eski sürümün üstüne
+#    kurulur). Yoksa debug anahtarı — yalnız deneme içindir.
+#  - macOS: ad-hoc imza (Apple Developer kimliği eklenene kadar ilk açılışta
+#    sağ tık → Aç gerekir).
+#  - iOS: imzasız .ipa (mağaza/TestFlight için Apple sertifikası gerekir).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['pos-app/**', '.github/workflows/pos-app.yml']
+    tags: ['pos-v*']
+
+concurrency:
+  group: pos-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.8'
+
+defaults:
+  run:
+    working-directory: pos-app
+
+jobs:
+  denetim:
+    name: Analiz + test
+    runs-on: ubuntu-latest
+    outputs:
+      surum: ${{ steps.surum.outputs.surum }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - id: surum
+        run: echo "surum=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')" >> "$GITHUB_OUTPUT"
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    name: Android APK
+    needs: denetim
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: İmza anahtarı
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > android/app/imza.p12
+            printf 'storeFile=imza.p12\nstorePassword=%s\nkeyAlias=bambumpos\nkeyPassword=%s\nstoreType=pkcs12\n' "$KS_PASS" "$KS_PASS" > android/key.properties
+            echo "KALICI anahtarla imzalanacak."
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 yok — debug imzası (güncelleme üstüne kurulamaz)."
+          fi
+      - run: flutter pub get
+      - run: flutter build apk --release --target-platform android-arm,android-arm64
+      - name: Paketi adlandır
+        run: |
+          mkdir -p cikti
+          cp build/app/outputs/flutter-apk/app-release.apk "cikti/BamBumPOS-POS-${{ needs.denetim.outputs.surum }}-Android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: pos-app/cikti/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows kurulum
+    needs: denetim
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $surum = "${{ needs.denetim.outputs.surum }}"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DSurum=$surum" "dagitim\windows-kurulum.iss"
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "cikti\BamBumPOS-POS-$surum-Windows-Tasinabilir.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: pos-app/cikti/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS DMG
+    needs: denetim
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: DMG
+        run: |
+          set -e
+          APP="build/macos/Build/Products/Release/BamBumPOS.app"
+          codesign --force --deep --sign - "$APP"
+          mkdir -p cikti dmg
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "BamBumPOS" -srcfolder dmg -ov -format UDZO "cikti/BamBumPOS-POS-${{ needs.denetim.outputs.surum }}-macOS.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: pos-app/cikti/*
+          if-no-files-found: error
+
+  ios:
+    name: iOS (imzasız)
+    needs: denetim
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: IPA
+        run: |
+          set -e
+          mkdir -p cikti Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry "cikti/BamBumPOS-POS-${{ needs.denetim.outputs.surum }}-iOS-imzasiz.ipa" Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: pos-app/cikti/*
+          if-no-files-found: error
+
+  yayin:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/pos-v')
+    needs: [denetim, android, windows, macos, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: paketler
+          merge-multiple: true
+      - run: ls -la paketler
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: BamBumPOS POS ${{ needs.denetim.outputs.surum }}
+          files: paketler/*
+          body: |
+            BamBumPOS POS uygulaması ${{ needs.denetim.outputs.surum }} — native (Flutter), yalnız POS ekranları.
+
+            | Platform | Dosya |
+            |---|---|
+            | Android 7+ | `*-Android.apk` (doğrudan kurulum) |
+            | Windows 10/11 | `*-Windows-Kurulum.exe` · taşınabilir `*.zip` |
+            | macOS 11+ | `*-macOS.dmg` (ilk açılışta sağ tık → Aç) |
+            | iOS | `*-iOS-imzasiz.ipa` (imzalanmadan kurulamaz) |
+
+            İlk açılışta cihaz bir tanımlama kodu gösterir: İşletme Yönetimi → Cihazlar → Yeni tanımlı cihaz.
