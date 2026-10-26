@@ -128,6 +128,10 @@ def yamala(dizin, def_yolu):
                     satir = f'    {a}={asil}.{a}'
                 onceki = yonlendir.get(a)
                 if onceki and onceki != satir:
+                    # kernel32'deki Rtl* işlevleri zaten ntdll'e yönlenir: ikisi aynı işlev.
+                    hedefler = {x.split('=')[1].split('.')[0] for x in (onceki, satir)}
+                    if hedefler <= {'KERNEL32', 'NTDLL'}:
+                        continue
                     sys.exit(f'HATA: {a} iki farklı DLL\'den geliyor ({onceki.strip()} / {satir.strip()}).')
                 yonlendir[a] = satir
             uzunluk = len(e.dll)
