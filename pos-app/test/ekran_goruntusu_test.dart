@@ -51,7 +51,9 @@ class _SahteSunucu implements HttpClientAdapter {
 }
 
 Future<void> _fontlar() async {
-  const kok = '/opt/flutter/bin/cache/artifacts/material_fonts';
+  // Flutter SDK'nın kendi Material yazı tipleri (flutter/bin/cache/...).
+  final artifacts = File(Platform.resolvedExecutable).parent.parent.parent.path; // .../artifacts/engine/<platform>/flutter_tester
+  final kok = Platform.environment['FLUTTER_FONTLARI'] ?? '$artifacts/material_fonts';
   final roboto = FontLoader('Roboto');
   for (final f in ['Roboto-Regular', 'Roboto-Medium', 'Roboto-Bold', 'Roboto-Black']) {
     roboto.addFont(Future.value(ByteData.sublistView(File('$kok/$f.ttf').readAsBytesSync())));
@@ -107,7 +109,7 @@ Future<void> _bekle(WidgetTester t) async {
 }
 
 void main() {
-  setUpAll(_fontlar);
+  if (_dizin != null) setUpAll(_fontlar);
 
   const tablet = Size(1280, 800);
   const telefon = Size(412, 900);
