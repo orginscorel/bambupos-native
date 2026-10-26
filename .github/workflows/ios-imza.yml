@@ -1,6 +1,6 @@
 # BamBumPOS Personel — iPhone İMZA (Ad Hoc). Yeniden derlemez:
 # en son imzasız derlemeyi (ios-<n> sürümü) imza/adhoc.mobileprovision ile imzalar.
-# Tetik: derleme bitince (ios.yml çağırır) ya da sunucu yeni profil ittiğinde.
+# Tetik: derleme bitince (personel.yml çağırır) ya da sunucu yeni profil ittiğinde.
 # Gizliler: IOS_P12_B64 (dağıtım sertifikası), IOS_P12_PASS
 name: iOS imza
 on:
@@ -27,7 +27,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName -q '[.[] | select(.tagName|test("^ios-[0-9]+$"))][0].tagName')
+          TAG=$(gh release list --repo "${{ github.repository }}" --limit 50 --json tagName -q '[.[] | select(.tagName|test("^personel-[0-9]+$"))][0].tagName')
           echo "TAG=$TAG" >> $GITHUB_ENV
           gh release download "$TAG" --repo "${{ github.repository }}" -p Runner-imzasiz.ipa -D in
       - name: Anahtarlığı hazırla
