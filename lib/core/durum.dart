@@ -34,6 +34,7 @@ class Uyg {
 
   static Future<void> kur({SharedPreferences? p, Api? hazirApi}) async {
     tercih = p ?? await SharedPreferences.getInstance();
+    Api.depo = tercih;
     final t = tercih.getString('tema');
     temaKipi.value = t == 'dark' ? ThemeMode.dark : t == 'light' ? ThemeMode.light : ThemeMode.system;
     api = hazirApi ?? await Api.kur(kullaniciAjani: 'BamBumPOS-Patron/1.0 (Flutter)');

@@ -55,6 +55,7 @@ class _OzetEkraniState extends State<OzetEkrani> {
   void initState() {
     super.initState();
     OzetEkrani.tazele.addListener(_yukle);
+    _onbellektenCiz(_donem);
     _yukle();
     // Bugün seçiliyken ve sekme görünürken 60 sn'de bir sessizce tazele.
     _oto = Timer.periodic(const Duration(seconds: 60), (_) {
@@ -67,6 +68,23 @@ class _OzetEkraniState extends State<OzetEkrani> {
     OzetEkrani.tazele.removeListener(_yukle);
     _oto?.cancel();
     super.dispose();
+  }
+
+  /// Son bilinen yanıtları hemen çiz (sunucu yanıtı gelince yenilenir).
+  void _onbellektenCiz(Donem donem) {
+    final r = Api.sonYanit('/api/v1/boss/overview', sorgu: donem.ozetSorgu);
+    _veri = r is Map ? r.m('data') : null;
+    if (donem.tur != DonemTur.bugun) return;
+    final g = Api.sonYanit('/api/v1/tasks');
+    if (g is Map) _gorevler = g.l('tasks');
+    final gc = Api.sonYanit('/api/v1/reports/ops-delayed', sorgu: const {'range': 'today'});
+    if (gc is Map) _geciken = gc.m('data').l('rows');
+    final ig = Uyg.isGunu;
+    final dn = Api.sonYanit('/api/v1/boss/overview',
+        sorgu: {'from': Bicim.iso(ig.subtract(const Duration(days: 1))), 'to': Bicim.iso(ig.subtract(const Duration(days: 1)))});
+    if (dn is Map) _dun = dn.m('data');
+    final yd = Api.sonYanit('/api/v1/boss/overview', sorgu: {'from': Bicim.iso(ig.subtract(const Duration(days: 6))), 'to': Bicim.iso(ig)});
+    if (yd is Map) _yediGun = yd.m('data');
   }
 
   Future<void> _yukle() async {
@@ -108,6 +126,8 @@ class _OzetEkraniState extends State<OzetEkrani> {
         if (f.isNotEmpty) await Uyg.isGunuKaydet(f);
         Canli.ozetGeldi(veri);
       }
+      // Ana rakamlar hemen; kıyas/görev istekleri arkadan gelir.
+      if (mounted && no == _istek) setState(() => _veri = veri);
       final dn = await dunF;
       final yd = await yediF;
       if (dn is Map || yd is Map) {
@@ -137,7 +157,7 @@ class _OzetEkraniState extends State<OzetEkrani> {
     if (d == _donem) return;
     setState(() {
       _donem = d;
-      _veri = null;
+      _onbellektenCiz(d);
     });
     _yukle();
   }

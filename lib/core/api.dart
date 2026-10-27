@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cookie_jar/cookie_jar.dart';
@@ -5,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Sunucudan dönen hata. Mesaj DOĞRUDAN kullanıcıya gösterilir (Laravel
 /// doğrulama mesajları zaten Türkçe).
@@ -49,6 +51,63 @@ class Api {
   final Dio _dio;
   final CookieJar _jar;
   final Uri taban;
+
+  /// SON YANIT ÖNBELLEĞİ (2026-10-27 hız): seçili GET uçlarının son başarılı
+  /// yanıtı diskte tutulur; ekranlar açılırken önce bunu ÇİZER, sunucu yanıtı
+  /// gelince günceller (boş ekran/bekleme yok). Eşleme kaldırılınca silinir.
+  static SharedPreferences? depo;
+  static const _onEk = 'onb:';
+  static const _azamiBoyut = 400000; // ~400 KB üstü yanıt saklanmaz
+  static final _bellek = <String, dynamic>{};
+
+  static String _anahtar(String yol, Map<String, dynamic>? sorgu) {
+    if (sorgu == null || sorgu.isEmpty) return '$_onEk$yol';
+    final k = sorgu.keys.toList()..sort();
+    return '$_onEk$yol?${k.map((e) => '$e=${sorgu[e]}').join('&')}';
+  }
+
+  /// Bu yol + sorgu için son bilinen yanıt (yoksa null). Senkron: initState'te çağrılır.
+  static dynamic sonYanit(String yol, {Map<String, dynamic>? sorgu}) {
+    final a = _anahtar(yol, sorgu);
+    if (_bellek.containsKey(a)) return _bellek[a];
+    final h = depo?.getString(a);
+    if (h == null) return null;
+    try {
+      return _bellek[a] = jsonDecode(h);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static void _sakla(String yol, Map<String, dynamic>? sorgu, dynamic veri) {
+    if (veri is! Map && veri is! List) return;
+    final a = _anahtar(yol, sorgu);
+    _bellek[a] = veri;
+    final d = depo;
+    if (d == null) return;
+    try {
+      final h = jsonEncode(veri);
+      if (h.length > _azamiBoyut) return;
+      d.setString(a, h);
+      // En çok 60 kayıt: en eski kullanılan silinir (rapor dönemleri birikmesin).
+      final sira = (d.getStringList('onb_sira') ?? <String>[])..remove(a)..add(a);
+      while (sira.length > 60) {
+        d.remove(sira.removeAt(0));
+      }
+      d.setStringList('onb_sira', sira);
+    } catch (_) {}
+  }
+
+  /// Eşleme kaldırılınca / başka kişiyle eşlenince eski işletmenin verisi kalmasın.
+  static Future<void> onbellekSil() async {
+    _bellek.clear();
+    final d = depo;
+    if (d == null) return;
+    for (final k in d.getKeys().where((k) => k.startsWith(_onEk)).toList()) {
+      await d.remove(k);
+    }
+    await d.remove('onb_sira');
+  }
 
   /// 401 gelince (oturum düştü / eşleme kaldırıldı) uygulama eşleme ekranına döner.
   void Function(ApiHata hata)? oturumDustu;
@@ -112,7 +171,10 @@ class Api {
   }
 
   /// Eşleme kaldırıldığında eski oturum çerezlerini siler.
-  Future<void> cerezleriSil() => _jar.deleteAll();
+  Future<void> cerezleriSil() async {
+    await onbellekSil();
+    await _jar.deleteAll();
+  }
 
   Future<dynamic> get(String yol, {Map<String, dynamic>? sorgu, Duration? zamanAsimi}) =>
       _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi);
@@ -133,6 +195,7 @@ class Api {
     }
 
     _denetle(r);
+    if (yontem == 'GET') _sakla(yol, sorgu, r.data);
     return r.data;
   }
 

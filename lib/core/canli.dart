@@ -51,9 +51,24 @@ class Canli {
   static DateTime? _metaZamani;
 
   static void basla() {
+    _onbellektenDoldur();
     unawaited(tazele());
     _zaman?.cancel();
     _zaman = Timer.periodic(const Duration(seconds: 60), (_) => tazele());
+  }
+
+  /// Soğuk açılışta şerit/rozetler boş kalmasın: son bilinen yanıtlar.
+  static void _onbellektenDoldur() {
+    final o = Api.sonYanit('/api/v1/boss/overview', sorgu: const {'period': 'day'});
+    if (ozet.value == null && o is Map) ozet.value = o.m('data');
+    final m = Api.sonYanit('/api/v1/shifts/meta');
+    if (meta.value == null && m is Map) meta.value = Map<String, dynamic>.from(m);
+    final g = Api.sonYanit('/api/v1/tasks');
+    if (gorevler.value == null && g is Map) {
+      gorevler.value = g.l('tasks');
+      gorevPersonel.value = g.l('staff');
+    }
+    _rozet();
   }
 
   static void durdur() {

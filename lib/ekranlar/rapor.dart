@@ -81,9 +81,26 @@ class _RaporEkraniState extends State<RaporEkrani> {
     }
   }
 
+  /// Son bilinen rapor satırları (aynı dönem) → bekleme yerine hemen çiz.
+  void _onbellektenCiz() {
+    if (_satirlar != null) return;
+    if (t.kaynak == 'ozet-stok') {
+      final r = Api.sonYanit('/api/v1/boss/overview', sorgu: const {'period': 'day'});
+      final inv = r is Map ? r.m('data')['inventory'] : null;
+      if (inv is Map) _satirlar = inv.l('rows');
+    } else {
+      final r = Api.sonYanit('/api/v1/reports/${t.anahtar}', sorgu: _donem.raporSorgu);
+      if (r is Map && r.m('data')['available'] != false) {
+        _satirlar = r.m('data').l(t.satirlar);
+        _filtre = r.m('filters');
+      }
+    }
+  }
+
   Future<void> _yukle() async {
     final no = ++_istek;
     setState(() {
+      _onbellektenCiz();
       _yukleniyor = true;
       _hata = null;
     });
