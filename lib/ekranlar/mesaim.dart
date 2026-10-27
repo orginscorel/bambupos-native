@@ -40,12 +40,14 @@ class _MesaimEkraniState extends State<MesaimEkrani> {
     _yenile();
     _tik = Timer.periodic(const Duration(seconds: 15), (_) => setState(() => _simdi = DateTime.now()));
     _yokla = Timer.periodic(const Duration(seconds: 60), (_) => _durumYukle());
+    Uyg.mesaiDegisti.addListener(_durumYukle);
   }
 
   @override
   void dispose() {
     _tik?.cancel();
     _yokla?.cancel();
+    Uyg.mesaiDegisti.removeListener(_durumYukle);
     super.dispose();
   }
 

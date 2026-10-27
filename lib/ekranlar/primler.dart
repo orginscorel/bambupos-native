@@ -100,10 +100,10 @@ class _PrimlerEkraniState extends State<PrimlerEkrani> {
       decoration: BoxDecoration(color: r.kart, borderRadius: BorderRadius.circular(18), border: Border.all(color: r.kenar), boxShadow: r.golge),
       child: LayoutBuilder(builder: (_, c) {
         final w = c.maxWidth / 3;
-        return Stack(children: [
+        return Stack(fit: StackFit.expand, children: [
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.elasticOut,
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeOutBack,
             left: w * _donem,
             top: 0,
             bottom: 0,

@@ -398,15 +398,17 @@ class _TemaSecici extends StatelessWidget {
           decoration: BoxDecoration(color: r.kart, borderRadius: BorderRadius.circular(20), border: Border.all(color: r.kenar), boxShadow: r.golge),
           child: LayoutBuilder(builder: (_, k) {
             final w = k.maxWidth / 3;
-            return Stack(children: [
+            // fit: expand → yazılar kutunun DİKEY ORTASINDA (eskiden üste yapışıktı)
+            return Stack(fit: StackFit.expand, children: [
               AnimatedPositioned(
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.elasticOut,
+                duration: const Duration(milliseconds: 380),
+                curve: Curves.easeOutBack,
                 left: w * secili,
                 top: 0,
                 bottom: 0,
                 width: w,
-                child: Container(decoration: BoxDecoration(gradient: Marka.grad, borderRadius: BorderRadius.circular(15))),
+                child: Container(decoration: BoxDecoration(gradient: Marka.grad, borderRadius: BorderRadius.circular(15),
+                    boxShadow: const [BoxShadow(color: Color(0x665443D2), blurRadius: 14, offset: Offset(0, 6), spreadRadius: -6)])),
               ),
               Row(children: [
                 for (var i = 0; i < 3; i++)

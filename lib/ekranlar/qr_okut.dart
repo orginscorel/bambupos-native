@@ -92,6 +92,18 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
     });
   }
 
+  bool _kapandi = false;
+
+  /// Ekranı TEK dokunuşta kapatır (X, başarı ekranı, otomatik). İki kez pop etmez.
+  void _kapat() {
+    if (_kapandi || !mounted) return;
+    _kapandi = true;
+    _say?.cancel();
+    unawaited(_kamera.stop().catchError((_) {}));
+    final nav = Navigator.of(context);
+    if (nav.canPop()) nav.pop();
+  }
+
   void _panoyuKapat() {
     _say?.cancel();
     setState(() {
@@ -111,13 +123,15 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
       final r = await Uyg.api.post('/api/v1/portal/qr-mesai/$_token/$_kod', {'eylem': eylem, 'mola_turu': ?tur}) as Map;
       _say?.cancel();
       HapticFeedback.heavyImpact();
+      // Ana sayfa / Mesaim durumu HEMEN yenilesin (eskiden 60 sn yoklamayı bekliyordu)
+      Uyg.mesaiDegisti.value++;
       setState(() {
         _pano = null;
         _bitti = Map<String, dynamic>.from(r);
       });
-      await _kamera.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 2600));
-      if (mounted) Navigator.of(context).maybePop();
+      unawaited(_kamera.stop());
+      await Future<void>.delayed(const Duration(milliseconds: 1700));
+      _kapat();
     } on ApiHata catch (e) {
       bildir('İşlem yapılamadı', mesaj: e.mesaj, tur: BildirimTur.hata);
     } finally {
@@ -188,30 +202,6 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
                 }),
               ),
             ),
-          // Üst çubuk
-          Positioned(
-            left: 16,
-            right: 16,
-            top: ust + 12,
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(color: Colors.black.withValues(alpha: .4), borderRadius: BorderRadius.circular(30)),
-                child: const Text('Mesai / mola QR\'ını okut', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-              ),
-              const Spacer(),
-              _YuvarlakDugme(
-                ikon: _fener ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
-                etkin: _fener,
-                onTap: () async {
-                  await _kamera.toggleTorch();
-                  setState(() => _fener = !_fener);
-                },
-              ),
-              const SizedBox(width: 8),
-              _YuvarlakDugme(ikon: Icons.close_rounded, onTap: () => Navigator.of(context).maybePop()),
-            ]),
-          ),
           // Kamera seçimi
           if (_pano == null && _bitti == null)
             Positioned(
@@ -226,11 +216,11 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
                   height: 50,
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(color: Colors.white.withValues(alpha: .15), borderRadius: BorderRadius.circular(18)),
-                  child: Stack(children: [
+                  child: Stack(fit: StackFit.expand, children: [
                     AnimatedAlign(
                       alignment: _on ? Alignment.centerRight : Alignment.centerLeft,
-                      duration: const Duration(milliseconds: 500),
-                      curve: Curves.elasticOut,
+                      duration: const Duration(milliseconds: 380),
+                      curve: Curves.easeOutBack,
                       child: FractionallySizedBox(
                         widthFactor: .5,
                         child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14))),
@@ -260,7 +250,31 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
             Positioned.fill(child: GestureDetector(onTap: _islem == null ? _panoyuKapat : null, child: Container(color: Colors.transparent))),
             Align(alignment: Alignment.bottomCenter, child: _Pano(veri: _pano!, kalan: _kalan, islem: _islem, islemTur: _islemTur, calistir: _calistir, yeniden: _panoyuKapat)),
           ],
-          if (_bitti != null) Positioned.fill(child: _Basari(veri: _bitti!)),
+          if (_bitti != null) Positioned.fill(child: GestureDetector(onTap: _kapat, child: _Basari(veri: _bitti!))),
+          // Üst çubuk — EN ÜSTTE: pano arkasındaki dokunma katmanı ve başarı ekranı X'i örtmesin
+          Positioned(
+            left: 16,
+            right: 16,
+            top: ust + 12,
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: .4), borderRadius: BorderRadius.circular(30)),
+                child: const Text('Mesai / mola QR\'ını okut', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              ),
+              const Spacer(),
+              _YuvarlakDugme(
+                ikon: _fener ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
+                etkin: _fener,
+                onTap: () async {
+                  await _kamera.toggleTorch();
+                  setState(() => _fener = !_fener);
+                },
+              ),
+              const SizedBox(width: 8),
+              _YuvarlakDugme(ikon: Icons.close_rounded, onTap: _kapat),
+            ]),
+          ),
         ]),
       ),
     );

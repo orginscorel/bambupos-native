@@ -47,12 +47,14 @@ class _AnaSayfaState extends State<AnaSayfa> {
     _yukle();
     _tik = Timer.periodic(const Duration(seconds: 15), (_) => setState(() => _simdi = DateTime.now()));
     _yokla = Timer.periodic(const Duration(seconds: 60), (_) => _durumYukle());
+    Uyg.mesaiDegisti.addListener(_durumYukle);
   }
 
   @override
   void dispose() {
     _tik?.cancel();
     _yokla?.cancel();
+    Uyg.mesaiDegisti.removeListener(_durumYukle);
     _sayfa.dispose();
     super.dispose();
   }

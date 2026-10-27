@@ -99,16 +99,19 @@ class PaIkon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = context.pa;
+    // Koyu temada açık pastel zeminler parlıyordu: zemin, simge renginin saydam tonu olur.
+    final z = r.koyu && renk != null && zemin != null ? renk!.withValues(alpha: .18) : (zemin ?? r.birincilYumusak);
+    final ikonRenk = r.koyu && renk != null ? Color.lerp(renk, Colors.white, .25)! : (renk ?? r.birincil);
     return Container(
       width: boyut,
       height: boyut,
       decoration: BoxDecoration(
-        color: grad ? null : (zemin ?? r.birincilYumusak),
+        color: grad ? null : z,
         gradient: grad ? Marka.grad : null,
         borderRadius: BorderRadius.circular(boyut * .34),
         boxShadow: grad ? const [BoxShadow(color: Color(0x995443D2), blurRadius: 18, offset: Offset(0, 8), spreadRadius: -8)] : null,
       ),
-      child: Icon(ikon, size: ikonBoyut ?? boyut * .46, color: grad ? Colors.white : (renk ?? r.birincil)),
+      child: Icon(ikon, size: ikonBoyut ?? boyut * .46, color: grad ? Colors.white : ikonRenk),
     );
   }
 }

@@ -14,6 +14,8 @@ class Uyg {
   static late Api api;
   static final navigator = GlobalKey<NavigatorState>();
   static final hesap = ValueNotifier<Map<String, dynamic>?>(null);
+  /// Mesai/mola değişti (QR işlemi başarılı) → açık ekranlar durumu HEMEN yeniler.
+  static final mesaiDegisti = ValueNotifier<int>(0);
   static late SharedPreferences tercih;
 
   static String get ad => hesap.value?['ad']?.toString() ?? '';

@@ -15,6 +15,7 @@ import 'package:bambumpos_personel/ekranlar/destek.dart';
 import 'package:bambumpos_personel/ekranlar/eslesme.dart';
 import 'package:bambumpos_personel/ekranlar/gorevler.dart';
 import 'package:bambumpos_personel/ekranlar/hedefler.dart';
+import 'package:bambumpos_personel/ekranlar/kabuk.dart';
 import 'package:bambumpos_personel/ekranlar/mesaim.dart';
 import 'package:bambumpos_personel/ekranlar/primler.dart';
 import 'package:bambumpos_personel/ekranlar/profil.dart';
@@ -228,7 +229,10 @@ void main() {
         .setMockMethodCallHandler(const MethodChannel('plugins.flutter.io/path_provider'), (_) async => gecici);
   });
 
-  final boyutlar = {'telefon': const Size(400, 860), 'tablet': const Size(820, 1180)};
+  // UZUN=1 → sayfanın tamamı (kaydırmadan) tek görüntüde
+  final boyutlar = Platform.environment['UZUN'] == '1'
+      ? {'uzun': const Size(400, 1900)}
+      : {'telefon': const Size(400, 860), 'tablet': const Size(820, 1180)};
   final ekranlar = <String, Widget Function()>{
     '01-eslesme': () => const EslesmeEkrani(),
     '02-ana': () => const AnaSayfa(),
@@ -242,6 +246,15 @@ void main() {
     '10-bildirimler': () => const BildirimlerEkrani(),
     '11-destek': () => const DestekEkrani(),
   };
+  // ALT MENÜ (kabuk) — sayfa + menü birlikte; iPhone ana ekran çizgisi payı (34) ile.
+  Widget menulu(Widget sayfa, int sekme) => Scaffold(
+        extendBody: true,
+        body: sayfa,
+        bottomNavigationBar: PaAltCubuk(secili: sekme, onSec: (_) {}, onQr: () {}),
+      );
+  ekranlar['00-menu-ana'] = () => menulu(const AnaSayfa(), 0);
+  ekranlar['00-menu-gorevler'] = () => menulu(const GorevlerEkrani(), 1);
+  ekranlar['00-menu-profil'] = () => menulu(const ProfilEkrani(), 3);
   final secilen = Platform.environment['EKRAN'];
 
   for (final b in boyutlar.entries) {
@@ -250,6 +263,10 @@ void main() {
       testWidgets('${e.key} ${b.key}', (t) async {
         t.view.physicalSize = b.value;
         t.view.devicePixelRatio = 1;
+        if (e.key.startsWith('00-menu')) {
+          t.view.padding = const FakeViewPadding(bottom: 34);
+          t.view.viewPadding = const FakeViewPadding(bottom: 34);
+        }
         addTearDown(t.view.reset);
         await t.pumpWidget(_uygulama(e.value()));
         await _bekle(t);
