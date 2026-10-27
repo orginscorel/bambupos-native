@@ -689,15 +689,31 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     if (k.adet > 1) {
       _acikKalem.value = _acikKalem.value == k.id ? null : k.id;
     } else {
-      _secim.ayarla(k.id, _secim.adet(k.id) > 0 ? 0 : 1, 1);
+      _secim.satirDegistir(k);
     }
   }
 
-  /// Soldaki kutu: satırın TAMAMINI seç / bırak (toplu seçim).
+  /// Başlık kutusu: satırın ödenmemiş adetlerinin TAMAMINI seç / bırak
+  /// (kısmi seçiliyken tamamlar — web sipariş detayındaki ana kutu gibi).
   void _kalemKutusu(Kalem k) {
     if (_duzelt || !_secilebilir(k)) return;
     HapticFeedback.selectionClick();
-    _secim.ayarla(k.id, _secim.adet(k.id) >= k.adet ? 0 : k.adet, k.adet);
+    _secim.satirDegistir(k);
+  }
+
+  /// Satırın adet adet dökümü: sunucunun `dokum` parçaları (saat · kişi ·
+  /// adet) tek tek adetlere açılır; döküm yoksa saat/kişi bilgisiz adetler.
+  static List<({String? saat, String? kisi, bool devir})> _birimDokumu(Kalem k) {
+    final d = (k.ham['dokum'] as List? ?? const []).whereType<Map>();
+    final l = <({String? saat, String? kisi, bool devir})>[
+      for (final p in d)
+        for (var j = 0; j < tamSayi(p['adet'], 1); j++) (saat: p['saat']?.toString(), kisi: p['kisi']?.toString(), devir: p['devir'] == true),
+    ];
+    if (l.length > k.adet) return l.sublist(0, k.adet);
+    while (l.length < k.adet) {
+      l.add((saat: null, kisi: null, devir: false));
+    }
+    return l;
   }
 
   /// "Tutara yaz": elle değiştirilmiş tutarı seçime geri döndürür.
@@ -2302,7 +2318,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     return Tooltip(
       message: tamOdendi ? 'Bu parti ödendi' : '$no. parti${ad != null ? ' · $ad' : ''} — tahsil için seç',
       child: InkWell(
-        onTap: tamOdendi || _duzelt ? null : () => _secim.hepsiniAyarla({for (final k in odenmemis) k.id: k.adet}),
+        onTap: tamOdendi || _duzelt ? null : () => _secim.hepsiniSec(odenmemis),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -2334,8 +2350,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   Widget _kalemSatiri(Kalem k) {
     final sikSatir = _sikSag;
     final secilebilir = _secilebilir(k) && !_duzelt;
-    final secAdet = secilebilir ? _secim.adet(k.id).clamp(0, k.adet) : 0;
-    final tam = secAdet > 0 && secAdet >= k.adet;
+    final secAdet = secilebilir ? _secim.adet(k.id).clamp(0, k.odenmemisAdet) : 0;
+    final tam = secAdet > 0 && secAdet >= k.odenmemisAdet;
     final kismi = secAdet > 0 && !tam;
     final cokAdet = k.adet > 1 && secilebilir;
     final acik = cokAdet && _acikKalem.value == k.id;
@@ -2356,7 +2372,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       kutu = Tooltip(message: 'İkram', child: SizedBox(width: 32, child: Icon(Icons.card_giftcard_rounded, size: 20, color: Renk.bilgi)));
     } else if (secilebilir) {
       kutu = Tooltip(
-        message: tam ? 'Seçimi kaldır' : 'Tamamını seç (${k.adet} adet)',
+        message: tam ? 'Seçimi kaldır' : 'Tamamını seç (${k.odenmemisAdet} adet)',
         child: InkWell(
           key: ValueKey('kasa-kutu-${k.id}'),
           borderRadius: koseYuvarlak,
@@ -2394,7 +2410,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: secAdet > 0 ? Renk.markaKenar : Renk.cizgi),
       ),
-      child: Text(kismi ? '$secAdet/${k.adet}' : '${k.adet}×',
+      child: Text('${k.adet}×',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: secAdet > 0 ? Renk.marka : (soluk ? Renk.soluk : Renk.yazi))),
     );
 
@@ -2416,7 +2432,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                 color: soluk ? Renk.soluk : Renk.yazi,
               )),
           if (meta.isNotEmpty) Text(meta.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
-          if (k.odendi)
+          if (secilebilir && k.odenmemisAdet < k.adet)
+            Text('${k.adet - k.odenmemisAdet} adet ödendi${secAdet > 0 ? ' · $secAdet seçili' : ''}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: secAdet > 0 ? Renk.marka : Renk.basari))
+          else if (kismi)
+            Text('$secAdet / ${k.adet} adet seçili', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.marka))
+          else if (k.odendi)
             Text('Ödendi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.basari))
           else if (k.ikram)
             Text('İkram${k.ikramNedeni != null && k.ikramNedeni!.isNotEmpty ? ' · ${k.ikramNedeni}' : ''}', style: TextStyle(fontSize: 12, color: Renk.bilgi))
@@ -2435,9 +2456,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               color: k.ikram || soluk ? Renk.soluk : Renk.yazi,
               fontFeatures: const [FontFeature.tabularFigures()],
             )),
-        if (kismi)
-          Text('seçilen ${para(_payTutari(k, secAdet))}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.marka))
-        else if (k.adet > 1 || k.ikram)
+        if (k.adet > 1 || k.ikram)
           Text('${para(k.birimFiyat)} / adet', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
       ]),
       if (cokAdet)
@@ -2465,7 +2484,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ConstrainedBox(constraints: BoxConstraints(minHeight: sikSatir ? 36 : 44), child: ust),
-            if (acik) _adetSecici(k, secAdet),
+            if (acik) _birimKartlari(k),
             if (duzenle) _duzeltCubugu(k),
           ]),
         ),
@@ -2473,75 +2492,108 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
-  /// Çok adetli satır açılınca: adetleri tek tek seç (kutucuklar) ya da
-  /// −/+ ile toplu ayarla; "Tümü" / "Hiçbiri". Ödenmemiş adedi aşamaz.
-  Widget _adetSecici(Kalem k, int secAdet) {
-    final birimler = _secim.birimler(k.id);
-    final kutucuk = k.adet <= 30;
-    Widget kare(IconData ikon, VoidCallback? bas, String ipucu) => Tooltip(
-          message: ipucu,
+  /// Çok adetli satır açılınca: her adet ayrı kart — kutu · saat · ürün ·
+  /// siparişi giren · birim fiyat (web sipariş detayındaki parça dökümü).
+  /// Ödenmiş adetler "Ödendi" görünür, seçilemez.
+  Widget _birimKartlari(Kalem k) {
+    final sik = _sikSag;
+    final dokum = _birimDokumu(k);
+    final ilk = k.adet - k.odenmemisAdet;
+    final secili = _secim.birimler(k.id);
+    final dokumVar = (k.ham['dokum'] as List? ?? const []).isNotEmpty;
+    Widget kart(int i) {
+      final b = dokum[i];
+      final odendi = i < ilk;
+      final sec = !odendi && secili.contains(i);
+      final kisi = b.kisi ?? (dokumVar && b.devir ? 'devir / aktarım' : '—');
+      return Padding(
+        padding: EdgeInsets.only(top: sik ? 4 : 6),
+        child: Material(
+          color: sec ? Renk.markaAcik.carp(.6) : (odendi ? Renk.ic : Renk.yuzey),
+          shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: sec ? Renk.marka : Renk.cizgi)),
           child: InkWell(
-            borderRadius: koseYuvarlak,
-            onTap: bas,
-            child: SizedBox(width: 40, height: 38, child: Icon(ikon, size: 18, color: bas == null ? Renk.cizgiKoyu : Renk.yazi)),
-          ),
-        );
-    return Container(
-      margin: const EdgeInsets.fromLTRB(38, 4, 0, 4),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.markaKenar)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Ödenecek adetleri seçin', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Renk.ikinci)),
-        if (kutucuk) ...[
-          const SizedBox(height: 8),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            for (var i = 0; i < k.adet; i++)
-              _BirimKutusu(
-                key: ValueKey('kasa-birim-${k.id}-$i'),
-                no: i + 1,
-                secili: birimler.contains(i),
-                bas: () {
-                  HapticFeedback.selectionClick();
-                  _secim.birimDegistir(k.id, i, k.adet);
-                },
-              ),
-          ]),
-        ],
-        const SizedBox(height: 8),
-        Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, runSpacing: 6, children: [
-          Container(
-            decoration: BoxDecoration(color: Renk.ic, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgiKoyu)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              kare(Icons.remove_rounded, secAdet > 0 ? () => _secim.ayarla(k.id, secAdet - 1, k.adet) : null, 'Bir azalt'),
-              SizedBox(
-                width: 48,
-                child: Text('$secAdet / ${k.adet}',
-                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
-              ),
-              kare(Icons.add_rounded, secAdet < k.adet ? () => _secim.ayarla(k.id, secAdet + 1, k.adet) : null, 'Bir artır'),
-            ]),
-          ),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            TextButton(
-              style: TextButton.styleFrom(minimumSize: const Size(0, 36), padding: const EdgeInsets.symmetric(horizontal: 8)),
-              onPressed: secAdet == 0 ? null : () => _secim.ayarla(k.id, 0, k.adet),
-              child: const Text('Hiçbiri'),
+            key: ValueKey('kasa-birim-${k.id}-$i'),
+            customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+            onTap: odendi
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    _secim.birimDegistir(k, i);
+                  },
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(4, sik ? 3 : 6, 12, sik ? 3 : 6),
+              child: Row(children: [
+                SizedBox(
+                  width: 32,
+                  child: odendi
+                      ? Tooltip(message: 'Ödendi', child: Icon(Icons.check_circle_rounded, size: 20, color: Renk.basari))
+                      : Center(
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: sec ? Renk.marka : Renk.yuzey,
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(color: sec ? Renk.marka : Renk.cizgiKoyu, width: 1.5),
+                            ),
+                            child: sec ? Icon(Icons.check_rounded, size: 14, color: Renk.durumUstu) : null,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.schedule_rounded, size: 15, color: Renk.ikinci),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 44,
+                  child: Text(b.saat == null ? '—' : saatMetni(b.saat),
+                      style: TextStyle(fontSize: sik ? 13.5 : 14.5, fontWeight: FontWeight.w800, color: odendi ? Renk.soluk : Renk.yazi, fontFeatures: const [FontFeature.tabularFigures()])),
+                ),
+                Container(width: 1, height: sik ? 22 : 32, margin: EdgeInsets.symmetric(horizontal: sik ? 8 : 10), color: Renk.cizgi),
+                Expanded(
+                  child: sik
+                      ? LayoutBuilder(
+                          builder: (_, k2) => Row(children: [
+                          ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: k2.maxWidth * .45),
+                            child: Text(k.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
+                          ),
+                          const SizedBox(width: 10),
+                          Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
+                          const SizedBox(width: 3),
+                          Expanded(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci))),
+                        ]))
+                      : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(k.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
+                          Row(children: [
+                            Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
+                            const SizedBox(width: 3),
+                            Flexible(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci))),
+                          ]),
+                        ]),
+                ),
+                const SizedBox(width: 8),
+                Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Text(para(k.birimFiyat),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        decoration: odendi ? TextDecoration.lineThrough : null,
+                        decorationColor: Renk.soluk,
+                        color: odendi ? Renk.soluk : Renk.yazi,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      )),
+                  if (odendi) Text('Ödendi', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.basari)),
+                ]),
+              ]),
             ),
-            const SizedBox(width: 4),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                foregroundColor: Renk.marka,
-                side: BorderSide(color: Renk.markaKenar),
-              ),
-              onPressed: secAdet >= k.adet ? null : () => _secim.ayarla(k.id, k.adet, k.adet),
-              icon: const Icon(Icons.done_all_rounded, size: 16),
-              label: const Text('Tümü'),
-            ),
-          ]),
-        ]),
-      ]),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(38, 0, 0, sik ? 4 : 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < k.adet; i++) kart(i)]),
     );
   }
 
@@ -3764,8 +3816,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
 /* ───────── Kasa yardımcıları ───────── */
 
-/// Kalem seçimi: satır → seçili adet sıraları (0..adet-1). Sunucuya yalnız
-/// adet gider; sıralar ekranda "hangi kutucuk seçili" görünsün diye tutulur.
+/// Kalem seçimi: satır → seçili ADET sıraları (0..adet-1, satırın kendi
+/// dökümündeki sırayla; ilk `adet - ödenmemiş` adet ödenmiş sayılır).
+/// Sunucuya yalnız adet gider; sıralar ekranda hangi adet kartının
+/// işaretli olduğunu göstermek için tutulur.
 class _KalemSecimi extends ChangeNotifier {
   final Map<int, Set<int>> _birimler = {};
 
@@ -3773,39 +3827,42 @@ class _KalemSecimi extends ChangeNotifier {
   int adet(int id) => _birimler[id]?.length ?? 0;
   Set<int> birimler(int id) => _birimler[id] ?? const {};
 
-  /// Tek adedi seç / bırak.
-  void birimDegistir(int id, int i, int enFazla) {
-    if (i < 0 || i >= enFazla) return;
-    final s = _birimler.putIfAbsent(id, () => <int>{});
+  /// Satırın seçilebilir (ödenmemiş) adet sıraları.
+  static Iterable<int> odenmemisSiralar(Kalem k) sync* {
+    for (var i = k.adet - k.odenmemisAdet; i < k.adet; i++) {
+      yield i;
+    }
+  }
+
+  /// Tek adedi seç / bırak (ödenmiş adet seçilemez).
+  void birimDegistir(Kalem k, int i) {
+    if (i < k.adet - k.odenmemisAdet || i >= k.adet) return;
+    final s = _birimler.putIfAbsent(k.id, () => <int>{});
     if (!s.remove(i)) s.add(i);
-    if (s.isEmpty) _birimler.remove(id);
+    if (s.isEmpty) _birimler.remove(k.id);
     notifyListeners();
   }
 
-  /// Satırın seçili adedini n yapar (0 = bırak, enFazla = tamamı).
-  void ayarla(int id, int n, int enFazla) {
-    if (_ayarla(id, n, enFazla)) notifyListeners();
-  }
+  /// Satırın ödenmemiş adetlerinin tamamı seçili mi?
+  bool tamami(Kalem k) => k.odenmemisAdet > 0 && adet(k.id) >= k.odenmemisAdet;
 
-  bool _ayarla(int id, int n, int enFazla) {
-    n = n.clamp(0, enFazla);
-    final once = adet(id);
-    if (n == 0) return _birimler.remove(id) != null;
-    final s = _birimler.putIfAbsent(id, () => <int>{});
-    s.removeWhere((i) => i >= enFazla);
-    while (s.length > n) {
-      s.remove(s.reduce((a, b) => a > b ? a : b));
+  /// Başlık kutusu: tamamı seçiliyse bırak, değilse (hiç / kısmi) tamamını seç.
+  void satirDegistir(Kalem k) {
+    if (tamami(k)) {
+      _birimler.remove(k.id);
+    } else {
+      _birimler[k.id] = odenmemisSiralar(k).toSet();
     }
-    for (var i = 0; s.length < n && i < enFazla; i++) {
-      s.add(i);
-    }
-    return once != n;
+    notifyListeners();
   }
 
   /// Seçimi baştan kurar (parti başlığı: partinin tamamı).
-  void hepsiniAyarla(Map<int, int> adetler) {
+  void hepsiniSec(Iterable<Kalem> ks) {
     _birimler.clear();
-    adetler.forEach((id, n) => _ayarla(id, n, n));
+    for (final k in ks) {
+      final s = odenmemisSiralar(k).toSet();
+      if (s.isNotEmpty) _birimler[k.id] = s;
+    }
     notifyListeners();
   }
 
@@ -3815,22 +3872,38 @@ class _KalemSecimi extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Güncel satırlara göre ayıklar: ödenmiş/çıkmış satır düşer, adedi
-  /// azalmış satırın seçimi yeni adede indirilir.
+  /// Güncel satırlara göre ayıklar: ödenmiş/çıkmış satır düşer; artık
+  /// ödenmiş görünen ya da satırdan çıkmış adetler bırakılır, seçili adet
+  /// sayısı korunur ama ödenmemiş adede kırpılır.
   bool ayikla(Iterable<Kalem> secilebilir) {
     if (_birimler.isEmpty) return false;
-    final adetler = {for (final k in secilebilir) k.id: k.odenmemisAdet};
+    final satirlar = {for (final k in secilebilir) k.id: k};
     var degisti = false;
     for (final id in _birimler.keys.toList()) {
-      final enFazla = adetler[id];
-      if (enFazla == null || enFazla <= 0) {
+      final k = satirlar[id];
+      if (k == null || k.odenmemisAdet <= 0) {
         _birimler.remove(id);
         degisti = true;
-      } else if (_birimler[id]!.any((i) => i >= enFazla)) {
-        final n = adet(id).clamp(0, enFazla);
-        _birimler[id]!.removeWhere((i) => i >= enFazla);
-        _ayarla(id, n, enFazla);
+        continue;
+      }
+      final eski = _birimler[id]!;
+      final ilk = k.adet - k.odenmemisAdet;
+      final n = eski.length.clamp(0, k.odenmemisAdet);
+      final yeni = eski.where((i) => i >= ilk && i < k.adet).toSet();
+      for (final i in odenmemisSiralar(k)) {
+        if (yeni.length >= n) break;
+        yeni.add(i);
+      }
+      while (yeni.length > n) {
+        yeni.remove(yeni.reduce((a, b) => a > b ? a : b));
+      }
+      if (yeni.length != eski.length || !yeni.containsAll(eski)) {
         degisti = true;
+        if (yeni.isEmpty) {
+          _birimler.remove(id);
+        } else {
+          _birimler[id] = yeni;
+        }
       }
     }
     if (degisti) notifyListeners();
@@ -3933,46 +4006,6 @@ class _AracDugmesi extends StatelessWidget {
                     ),
                   ),
               ]),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Çok adetli satırdaki tek adet kutucuğu.
-class _BirimKutusu extends StatelessWidget {
-  const _BirimKutusu({super.key, required this.no, required this.secili, required this.bas});
-  final int no;
-  final bool secili;
-  final VoidCallback bas;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: secili,
-      label: '$no. adet',
-      child: Material(
-        color: secili ? Renk.marka : Renk.ic,
-        shape: RoundedRectangleBorder(
-          borderRadius: koseYuvarlak,
-          side: BorderSide(color: secili ? Renk.marka : Renk.cizgiKoyu),
-        ),
-        child: InkWell(
-          customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
-          onTap: bas,
-          child: SizedBox(
-            width: 44,
-            height: 40,
-            child: Center(
-              child: secili
-                  ? Icon(Icons.check_rounded, size: 20, color: Renk.durumUstu)
-                  : Text(
-                      '$no',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Renk.ikinci),
-                    ),
             ),
           ),
         ),

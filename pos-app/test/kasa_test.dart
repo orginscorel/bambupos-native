@@ -67,7 +67,7 @@ Map<String, dynamic> _adisyon(Map<String, (int, String)> y) => ((jsonDecode(y['/
 Map<String, (int, String)> _kasaYanitlari() {
   final o = ((jsonDecode(_veri('adisyon')) as Map)['order'] as Map).cast<String, dynamic>();
   final ornek = (o['items'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).firstWhere((k) => k['id'] == 815);
-  Map<String, dynamic> kalem(int id, String ad, int adet, int birim) => {
+  Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {List<Map<String, dynamic>> dokum = const []}) => {
         ...ornek,
         'id': id,
         'name': ad,
@@ -78,8 +78,17 @@ Map<String, (int, String)> _kasaYanitlari() {
         'line_total_minor': adet * birim,
         'is_settled': false,
         'options': const [],
+        'dokum': dokum,
       };
-  o['items'] = [kalem(901, 'Çay', 4, 2500), kalem(902, 'Kaşarlı Tost', 2, 9000)];
+  // Çay: sunucu dökümü (2 adet 19:40 Muhammet Ali Yeni, 2 adet 20:05 Ayşe
+  // Yıldız). Tost: döküm yok — saat/kişi bilgisiz adetlere düşer.
+  o['items'] = [
+    kalem(901, 'Çay', 4, 2500, dokum: [
+      {'saat': '2026-10-27T16:40:00+00:00', 'kisi': 'Muhammet Ali Yeni', 'adet': 2, 'devir': false},
+      {'saat': '2026-10-27T17:05:00+00:00', 'kisi': 'Ayşe Yıldız', 'adet': 2, 'devir': false},
+    ]),
+    kalem(902, 'Kaşarlı Tost', 2, 9000),
+  ];
   o
     ..['items_total_minor'] = 28000
     ..['total_minor'] = 28000
@@ -147,11 +156,15 @@ Future<void> _bitir(WidgetTester t, UygulamaDurumu d) async {
 Future<void> _ikiCaySecVeOde(WidgetTester t) async {
   await t.tap(find.text('Çay'));
   await t.pump();
+  // Her adet ayrı kart: saat · ürün · siparişi giren · birim fiyat.
+  expect(find.text('Muhammet Ali Yeni'), findsNWidgets(2));
+  expect(find.text('Ayşe Yıldız'), findsNWidgets(2));
+  expect(find.text('Ödenecek adetleri seçin'), findsNothing);
   await t.tap(find.byKey(const ValueKey('kasa-birim-901-0')));
   await t.pump();
   await t.tap(find.byKey(const ValueKey('kasa-birim-901-2')));
   await t.pump();
-  expect(find.text('2/4'), findsOneWidget);
+  expect(find.text('2 / 4 adet seçili'), findsOneWidget);
   await _ode(t);
 }
 
@@ -232,7 +245,7 @@ void main() {
     s.odemeYanitlari.add((409, jsonEncode({'message': 'Adisyon başka bir işlemle değişti.'})));
     await _ikiCaySecVeOde(t);
     expect(find.text('Adisyon değişti'), findsOneWidget);
-    expect(find.text('2/4'), findsNothing); // seçim temizlendi
+    expect(find.text('2 / 4 adet seçili'), findsNothing); // seçim temizlendi
     await _bitir(t, d);
   });
 
@@ -366,11 +379,11 @@ void main() {
       await t.tap(find.byKey(ValueKey('kasa-birim-901-$i')));
       await t.pump();
     }
-    expect(find.text('3/4'), findsOneWidget);
+    expect(find.text('3 / 4 adet seçili'), findsOneWidget);
     // Değişmedi (304): hiçbir şey olmaz.
     await t.pump(const Duration(seconds: 3));
     await _bekle(t);
-    expect(find.text('3/4'), findsOneWidget);
+    expect(find.text('3 / 4 adet seçili'), findsOneWidget);
     expect(find.text('Adisyon güncellendi'), findsNothing);
     final once = s.istekler.where((r) => r.$2 == '/api/v1/orders/300').length;
     expect(once, greaterThan(1));
@@ -385,8 +398,57 @@ void main() {
     await _bekle(t);
     await t.scrollUntilVisible(find.text('Soda'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Soda'), findsOneWidget);
-    expect(find.text('2/4'), findsOneWidget); // 3 seçim → 2'ye kırpıldı
+    // 3 seçim → 2'ye kırpıldı; ilk 2 adet artık ödendi görünür, seçilemez.
+    expect(find.text('2 adet ödendi · 2 seçili'), findsOneWidget);
+    expect(t.widget<InkWell>(find.byKey(const ValueKey('kasa-birim-901-0'))).onTap, isNull);
+    expect(t.widget<InkWell>(find.byKey(const ValueKey('kasa-birim-901-1'))).onTap, isNull);
+    expect(t.widget<InkWell>(find.byKey(const ValueKey('kasa-birim-901-3'))).onTap, isNotNull);
     expect(find.text('Adisyon güncellendi'), findsOneWidget);
+    await _bitir(t, d);
+  });
+
+  testWidgets('başlık kutusu: kısmi seçimi tamamlar, sonra tamamını bırakır', (t) async {
+    final (d, s) = await _kur(t, manuel: false);
+    await t.tap(find.text('Çay'));
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('kasa-birim-901-1')));
+    await t.pump();
+    expect(find.text('1 / 4 adet seçili'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+    await t.pump();
+    expect(find.text('1 / 4 adet seçili'), findsNothing);
+    expect(find.textContaining('4 adet'), findsWidgets);
+    await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+    await t.pump();
+    expect(find.textContaining('adet seçili'), findsNothing);
+    // Yeniden tamamı → ödeme qty 4.
+    await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+    await t.pump();
+    await _ode(t);
+    final g = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/payments')).single.$3!;
+    expect(g['items'], [
+      {'id': 901, 'qty': 4},
+    ]);
+    expect(g['amount_minor'], 10000);
+    await _bitir(t, d);
+  });
+
+  testWidgets('döküm yoksa adetler saat/kişi bilgisiz kart olarak açılır', (t) async {
+    final (d, s) = await _kur(t, manuel: false);
+    await t.tap(find.text('Kaşarlı Tost'));
+    await t.pump();
+    expect(find.byKey(const ValueKey('kasa-birim-902-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('kasa-birim-902-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('kasa-birim-902-2')), findsNothing);
+    expect(find.text('—'), findsNWidgets(4)); // saat + kişi, iki adet
+    await t.tap(find.byKey(const ValueKey('kasa-birim-902-1')));
+    await t.pump();
+    await _ode(t);
+    final g = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/payments')).single.$3!;
+    expect(g['items'], [
+      {'id': 902, 'qty': 1},
+    ]);
+    expect(g['amount_minor'], 9000);
     await _bitir(t, d);
   });
 }

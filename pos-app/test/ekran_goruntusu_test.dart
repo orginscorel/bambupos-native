@@ -136,7 +136,7 @@ Future<void> _bekle(WidgetTester t) async {
 Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = false, bool cokKalem = false, bool ethernetPos = false}) {
   final o = ((jsonDecode(_veri('adisyon')) as Map)['order'] as Map).cast<String, dynamic>();
   final kalemler = (o['items'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
-  Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {bool odendi = false}) => {
+  Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {bool odendi = false, List<Map<String, dynamic>> dokum = const []}) => {
         ...kalemler.firstWhere((k) => k['id'] == 815),
         'id': id,
         'name': ad,
@@ -149,9 +149,14 @@ Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = fal
         'note': null,
         'options': const [],
         'variant_name': null,
+        'dokum': dokum,
       };
+  final simdi = DateTime.now().toUtc();
   o['items'] = [
-    kalem(901, 'Çay', 4, 2500),
+    kalem(901, 'Çay', 4, 2500, dokum: [
+      {'saat': simdi.subtract(const Duration(minutes: 40)).toIso8601String(), 'kisi': 'Muhammet Ali Yeni', 'adet': 2, 'devir': false},
+      {'saat': simdi.subtract(const Duration(minutes: 12)).toIso8601String(), 'kisi': 'Ayşe Yıldız', 'adet': 2, 'devir': false},
+    ]),
     kalem(902, 'Kaşarlı Tost', 2, 9000),
     kalemler.firstWhere((k) => k['id'] == 815),
     kalemler.firstWhere((k) => k['id'] == 814),
@@ -439,6 +444,16 @@ void main() {
         await t.tap(find.text(yontem).last, warnIfMissed: false);
         await _bekle(t);
         await _yaz(t, 'kasa-masaustu-$ad-${yontem == 'Nakit' ? 'nakit' : 'kart'}');
+        // 4× çay açılır, iki adet seçilir (adet kartları, sıkı düzen).
+        if (yontem == 'Nakit') {
+          await t.tap(find.text('Çay').first);
+          await _bekle(t);
+          await t.tap(find.byKey(const ValueKey('kasa-birim-901-0')));
+          await t.pump();
+          await t.tap(find.byKey(const ValueKey('kasa-birim-901-2')));
+          await _bekle(t);
+          await _yaz(t, 'kasa-masaustu-$ad-cay-iki');
+        }
         await t.pumpWidget(const SizedBox());
         d.ajan?.dispose();
         await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
