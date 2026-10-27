@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../core/api.dart';
 import '../core/durum.dart';
 import '../core/tema.dart';
+import '../ortak/gorev_foto.dart';
 import '../ortak/ortak.dart';
 
 /// GÖREVLERİM (sekme) — web Portal/Tasks.vue'nun native karşılığı.
@@ -24,6 +25,7 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
   int _sekme = 0; // 0 aktif, 1 tamamlanan
   int _mesgul = 0;
   int _yeniBiten = 0;
+  int _fotoYukleniyor = 0;
 
   @override
   void initState() {
@@ -83,6 +85,45 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
     } finally {
       if (mounted) setState(() => _mesgul = 0);
     }
+  }
+
+  /// Sürüyor → Tamamladım: önce isteğe bağlı fotoğraf (kanıt), sonra durum.
+  Future<void> _tamamla(Map<String, dynamic> g) async {
+    if (_mesgul != 0 || _fotoYukleniyor != 0) return;
+    final sec = await gorevFotoSec(context, tamamla: true, mevcut: gorevFotolari(g).length);
+    if (sec == null || !mounted) return;
+    if (sec != 'yok') {
+      final tamam = await _fotoGonder(g, sec);
+      if (!tamam || !mounted) return;
+    }
+    final guncel = _gorevler.firstWhere((t) => t['id'] == g['id'], orElse: () => g);
+    await _ilerlet(guncel);
+  }
+
+  Future<void> _fotoEkle(Map<String, dynamic> g) async {
+    if (_fotoYukleniyor != 0) return;
+    if (gorevFotolari(g).length >= gorevFotoSiniri) {
+      bildir('Fotoğraf sınırı doldu', mesaj: 'Bir göreve en fazla $gorevFotoSiniri fotoğraf eklenebilir.', tur: BildirimTur.uyari);
+      return;
+    }
+    final sec = await gorevFotoSec(context, mevcut: gorevFotolari(g).length);
+    if (sec == null || sec == 'yok' || !mounted) return;
+    if (await _fotoGonder(g, sec)) bildir('Fotoğraf eklendi', mesaj: g['title']?.toString());
+  }
+
+  Future<bool> _fotoGonder(Map<String, dynamic> g, String yol) async {
+    final id = (g['id'] as num).toInt();
+    setState(() => _fotoYukleniyor = id);
+    final l = await gorevFotoYukle(id, yol);
+    if (!mounted) return l != null;
+    setState(() {
+      _fotoYukleniyor = 0;
+      if (l != null) {
+        final i = _gorevler.indexWhere((t) => t['id'] == g['id']);
+        if (i >= 0) _gorevler[i] = {..._gorevler[i], 'fotolar': l};
+      }
+    });
+    return l != null;
   }
 
   List<Map<String, dynamic>> get _gosterilen {
@@ -149,11 +190,13 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
                 child: Belir(
                   key: ValueKey('g${liste[i]['id']}${liste[i]['status']}'),
                   gecikme: math.min(i, 6) * 50,
-                  child: _GorevKarti(
+                  child: GorevKarti(
                     g: liste[i],
                     mesgul: _mesgul == (liste[i]['id'] as num).toInt(),
                     yeniBitti: _yeniBiten == (liste[i]['id'] as num).toInt(),
-                    onIlerlet: () => _ilerlet(liste[i]),
+                    fotoYukleniyor: _fotoYukleniyor == (liste[i]['id'] as num).toInt(),
+                    onIlerlet: () => liste[i]['status'] == 'open' ? _ilerlet(liste[i]) : _tamamla(liste[i]),
+                    onFotoEkle: () => _fotoEkle(liste[i]),
                   ),
                 ),
               ),
@@ -301,12 +344,26 @@ class _Sekmeler extends StatelessWidget {
 
 /* ───────────── Görev kartı ───────────── */
 
-class _GorevKarti extends StatelessWidget {
-  const _GorevKarti({required this.g, required this.mesgul, required this.yeniBitti, required this.onIlerlet});
+/// Görev kartı. `onIlerlet` null → salt okunur (yönetici listesi): durum
+/// düğmeleri gizlenir, `atananGoster` ile atanan kişi yazılır.
+class GorevKarti extends StatelessWidget {
+  const GorevKarti({
+    super.key,
+    required this.g,
+    this.mesgul = false,
+    this.yeniBitti = false,
+    this.fotoYukleniyor = false,
+    this.onIlerlet,
+    this.onFotoEkle,
+    this.atananGoster = false,
+  });
   final Map<String, dynamic> g;
   final bool mesgul;
   final bool yeniBitti;
-  final VoidCallback onIlerlet;
+  final bool fotoYukleniyor;
+  final VoidCallback? onIlerlet;
+  final VoidCallback? onFotoEkle;
+  final bool atananGoster;
 
   static final _tarih = DateFormat('d MMM HH:mm', 'tr_TR');
 
@@ -321,6 +378,9 @@ class _GorevKarti extends StatelessWidget {
     final gecikti = !bitti && son != null && son.isBefore(DateTime.now());
     final aciklama = g['description']?.toString();
     final olusturan = g['created_by'] is Map ? (g['created_by'] as Map)['name']?.toString() : null;
+    final atanan = g['assigned_to'] is Map ? (g['assigned_to'] as Map)['name']?.toString() : null;
+    final fotolar = gorevFotolari(g);
+    final salt = onIlerlet == null;
 
     final (pEt, pZemin, pRenk) = switch (oncelik) {
       'urgent' => ('Acil', Marka.gul.withValues(alpha: .14), Marka.gul),
@@ -356,7 +416,7 @@ class _GorevKarti extends StatelessWidget {
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Durum düğmesi (daire)
                   GestureDetector(
-                    onTap: bitti || mesgul ? null : onIlerlet,
+                    onTap: bitti || mesgul || salt ? null : onIlerlet,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       width: 36,
@@ -418,14 +478,21 @@ class _GorevKarti extends StatelessWidget {
                           cip(Icons.schedule_rounded, '${_tarih.format(son)}${gecikti ? ' · gecikti' : ''}',
                               gecikti ? Marka.gul.withValues(alpha: .14) : r.ic, gecikti ? Marka.gul : r.soluk),
                         if (acik) cip(Icons.groups_rounded, 'Herkese açık', Marka.gok.withValues(alpha: .16), r.koyu ? Marka.gok : const Color(0xFF0284C7)),
-                        if (olusturan != null)
+                        if (atananGoster && !acik && atanan != null)
+                          cip(Icons.person_rounded, atanan, r.ic, r.soluk)
+                        else if (!atananGoster && olusturan != null)
                           Row(mainAxisSize: MainAxisSize.min, children: [
                             Icon(Icons.person_rounded, size: 13, color: r.silik),
                             const SizedBox(width: 3),
                             Text(olusturan, style: TextStyle(fontSize: 11.5, color: r.silik)),
                           ]),
+                        if (salt && durum == 'in_progress') cip(Icons.timelapse_rounded, 'Sürüyor', r.birincilYumusak, r.birincil),
                       ]),
-                      if (!bitti) ...[
+                      if (fotolar.isNotEmpty || fotoYukleniyor) ...[
+                        const SizedBox(height: 10),
+                        FotoSeridi(fotolar: fotolar, yukleniyor: fotoYukleniyor),
+                      ],
+                      if (!bitti && !salt) ...[
                         const SizedBox(height: 12),
                         durum == 'open'
                             ? SizedBox(
@@ -436,13 +503,25 @@ class _GorevKarti extends StatelessWidget {
                                   onTap: mesgul ? null : onIlerlet,
                                 ),
                               )
-                            : GradDugme(
-                                yazi: 'Tamamladım',
-                                ikon: Icons.check_rounded,
-                                yukseklik: 46,
-                                yukleniyor: mesgul,
-                                onTap: onIlerlet,
-                              ),
+                            : Row(children: [
+                                if (onFotoEkle != null && fotolar.length < gorevFotoSiniri) ...[
+                                  YumusakDugme(
+                                    yazi: 'Fotoğraf',
+                                    ikon: Icons.add_a_photo_rounded,
+                                    onTap: mesgul || fotoYukleniyor ? null : onFotoEkle,
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Expanded(
+                                  child: GradDugme(
+                                    yazi: 'Tamamladım',
+                                    ikon: Icons.check_rounded,
+                                    yukseklik: 48,
+                                    yukleniyor: mesgul || fotoYukleniyor,
+                                    onTap: onIlerlet,
+                                  ),
+                                ),
+                              ]),
                       ],
                     ]),
                   ),

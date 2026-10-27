@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/api.dart';
 import '../core/tema.dart';
 
 /* ───────────────────────── Dokunma geri bildirimi ───────────────────────── */
@@ -697,6 +698,30 @@ class BosDurum extends StatelessWidget {
         ],
         if (eylem != null) ...[const SizedBox(height: 16), eylem!],
       ]),
+    );
+  }
+}
+
+/// Yükleme hatası için dostça boş durum (bağlantı yok / özellik henüz
+/// sunucuda yok (404) / yetki yok) + "Tekrar dene".
+class HataDurum extends StatelessWidget {
+  const HataDurum({super.key, required this.hata, required this.onTekrar});
+  final ApiHata hata;
+  final VoidCallback onTekrar;
+  @override
+  Widget build(BuildContext context) {
+    final (ikon, baslik, aciklama) = hata.baglantiYok
+        ? (Icons.wifi_off_rounded, 'Bağlantı kurulamadı', hata.mesaj)
+        : hata.kod == 404
+            ? (Icons.hourglass_empty_rounded, 'Bu bölüm henüz hazır değil', 'Sunucu güncellemesi tamamlanınca burada görünecek.')
+            : hata.yetkiYok
+                ? (Icons.lock_rounded, 'Bu bölüm için yetkin yok', 'Yöneticinden yetki isteyebilirsin.')
+                : (Icons.cloud_off_rounded, 'Yüklenemedi', hata.mesaj);
+    return BosDurum(
+      ikon: ikon,
+      baslik: baslik,
+      aciklama: aciklama,
+      eylem: YumusakDugme(yazi: 'Tekrar dene', ikon: Icons.refresh_rounded, onTap: onTekrar),
     );
   }
 }

@@ -9,6 +9,7 @@ import '../core/durum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'kabuk.dart';
+import 'puantaj.dart';
 import 'qr_okut.dart';
 
 /// MESAİM — web Shift.vue karşılığı.
@@ -124,6 +125,17 @@ class _MesaimEkraniState extends State<MesaimEkrani> {
           _durumKarti(),
           const SizedBox(height: 14),
           _qrKarti(),
+          const SizedBox(height: 14),
+          SatirGrubu([
+            Satir(
+              ikon: Icons.receipt_long_rounded,
+              baslik: 'Puantaj ve bordrom',
+              alt: 'Aylık özet, fazla mesai, tahmini kazanç',
+              ikonZemin: const Color(0xFFE0F2FE),
+              ikonRenk: const Color(0xFF0284C7),
+              onTap: () => git(context, const PuantajEkrani()),
+            ),
+          ]),
           if (((_kayit?['breaks'] as List?) ?? const []).isNotEmpty) ...[
             const BolumBasligi('Bugünkü molalarım'),
             _molalar(),

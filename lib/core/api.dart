@@ -129,6 +129,27 @@ class Api {
 
   Future<dynamic> delete(String yol, [Object? govde]) => _istek('DELETE', yol, govde: govde);
 
+  /// Çok parçalı dosya yükleme (görev fotoğrafı …). post() ile aynı Dio
+  /// örneği → oturum çerezi + X-XSRF-TOKEN; 419'da XSRF tazelenip bir kez
+  /// yeniden denenir (FormData tek kullanımlık olduğu için her denemede yeniden kurulur).
+  Future<dynamic> yukle(String yol, String alan, String dosyaYolu, {Map<String, dynamic> alanlar = const {}}) async {
+    Future<Response<dynamic>> gonder() async => _gonder('POST', yol,
+        govde: FormData.fromMap({
+          ...alanlar,
+          alan: await MultipartFile.fromFile(dosyaYolu, filename: dosyaYolu.split(Platform.pathSeparator).last),
+        }),
+        zamanAsimi: const Duration(seconds: 60),
+        gonderimSuresi: const Duration(seconds: 90));
+
+    var r = await gonder();
+    if (r.statusCode == 419) {
+      await _xsrfTazele();
+      r = await gonder();
+    }
+    _denetle(r);
+    return r.data;
+  }
+
   /// İkili dosya (QR görseli, PDF …) indirir. Oturum çereziyle gider.
   Future<Uint8List?> indir(String yol, {Map<String, dynamic>? sorgu}) async {
     try {
@@ -166,13 +187,13 @@ class Api {
   }
 
   Future<Response<dynamic>> _gonder(String yontem, String yol,
-      {Map<String, dynamic>? sorgu, Object? govde, Map<String, String>? basliklar, Duration? zamanAsimi}) async {
+      {Map<String, dynamic>? sorgu, Object? govde, Map<String, String>? basliklar, Duration? zamanAsimi, Duration? gonderimSuresi}) async {
     try {
       final r = await _dio.request<dynamic>(
         yol,
         data: govde,
         queryParameters: sorgu,
-        options: Options(method: yontem, headers: basliklar, receiveTimeout: zamanAsimi),
+        options: Options(method: yontem, headers: basliklar, receiveTimeout: zamanAsimi, sendTimeout: gonderimSuresi),
       );
       sunucuSonYanit = DateTime.now();
       sunucuBagli.value = true;

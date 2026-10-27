@@ -3,7 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Mesai ve mola QR kodunu okutmak için kamera kullanılır.</string>
+	<string>Mesai ve mola QR kodunu okutmak ve tamamlanan göreve fotoğraf eklemek için kamera kullanılır.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Tamamlanan göreve galeriden fotoğraf eklemek için fotoğraflarınıza erişilir.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

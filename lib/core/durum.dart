@@ -27,6 +27,8 @@ class Uyg {
   }
 
   static bool izin(String k) => (hesap.value?['izinler'] as List?)?.contains(k) ?? false;
+  /// Yönetici modu (Ekibim): personel görme/yönetme ya da görev atama yetkisi.
+  static bool get yonetici => izin('staff.view') || izin('staff.manage') || izin('tasks.assign');
   static bool eklenti(String k) => (hesap.value?['eklentiler'] as Map?)?[k] == true;
 
   static Future<void> kur() async {

@@ -11,6 +11,7 @@ import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'bildirimler.dart';
 import 'davet.dart';
+import 'ekibim.dart';
 import 'hedefler.dart';
 import 'kabuk.dart';
 import 'mesaim.dart';
@@ -32,6 +33,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
   Map<String, dynamic>? _bugun;
   Map<String, dynamic>? _ay;
   Map<String, dynamic>? _prim;
+  Map<String, dynamic>? _ekip;
   List<Map<String, dynamic>> _gecmis = const [];
   bool _yukleniyor = true;
   DateTime _simdi = DateTime.now();
@@ -86,6 +88,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
       _al('/api/v1/portal/reports?period=month'),
       _al('/api/v1/portal/history'),
       Uyg.eklenti('commission') ? _al('/api/v1/portal/earnings?period=month') : Future.value(null),
+      Uyg.yonetici ? _al('/api/v1/portal/yonetici/ekip') : Future.value(null),
     ]);
     if (!mounted) return;
     setState(() {
@@ -96,6 +99,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
       _ay = sonuc[3];
       _gecmis = ((sonuc[4]?['entries'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
       _prim = (sonuc[5]?['scheme_name'] != null) ? sonuc[5] : null;
+      _ekip = sonuc[6];
       _yukleniyor = false;
     });
   }
@@ -468,6 +472,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
       const SizedBox(height: 14),
       _QrKarti(kip: _kip, onTap: () => git(context, const QrOkutEkrani()).then((_) => _yukle())),
       const SizedBox(height: 14),
+      if (Uyg.yonetici) ...[
+        _EkipKarti(ozet: _ekip?['ozet'] as Map?, onTap: () => git(context, const EkibimEkrani()).then((_) => _yukle())),
+        const SizedBox(height: 14),
+      ],
       _HaftaKarti(gecmis: _gecmis, bugunCanli: _calisiyor ? _calisilan : null),
       const SizedBox(height: 14),
       // Yaklaşan görevler
@@ -920,6 +928,57 @@ class _HaftaKarti extends StatelessWidget {
               ),
           ]),
         ),
+      ]),
+    );
+  }
+}
+
+/// Yönetici kısayolu: ekibin anlık durumu (yalnız Uyg.yonetici).
+class _EkipKarti extends StatelessWidget {
+  const _EkipKarti({required this.ozet, required this.onTap});
+  final Map? ozet;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final r = context.pa;
+    int n(String k) => (ozet?[k] as num?)?.toInt() ?? 0;
+    final parcalar = [
+      for (final k in const ['mesaide', 'molada', 'gelmedi', 'izinli'])
+        if (n(k) > 0) (k, n(k)),
+    ];
+    return PaKart(
+      onTap: onTap,
+      child: Row(children: [
+        PaIkon(Icons.groups_rounded, boyut: 46, zemin: r.koyu ? null : const Color(0xFFE0E7FF), renk: r.koyu ? null : const Color(0xFF4338CA)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Ekibim', style: gosterim(16.5, renk: r.metin)),
+            const SizedBox(height: 3),
+            if (ozet == null)
+              Text('Personel durumu ve görev verme', style: TextStyle(color: r.soluk, fontSize: 12))
+            else if (parcalar.isEmpty)
+              Text('Şu an mesaide kimse yok', style: TextStyle(color: r.soluk, fontSize: 12))
+            else
+              Wrap(spacing: 10, runSpacing: 2, children: [
+                for (final (k, sayi) in parcalar)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: ekipDurumu(k).$2, shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                    Text('$sayi ${ekipDurumu(k).$1.toLowerCase()}', style: TextStyle(color: r.soluk, fontSize: 12, fontWeight: FontWeight.w600)),
+                  ]),
+              ]),
+          ]),
+        ),
+        if (n('gec') > 0) ...[
+          const SizedBox(width: 8),
+          Column(children: [
+            Text('${n('gec')}', style: gosterim(18, renk: Marka.gul)),
+            const Text('geç', style: TextStyle(color: Marka.gul, fontSize: 11, fontWeight: FontWeight.w700)),
+          ]),
+        ],
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right_rounded, color: r.silik),
       ]),
     );
   }

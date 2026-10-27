@@ -13,6 +13,7 @@ import 'package:bambumpos_personel/ekranlar/ana_sayfa.dart';
 import 'package:bambumpos_personel/ekranlar/bildirimler.dart';
 import 'package:bambumpos_personel/ekranlar/davet.dart';
 import 'package:bambumpos_personel/ekranlar/destek.dart';
+import 'package:bambumpos_personel/ekranlar/ekibim.dart';
 import 'package:bambumpos_personel/ekranlar/eslesme.dart';
 import 'package:bambumpos_personel/ekranlar/gorevler.dart';
 import 'package:bambumpos_personel/ekranlar/hedefler.dart';
@@ -20,6 +21,7 @@ import 'package:bambumpos_personel/ekranlar/kabuk.dart';
 import 'package:bambumpos_personel/ekranlar/mesaim.dart';
 import 'package:bambumpos_personel/ekranlar/primler.dart';
 import 'package:bambumpos_personel/ekranlar/profil.dart';
+import 'package:bambumpos_personel/ekranlar/puantaj.dart';
 import 'package:bambumpos_personel/ekranlar/vardiyam.dart';
 import 'package:bambumpos_personel/ortak/ortak.dart';
 import 'package:dio/dio.dart';
@@ -44,7 +46,7 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
   switch (yol) {
     case '/api/v1/portal/hesap':
       return {
-        'id': 57, 'ad': 'Muhammet Ali Yeni', 'pin_var': true, 'izinler': ['tasks.view'], 'eklentiler': {'commission': true, 'shifts': true},
+        'id': 57, 'ad': 'Muhammet Ali Yeni', 'pin_var': true, 'izinler': ['tasks.view', 'staff.view', 'tasks.assign'], 'eklentiler': {'commission': true, 'shifts': true},
         'telefon': '5551234567', 'eposta': 'muhammet@ornek.com', 'personel_kodu': 'P-104', 'pozisyon': 'Kasiyer', 'departman': 'Salon',
         'ise_giris': '2025-04-03', 'isletme': 'Çamlık Sosyal Tesisleri', 'sube': 'Merkez Şube', 'roller': ['Kasiyer'],
       };
@@ -63,7 +65,8 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
       return {
         'tasks': [
           {'id': 1, 'title': 'Teras masalarını hazırla', 'description': 'Akşam rezervasyonları için 6 masa.', 'priority': 'high', 'status': 'open', 'due_at': _iso(const Duration(hours: 2)), 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'created_at': _iso(const Duration(hours: -3)), 'completed_at': null},
-          {'id': 2, 'title': 'Kasa raporunu kontrol et', 'description': null, 'priority': 'normal', 'status': 'in_progress', 'due_at': _iso(const Duration(hours: 5)), 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'created_at': _iso(const Duration(hours: -5)), 'completed_at': null},
+          {'id': 2, 'title': 'Kasa raporunu kontrol et', 'description': null, 'priority': 'normal', 'status': 'in_progress', 'due_at': _iso(const Duration(hours: 5)), 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'created_at': _iso(const Duration(hours: -5)), 'completed_at': null,
+            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/2/foto/a.jpg'}, {'ad': 'b.jpg', 'url': '/api/v1/portal/tasks/2/foto/b.jpg'}]},
           {'id': 3, 'title': 'Peçete ve pipet stoğu', 'description': 'Depodan bar tezgahına taşı.', 'priority': 'low', 'status': 'open', 'due_at': null, 'created_by': null, 'herkese_acik': true, 'created_at': _iso(const Duration(hours: -1)), 'completed_at': null},
           {'id': 4, 'title': 'Menü panosunu sil', 'description': null, 'priority': 'normal', 'status': 'done', 'due_at': null, 'created_by': null, 'herkese_acik': false, 'created_at': _iso(const Duration(days: -1)), 'completed_at': _iso(const Duration(hours: -20))},
         ],
@@ -142,6 +145,56 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
       };
     case '/api/v1/auth/sessions':
       return {'sessions': [{'id': 'a', 'device': 'BamBumPOS Personel · iPhone', 'ip': '88.1.2.3', 'last_active_at': _iso(Duration.zero), 'is_current': true}]};
+    case '/api/v1/portal/puantaj':
+      final gecmisAy = sorgu.contains('ay=2026-09');
+      return {
+        'ay': gecmisAy ? '2026-09' : '2026-10', 'ay_adi': gecmisAy ? 'Eylül 2026' : 'Ekim 2026', 'onceki_ay': gecmisAy ? '2026-08' : '2026-09', 'sonraki_ay': gecmisAy ? '2026-10' : null,
+        'gunler': [
+          for (var i = 0; i < 8; i++)
+            {
+              'tarih': _gun(-i), 'giris': _iso(Duration(days: -i, hours: -4, minutes: i == 2 ? -0 : -12)), 'cikis': i == 0 ? null : _iso(Duration(days: -i, hours: 4)),
+              'calisilan_dk': i == 0 ? 228 : [480, 452, 515, 470, 480, 390, 505][i - 1], 'planlanan_dk': 480,
+              'fazla_mesai_dk': i == 3 ? 35 : i == 7 ? 25 : 0, 'gec_dk': i == 2 ? 14 : i == 6 ? 6 : 0, 'eksik_dk': i == 2 ? 28 : i == 6 ? 90 : 0,
+              'mola_dk': 25 + i * 2, 'acik': i == 0,
+            },
+        ],
+        'izinler': [{'tur': 'Yıllık izin', 'bas': _gun(-14), 'bit': _gun(-12), 'gun': 3}],
+        'toplam': {'gun': 19, 'calisilan_dk': 8790, 'planlanan_dk': 9120, 'fazla_mesai_dk': 160, 'gec_gun': 2, 'gec_dk': 20, 'eksik_dk': 490, 'mola_dk': 540, 'izin_gun': 3},
+        'kazanc': {'tur': 'monthly', 'ucret_minor': 2800000, 'maas_minor': 2698000, 'prim_minor': 368900, 'toplam_minor': 3066900, 'tahmini': true},
+      };
+    case '/api/v1/portal/yonetici/ekip':
+      Map<String, dynamic> k(int id, String ad, String poz, String durum, {int? giris, int dk = 0, int gec = 0, bool cikti = false, bool vardiya = true}) => {
+            'id': id, 'ad': ad, 'pozisyon': poz, 'durum': durum,
+            'giris': giris == null ? null : _iso(Duration(minutes: -giris)), 'cikis': cikti ? _iso(const Duration(minutes: -20)) : null,
+            'calisilan_dk': dk, 'gec_dk': gec,
+            'vardiya': vardiya ? {'bas': _simdi.copyWith(hour: 9, minute: 0).toUtc().toIso8601String(), 'bit': _simdi.copyWith(hour: 17, minute: 0).toUtc().toIso8601String()} : null,
+          };
+      return {
+        'ozet': {'toplam': 8, 'mesaide': 4, 'molada': 1, 'cikti': 1, 'gelmedi': 1, 'izinli': 1, 'gec': 2},
+        'kisiler': [
+          k(11, 'Ayşe Kaya', 'Kasiyer', 'mesaide', giris: 252, dk: 228),
+          k(12, 'Burak Demir', 'Garson', 'mesaide', giris: 230, dk: 205, gec: 14),
+          k(13, 'Cansu Yıldız', 'Barista', 'molada', giris: 300, dk: 262),
+          k(14, 'Deniz Aksoy', 'Aşçı', 'mesaide', giris: 180, dk: 171, gec: 6),
+          k(15, 'Elif Şahin', 'Garson', 'mesaide', giris: 120, dk: 118),
+          k(16, 'Furkan Çelik', 'Komi', 'cikti', giris: 520, dk: 478, cikti: true),
+          k(17, 'Gizem Arslan', 'Garson', 'gelmedi'),
+          k(18, 'Hakan Öztürk', 'Kasiyer', 'izinli', vardiya: false),
+        ],
+        'gorevler': {'acik': 3, 'devam': 2, 'bugun_biten': 4},
+      };
+    case '/api/v1/portal/yonetici/gorevler':
+      return {
+        'gorevler': [
+          {'id': 21, 'title': 'Teras masalarını hazırla', 'description': 'Akşam rezervasyonları için 6 masa.', 'priority': 'high', 'status': 'in_progress', 'due_at': _iso(const Duration(hours: 2)), 'assigned_to': {'id': 12, 'name': 'Burak Demir', 'position': 'Garson'}, 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'completed_at': null,
+            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/21/foto/a.jpg'}]},
+          {'id': 22, 'title': 'Peçete ve pipet stoğu', 'description': null, 'priority': 'low', 'status': 'open', 'due_at': null, 'assigned_to': null, 'created_by': null, 'herkese_acik': true, 'completed_at': null},
+          {'id': 23, 'title': 'Kasa raporunu kontrol et', 'description': null, 'priority': 'normal', 'status': 'open', 'due_at': _iso(const Duration(hours: 5)), 'assigned_to': {'id': 11, 'name': 'Ayşe Kaya', 'position': 'Kasiyer'}, 'created_by': null, 'herkese_acik': false, 'completed_at': null},
+          {'id': 24, 'title': 'Menü panosunu sil', 'description': null, 'priority': 'normal', 'status': 'done', 'due_at': null, 'assigned_to': {'id': 15, 'name': 'Elif Şahin', 'position': 'Garson'}, 'created_by': null, 'herkese_acik': false, 'completed_at': _iso(const Duration(hours: -2)),
+            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/24/foto/a.jpg'}, {'ad': 'b.jpg', 'url': '/api/v1/portal/tasks/24/foto/b.jpg'}, {'ad': 'c.jpg', 'url': '/api/v1/portal/tasks/24/foto/c.jpg'}]},
+        ],
+        'personel': [for (final p in [(11, 'Ayşe Kaya'), (12, 'Burak Demir'), (13, 'Cansu Yıldız')]) {'id': p.$1, 'ad': p.$2}],
+      };
     case '/api/v1/personel-eslesme/baslat':
       return {'kod': 'K7M4QX', 'gizli': 'x', 'bitis': _iso(const Duration(minutes: 29, seconds: 41))};
     case '/api/v1/personel-eslesme/durum':
@@ -153,10 +206,19 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
 
 class _SahteSunucu implements HttpClientAdapter {
   @override
-  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async =>
-      ResponseBody.fromString(jsonEncode(_yanit(o.uri.path, o.uri.query)), 200, headers: {
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async {
+    // Görev fotoğrafları: oturumlu görsel → örnek PNG baytları
+    if (o.uri.path.contains('/foto/')) {
+      return ResponseBody.fromBytes(File('assets/simge/simge.png').readAsBytesSync(), 200, headers: {Headers.contentTypeHeader: ['image/png']});
+    }
+    if (Platform.environment['YOK404'] == '1' && (o.uri.path.contains('/puantaj') || o.uri.path.contains('/yonetici/'))) {
+      return ResponseBody.fromString('{"message":""}', 404, headers: {Headers.contentTypeHeader: ['application/json']});
+    }
+    return ResponseBody.fromString(jsonEncode(_yanit(o.uri.path, o.uri.query)), 200, headers: {
         Headers.contentTypeHeader: ['application/json'],
       });
+  }
+
   @override
   void close({bool force = false}) {}
 }
@@ -246,6 +308,9 @@ void main() {
     '09-davet': () => const DavetEkrani(),
     '10-bildirimler': () => const BildirimlerEkrani(),
     '11-destek': () => const DestekEkrani(),
+    '12-puantaj': () => const PuantajEkrani(),
+    '13-ekibim': () => const EkibimEkrani(),
+    '14-ekibim-gorevler': () => const EkibimEkrani(ilkSekme: 1),
   };
   // ALT MENÜ (kabuk) — sayfa + menü birlikte; iPhone ana ekran çizgisi payı (34) ile.
   Widget menulu(Widget sayfa, int sekme) => Scaffold(

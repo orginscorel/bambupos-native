@@ -10,11 +10,13 @@ import '../ortak/ortak.dart';
 import 'bildirimler.dart';
 import 'davet.dart';
 import 'destek.dart';
+import 'ekibim.dart';
 import 'eslesme.dart';
 import 'hedefler.dart';
 import 'kabuk.dart';
 import 'mesaim.dart';
 import 'primler.dart';
+import 'puantaj.dart';
 
 /// PROFİLİM (sekme) — web Profile.vue karşılığı, Kardo düzeninde menü.
 ///
@@ -66,12 +68,19 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
         govde: Kaydir(children: [
           _kimlik(),
           const SizedBox(height: 18),
+          if (Uyg.yonetici) ...[
+            SatirGrubu([
+              Satir(ikon: Icons.groups_rounded, baslik: 'Ekibim', alt: 'Personel durumu ve görev verme', grad: true, onTap: () => git(context, const EkibimEkrani())),
+            ]),
+            const SizedBox(height: 14),
+          ],
           SatirGrubu([
             Satir(ikon: Icons.person_rounded, baslik: 'Kişisel bilgiler', ikonZemin: const Color(0xFFFCE7F3), ikonRenk: const Color(0xFFDB2777), onTap: _kisisel),
             Satir(ikon: Icons.storefront_rounded, baslik: 'Şirket bilgileri', ikonZemin: const Color(0xFFDBEAFE), ikonRenk: Marka.mavi, onTap: _sirket),
             Satir(ikon: Icons.trending_up_rounded, baslik: 'Hedeflerim', ikonZemin: const Color(0xFFEDE9FE), ikonRenk: const Color(0xFF7C3AED), onTap: () => git(context, const HedeflerEkrani())),
             Satir(ikon: Icons.account_balance_wallet_rounded, baslik: 'Primlerim', ikonZemin: const Color(0xFFFEF3C7), ikonRenk: const Color(0xFFB45309), onTap: () => git(context, const PrimlerEkrani())),
             Satir(ikon: Icons.history_rounded, baslik: 'Mesai geçmişim', ikonZemin: const Color(0xFFD1FAE5), ikonRenk: const Color(0xFF047857), onTap: () => git(context, const MesaimEkrani())),
+            Satir(ikon: Icons.receipt_long_rounded, baslik: 'Puantaj ve bordrom', ikonZemin: const Color(0xFFE0F2FE), ikonRenk: const Color(0xFF0284C7), onTap: () => git(context, const PuantajEkrani())),
           ]),
           const SizedBox(height: 14),
           SatirGrubu([
