@@ -55,8 +55,16 @@ class Guncelleme {
     }
   }
 
+  /// App Store / TestFlight kurulumu (iPhone, embedded.mobileprovision yok): güncellemeyi
+  /// Apple yapar; uygulama içi kart/bağlantı Apple kuralı (2.4.5/2.5.2) gereği HİÇ gösterilmez.
+  static final bool magazaKurulumu = Platform.isIOS && !_iosSitedenKurulu;
+
   /// Yeni sürüm varsa true. [zorla] = 30 dk sınırını yok say (Profil'deki düğme).
   static Future<bool> bak({bool zorla = false}) async {
+    if (magazaKurulumu) {
+      bulunan.value = null;
+      return false;
+    }
     if (!zorla && _sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 15)) {
       return bulunan.value != null;
     }
@@ -87,7 +95,7 @@ class Guncelleme {
 
   static Future<void> baslat() async {
     final b = bulunan.value;
-    if (b == null || ilerleme.value != null) return;
+    if (magazaKurulumu || b == null || ilerleme.value != null) return;
     if (!Platform.isAndroid) {
       mesaj.value = null;
       final ok = await launchUrl(Uri.parse(b.adres), mode: LaunchMode.externalApplication);
@@ -135,6 +143,7 @@ class GuncellemeKarti extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (Guncelleme.magazaKurulumu) return const SizedBox.shrink();
     return ValueListenableBuilder<GuncellemeBilgi?>(
       valueListenable: Guncelleme.bulunan,
       builder: (_, b, _) => ValueListenableBuilder<bool>(

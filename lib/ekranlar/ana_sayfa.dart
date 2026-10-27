@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../core/api.dart';
 import '../core/bildirim.dart';
+import '../core/guncelleme.dart';
 import '../core/durum.dart';
 import '../core/konum.dart';
 import '../core/onbellek.dart';
@@ -18,6 +19,7 @@ import 'hedefler.dart';
 import 'kabuk.dart';
 import 'mesaim.dart';
 import 'primler.dart';
+import 'puantaj.dart';
 
 /// ANA SAYFA — web /panelim ile aynı: selamlama, halkalar (çalışma · mola ·
 /// mola sayısı), kaydırılabilir Bugün / Bu ay kartları, vardiya ilerlemesi,
@@ -626,7 +628,11 @@ class _AnaSayfaState extends State<AnaSayfa> {
         children: [
           _AltKart(ikon: Icons.account_balance_wallet_rounded, baslik: 'Primlerim', alt: _prim != null ? paraYaz(_prim!['commission_minor'] as num) : 'Kazanç ve hakedişler', zemin: const Color(0xFFFEF3C7), renk: const Color(0xFFB45309), onTap: () => git(context, const PrimlerEkrani())),
           _AltKart(ikon: Icons.trending_up_rounded, baslik: 'Hedeflerim', alt: 'Bu ayki ilerlemen', zemin: const Color(0xFFF1EAFE), renk: const Color(0xFF7C3AED), onTap: () => git(context, const HedeflerEkrani())),
-          _AltKart(ikon: Icons.auto_awesome_rounded, baslik: 'Davet et, kazan', alt: 'İşletme öner, ödül al', grad: true, onTap: () => git(context, const DavetEkrani())),
+          // App Store kurulumunda ortaklık (abonelikten komisyon) gösterilmez → yerine Puantaj.
+          if (Guncelleme.magazaKurulumu)
+            _AltKart(ikon: Icons.receipt_long_rounded, baslik: 'Puantajım', alt: 'Çalışma süreleri', zemin: const Color(0xFFE0F2FE), renk: const Color(0xFF0284C7), onTap: () => git(context, const PuantajEkrani()))
+          else
+            _AltKart(ikon: Icons.auto_awesome_rounded, baslik: 'Davet et, kazan', alt: 'İşletme öner, ödül al', grad: true, onTap: () => git(context, const DavetEkrani())),
           _AltKart(ikon: Icons.history_rounded, baslik: 'Mesai geçmişi', alt: 'Giriş, çıkış, molalar', zemin: const Color(0xFFD1FAE5), renk: const Color(0xFF047857), onTap: () => git(context, const MesaimEkrani())),
         ],
       ),

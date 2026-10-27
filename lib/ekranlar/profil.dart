@@ -85,6 +85,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           ]),
           const SizedBox(height: 14),
           SatirGrubu([
+            if (!Guncelleme.magazaKurulumu)
             Satir(
               ikon: Icons.auto_awesome_rounded,
               baslik: 'Davet et, kazan',
@@ -117,10 +118,12 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           const BolumBasligi('Görünüm'),
           const _TemaSecici(),
           const SizedBox(height: 14),
-          SatirGrubu([
-            Satir(ikon: Icons.system_update_rounded, baslik: 'Uygulama güncellemesi', alt: _surum.isEmpty ? null : 'Yüklü sürüm $_surum', sag: const GuncellemeSatiriDurum(), onTap: guncellemeDenetle),
-          ]),
-          const SizedBox(height: 14),
+          if (!Guncelleme.magazaKurulumu) ...[
+            SatirGrubu([
+              Satir(ikon: Icons.system_update_rounded, baslik: 'Uygulama güncellemesi', alt: _surum.isEmpty ? null : 'Yüklü sürüm $_surum', sag: const GuncellemeSatiriDurum(), onTap: guncellemeDenetle),
+            ]),
+            const SizedBox(height: 14),
+          ],
           SatirGrubu([
             Satir(ikon: Icons.logout_rounded, baslik: 'Çıkış yap', baslikRenk: const Color(0xFFDC2626), ikonZemin: const Color(0xFFFEE2E2), ikonRenk: const Color(0xFFDC2626), onTap: _cikis),
           ]),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/durum.dart';
+import '../core/guncelleme.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'davet.dart';
@@ -73,21 +74,23 @@ class _PrimlerEkraniState extends State<PrimlerEkrani> {
           _ozet(),
         ] else
           _bos(),
-        const SizedBox(height: 16),
-        PaKart(
-          onTap: () => git(context, const DavetEkrani()),
-          child: Row(children: [
-            const PaIkon(Icons.auto_awesome_rounded, grad: true),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Davet et, kazan', style: gosterim(16, renk: context.pa.metin)),
-                Text('İşletme öner, abonelik gelirinden pay al', style: TextStyle(color: context.pa.soluk, fontSize: 12)),
-              ]),
-            ),
-            Icon(Icons.chevron_right_rounded, color: context.pa.silik),
-          ]),
-        ),
+        if (!Guncelleme.magazaKurulumu) ...[
+          const SizedBox(height: 16),
+          PaKart(
+            onTap: () => git(context, const DavetEkrani()),
+            child: Row(children: [
+              const PaIkon(Icons.auto_awesome_rounded, grad: true),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Davet et, kazan', style: gosterim(16, renk: context.pa.metin)),
+                  Text('İşletme öner, abonelik gelirinden pay al', style: TextStyle(color: context.pa.soluk, fontSize: 12)),
+                ]),
+              ),
+              Icon(Icons.chevron_right_rounded, color: context.pa.silik),
+            ]),
+          ),
+        ],
       ]),
     );
   }

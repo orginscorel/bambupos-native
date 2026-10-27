@@ -57,7 +57,7 @@ void adreseGit(String url) {
     '/mesaim' => const MesaimEkrani(),
     '/hedeflerim' || '/raporlarim' => const HedeflerEkrani(),
     '/primlerim' => const PrimlerEkrani(),
-    '/davet' => const DavetEkrani(),
+    '/davet' => Guncelleme.magazaKurulumu ? const PrimlerEkrani() : const DavetEkrani(),
     '/bildirimler' => const BildirimlerEkrani(),
     '/destek' => const DestekEkrani(),
     '/qr-okut' => const QrOkutEkrani(),
