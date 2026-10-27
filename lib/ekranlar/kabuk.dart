@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -21,16 +23,20 @@ import 'raporlar.dart';
 void kabugaGec(BuildContext context) {
   Navigator.of(context).pushAndRemoveUntil(
     PageRouteBuilder(
-      transitionDuration: Hareket.kapali(context) ? Duration.zero : const Duration(milliseconds: 250),
+      transitionDuration: Hareket.kapali(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 250),
       pageBuilder: (_, _, _) => const Kabuk(),
-      transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
+      transitionsBuilder: (_, a, _, child) =>
+          FadeTransition(opacity: a, child: child),
     ),
     (_) => false,
   );
 }
 
 /// Yeni sayfa aç (tema geçişiyle: PosSayfaGecisi / iOS'ta Cupertino).
-Future<T?> git<T>(BuildContext context, Widget sayfa) => Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => sayfa));
+Future<T?> git<T>(BuildContext context, Widget sayfa) =>
+    Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => sayfa));
 
 class Kabuk extends StatefulWidget {
   const Kabuk({super.key});
@@ -39,13 +45,19 @@ class Kabuk extends StatefulWidget {
   State<Kabuk> createState() => _KabukState();
 }
 
-class _KabukState extends State<Kabuk> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+class _KabukState extends State<Kabuk>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  Timer? _surumDongu;
   final _ziyaret = <int>{0};
   int _onceki = 0;
 
   /// Sekme değişiminde yeni sekme kısa bir kaymayla belirir (EkranGecisi'nin
   /// durum KORUYAN eşi: sekmeler Offstage'de yaşamaya devam eder).
-  late final _gecis = AnimationController(vsync: this, duration: Hareket.orta, value: 1);
+  late final _gecis = AnimationController(
+    vsync: this,
+    duration: Hareket.orta,
+    value: 1,
+  );
 
   @override
   void initState() {
@@ -60,6 +72,12 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver, SingleTicker
       Future<void>.delayed(const Duration(seconds: 3), () {
         if (mounted) Guncelleme.bak();
       });
+    });
+    // Uygulama gün boyu açık kalabilir: önde iken 20 dk'da bir sürüm bak.
+    _surumDongu = Timer.periodic(const Duration(minutes: 20), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        Guncelleme.bak();
+      }
     });
   }
 
@@ -89,6 +107,7 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver, SingleTicker
   @override
   void dispose() {
     Kabuk.sekme.removeListener(_sekmeDegisti);
+    _surumDongu?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     BildirimMerkezi.durdur();
     Canli.durdur();
@@ -104,40 +123,56 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver, SingleTicker
     _onceki = s;
     final e = CurvedAnimation(parent: _gecis, curve: Hareket.giris);
     return Scaffold(
-      body: Stack(children: [
-        for (var i = 0; i < 4; i++)
-          Offstage(
-            offstage: s != i,
-            child: TickerMode(
-              enabled: s == i,
-              child: _ziyaret.contains(i)
-                  ? FadeTransition(
-                      opacity: s == i ? e : kAlwaysCompleteAnimation,
-                      child: SlideTransition(
-                        position: s == i ? Tween(begin: Offset(.03 * yon, 0), end: Offset.zero).animate(e) : const AlwaysStoppedAnimation(Offset.zero),
-                        child: _sayfa(i),
-                      ),
-                    )
-                  : const SizedBox(),
+      body: Stack(
+        children: [
+          for (var i = 0; i < 4; i++)
+            Offstage(
+              offstage: s != i,
+              child: TickerMode(
+                enabled: s == i,
+                child: _ziyaret.contains(i)
+                    ? FadeTransition(
+                        opacity: s == i ? e : kAlwaysCompleteAnimation,
+                        child: SlideTransition(
+                          position: s == i
+                              ? Tween(
+                                  begin: Offset(.03 * yon, 0),
+                                  end: Offset.zero,
+                                ).animate(e)
+                              : const AlwaysStoppedAnimation(Offset.zero),
+                          child: _sayfa(i),
+                        ),
+                      )
+                    : const SizedBox(),
+              ),
+            ),
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: const GuncellemeKarti(),
+              ),
             ),
           ),
-        Positioned(
-          left: 12,
-          right: 12,
-          bottom: 12,
-          child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: const GuncellemeKarti())),
-        ),
-      ]),
-      bottomNavigationBar: AltCubuk(secili: s, onSec: (i) => Kabuk.sekme.value = i, onOlustur: () => olusturAc(context)),
+        ],
+      ),
+      bottomNavigationBar: AltCubuk(
+        secili: s,
+        onSec: (i) => Kabuk.sekme.value = i,
+        onOlustur: () => olusturAc(context),
+      ),
     );
   }
 
   Widget _sayfa(int i) => switch (i) {
-        0 => const OzetEkrani(),
-        1 => const RaporlarEkrani(),
-        2 => const EkipEkrani(),
-        _ => const DahaFazlaEkrani(),
-      };
+    0 => const OzetEkrani(),
+    1 => const RaporlarEkrani(),
+    2 => const EkipEkrani(),
+    _ => const DahaFazlaEkrani(),
+  };
 }
 
 /// ALT GEZİNME ÇUBUĞU: Özet · Raporlar · [+ Oluştur] · Ekip · Daha fazla.
@@ -147,7 +182,12 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver, SingleTicker
 /// + geciken görev, Daha fazla'da okunmamış bildirim rozeti. Ortadaki
 /// Oluştur düğmesi çubuktan biraz taşar ve hızlı eylem sayfasını açar.
 class AltCubuk extends StatelessWidget {
-  const AltCubuk({super.key, required this.secili, required this.onSec, this.onOlustur});
+  const AltCubuk({
+    super.key,
+    required this.secili,
+    required this.onSec,
+    this.onOlustur,
+  });
   final int secili;
   final ValueChanged<int> onSec;
   final VoidCallback? onOlustur;
@@ -174,71 +214,104 @@ class AltCubuk extends StatelessWidget {
     final yuva = secili < 2 ? secili : secili + 1;
     return SizedBox(
       height: yukseklik + ic,
-      child: LayoutBuilder(builder: (_, k) {
-        final tam = k.maxWidth;
-        final icG = math.min(tam, 520.0);
-        final sol = (tam - icG) / 2;
-        final w = icG / 5;
-        final vw = (w - 16).clamp(40.0, 62.0);
-        final cx = tam / 2;
-        final kesim = _CubukKesim(cx: cx);
-        return Stack(clipBehavior: Clip.none, children: [
-          Positioned.fill(child: CustomPaint(painter: _CubukGolge(kesim: kesim, koyu: r.koyu))),
-          Positioned.fill(child: ClipPath(clipper: kesim, child: ColoredBox(color: r.kart))),
-          Positioned.fill(child: CustomPaint(painter: _CubukKenar(kesim: kesim, renk: r.koyu ? const Color(0x33FFFFFF) : r.kenar))),
-          // Seçili sekme vurgusu — simgenin arkasında kayar (personel ile aynı)
-          AnimatedPositioned(
-            duration: kapali ? Duration.zero : Hareket.orta,
-            curve: Curves.easeOutBack,
-            left: sol + w * yuva + (w - vw) / 2,
-            top: 8,
-            width: vw,
-            height: 32,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [
-                  Marka.morAcik.withValues(alpha: r.koyu ? .40 : .18),
-                  Marka.mavi.withValues(alpha: r.koyu ? .32 : .13),
-                ]),
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          Positioned(
-            left: sol,
-            width: icG,
-            top: 0,
-            height: yukseklik,
-            child: Row(children: [
-              for (var y = 0; y < 5; y++)
-                Expanded(
-                  child: y == 2
-                      ? _OlusturYazi(onTap: onOlustur)
-                      : Builder(builder: (_) {
-                          final i = y < 2 ? y : y - 1;
-                          return _Oge(
-                            ikon: ogeler[i].$1,
-                            yazi: ogeler[i].$2,
-                            aktif: i == secili,
-                            rozet: i == 2 ? Canli.ekipRozet : i == 3 ? BildirimMerkezi.okunmamis : null,
-                            rozetAdi: i == 2 ? 'bekleyen iş' : 'okunmamış bildirim',
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              onSec(i);
-                            },
-                          );
-                        }),
+      child: LayoutBuilder(
+        builder: (_, k) {
+          final tam = k.maxWidth;
+          final icG = math.min(tam, 520.0);
+          final sol = (tam - icG) / 2;
+          final w = icG / 5;
+          final vw = (w - 16).clamp(40.0, 62.0);
+          final cx = tam / 2;
+          final kesim = _CubukKesim(cx: cx);
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _CubukGolge(kesim: kesim, koyu: r.koyu),
                 ),
-            ]),
-          ),
-          // Ortadaki Oluştur düğmesi — çentiğe oturur, çubuktan yarı taşar
-          Positioned(
-            left: cx - _CubukKesim.dugme / 2,
-            top: _CubukKesim.merkezY - _CubukKesim.dugme / 2,
-            child: _OlusturDugme(onTap: onOlustur),
-          ),
-        ]);
-      }),
+              ),
+              Positioned.fill(
+                child: ClipPath(
+                  clipper: kesim,
+                  child: ColoredBox(color: r.kart),
+                ),
+              ),
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _CubukKenar(
+                    kesim: kesim,
+                    renk: r.koyu ? const Color(0x33FFFFFF) : r.kenar,
+                  ),
+                ),
+              ),
+              // Seçili sekme vurgusu — simgenin arkasında kayar (personel ile aynı)
+              AnimatedPositioned(
+                duration: kapali ? Duration.zero : Hareket.orta,
+                curve: Curves.easeOutBack,
+                left: sol + w * yuva + (w - vw) / 2,
+                top: 8,
+                width: vw,
+                height: 32,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Marka.morAcik.withValues(alpha: r.koyu ? .40 : .18),
+                        Marka.mavi.withValues(alpha: r.koyu ? .32 : .13),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: sol,
+                width: icG,
+                top: 0,
+                height: yukseklik,
+                child: Row(
+                  children: [
+                    for (var y = 0; y < 5; y++)
+                      Expanded(
+                        child: y == 2
+                            ? _OlusturYazi(onTap: onOlustur)
+                            : Builder(
+                                builder: (_) {
+                                  final i = y < 2 ? y : y - 1;
+                                  return _Oge(
+                                    ikon: ogeler[i].$1,
+                                    yazi: ogeler[i].$2,
+                                    aktif: i == secili,
+                                    rozet: i == 2
+                                        ? Canli.ekipRozet
+                                        : i == 3
+                                        ? BildirimMerkezi.okunmamis
+                                        : null,
+                                    rozetAdi: i == 2
+                                        ? 'bekleyen iş'
+                                        : 'okunmamış bildirim',
+                                    onTap: () {
+                                      HapticFeedback.selectionClick();
+                                      onSec(i);
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+              // Ortadaki Oluştur düğmesi — çentiğe oturur, çubuktan yarı taşar
+              Positioned(
+                left: cx - _CubukKesim.dugme / 2,
+                top: _CubukKesim.merkezY - _CubukKesim.dugme / 2,
+                child: _OlusturDugme(onTap: onOlustur),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -254,7 +327,14 @@ class _CubukKesim extends CustomClipper<Path> {
   static const bosluk = 6.0;
 
   Path yol(Size s) {
-    final govde = Path()..addRRect(RRect.fromRectAndCorners(Offset.zero & s, topLeft: const Radius.circular(24), topRight: const Radius.circular(24)));
+    final govde = Path()
+      ..addRRect(
+        RRect.fromRectAndCorners(
+          Offset.zero & s,
+          topLeft: const Radius.circular(24),
+          topRight: const Radius.circular(24),
+        ),
+      );
     final centik = const CircularNotchedRectangle().getOuterPath(
       Offset.zero & s,
       Rect.fromCircle(center: Offset(cx, merkezY), radius: dugme / 2 + bosluk),
@@ -274,7 +354,12 @@ class _CubukGolge extends CustomPainter {
   final _CubukKesim kesim;
   final bool koyu;
   @override
-  void paint(Canvas c, Size s) => c.drawShadow(kesim.yol(s).shift(const Offset(0, -2)), koyu ? Colors.black : Marka.gece2, koyu ? 14 : 10, false);
+  void paint(Canvas c, Size s) => c.drawShadow(
+    kesim.yol(s).shift(const Offset(0, -2)),
+    koyu ? Colors.black : Marka.gece2,
+    koyu ? 14 : 10,
+    false,
+  );
 
   @override
   bool shouldRepaint(_CubukGolge o) => o.koyu != koyu || o.kesim.cx != kesim.cx;
@@ -286,19 +371,26 @@ class _CubukKenar extends CustomPainter {
   final Color renk;
   @override
   void paint(Canvas c, Size s) => c.drawPath(
-        kesim.yol(s),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = renk,
-      );
+    kesim.yol(s),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = renk,
+  );
 
   @override
   bool shouldRepaint(_CubukKenar o) => o.renk != renk || o.kesim.cx != kesim.cx;
 }
 
 class _Oge extends StatelessWidget {
-  const _Oge({required this.ikon, required this.yazi, required this.aktif, required this.onTap, this.rozet, this.rozetAdi = ''});
+  const _Oge({
+    required this.ikon,
+    required this.yazi,
+    required this.aktif,
+    required this.onTap,
+    this.rozet,
+    this.rozetAdi = '',
+  });
   final IconData ikon;
   final String yazi;
   final bool aktif;
@@ -311,16 +403,19 @@ class _Oge extends StatelessWidget {
     final renk = aktif ? r.birincil : r.soluk;
     final sure = Hareket.kapali(context) ? Duration.zero : Hareket.orta;
     Widget govde(int n) => Semantics(
-          button: true,
-          selected: aktif,
-          label: n > 0 ? '$yazi, $n $rozetAdi' : yazi,
-          excludeSemantics: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: Column(children: [
-              const SizedBox(height: 12),
-              Stack(clipBehavior: Clip.none, children: [
+      button: true,
+      selected: aktif,
+      label: n > 0 ? '$yazi, $n $rozetAdi' : yazi,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
                 AnimatedSlide(
                   offset: Offset(0, aktif ? -.06 : 0),
                   duration: sure,
@@ -332,20 +427,37 @@ class _Oge extends StatelessWidget {
                     child: Icon(ikon, color: renk, size: 24),
                   ),
                 ),
-                if (n > 0) Positioned(top: -6, left: 15, child: Rozet(n, kenar: r.kart)),
-              ]),
-              const SizedBox(height: 10),
-              AnimatedDefaultTextStyle(
-                duration: sure,
-                style: TextStyle(fontFamily: 'Poppins', fontSize: 11, height: 1.1, fontWeight: aktif ? FontWeight.w700 : FontWeight.w500, color: renk),
-                child: Text(yazi, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),
+                if (n > 0)
+                  Positioned(top: -6, left: 15, child: Rozet(n, kenar: r.kart)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            AnimatedDefaultTextStyle(
+              duration: sure,
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 11,
+                height: 1.1,
+                fontWeight: aktif ? FontWeight.w700 : FontWeight.w500,
+                color: renk,
               ),
-            ]),
-          ),
-        );
+              child: Text(
+                yazi,
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
     final rz = rozet;
     if (rz == null) return govde(0);
-    return ValueListenableBuilder<int>(valueListenable: rz, builder: (_, n, _) => govde(n));
+    return ValueListenableBuilder<int>(
+      valueListenable: rz,
+      builder: (_, n, _) => govde(n),
+    );
   }
 }
 
@@ -355,27 +467,37 @@ class _OlusturYazi extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Semantics(
-        button: true,
-        label: 'Oluştur: görev, vardiya, mesai, izin',
-        excludeSemantics: true,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap == null
-              ? null
-              : () {
-                  HapticFeedback.mediumImpact();
-                  onTap!();
-                },
-          child: Column(children: [
-            const SizedBox(height: 46),
-            Text('Oluştur',
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.fade,
-                style: TextStyle(fontFamily: 'Poppins', fontSize: 11, height: 1.1, fontWeight: FontWeight.w700, color: context.pa.metin)),
-          ]),
-        ),
-      );
+    button: true,
+    label: 'Oluştur: görev, vardiya, mesai, izin',
+    excludeSemantics: true,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap == null
+          ? null
+          : () {
+              HapticFeedback.mediumImpact();
+              onTap!();
+            },
+      child: Column(
+        children: [
+          const SizedBox(height: 46),
+          Text(
+            'Oluştur',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.fade,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              color: context.pa.metin,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Ortadaki yuvarlak Oluştur düğmesi (personeldeki QR düğmesinin eşi).
@@ -401,7 +523,14 @@ class _OlusturDugme extends StatelessWidget {
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             gradient: Marka.grad,
-            boxShadow: [BoxShadow(color: Color(0xCC5443D2), blurRadius: 20, offset: Offset(0, 10), spreadRadius: -6)],
+            boxShadow: [
+              BoxShadow(
+                color: Color(0xCC5443D2),
+                blurRadius: 20,
+                offset: Offset(0, 10),
+                spreadRadius: -6,
+              ),
+            ],
           ),
           child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
         ),

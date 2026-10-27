@@ -58,10 +58,10 @@ class Guncelleme {
     }
   }
 
-  /// Yeni sürüm varsa true. [zorla] = 30 dk sınırını yok say (Daha fazla'daki düğme).
+  /// Yeni sürüm varsa true. [zorla] = 5 dk sınırını yok say (Daha fazla'daki düğme).
   static Future<bool> bak({bool zorla = false}) async {
     if (kIsWeb || demoKipi) return false;
-    if (!zorla && _sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 30)) {
+    if (!zorla && _sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 5)) {
       return bulunan.value != null;
     }
     _sonBakis = DateTime.now();
