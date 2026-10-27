@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'app/hareket.dart';
 import 'app/tema.dart';
 import 'core/durum.dart';
 import 'core/eski_windows.dart';
+import 'ekranlar/acilis.dart';
 import 'ekranlar/aktivasyon_ekrani.dart';
 import 'ekranlar/bildirim_baloncuklari.dart';
 import 'ekranlar/kabuk.dart';
@@ -86,18 +88,27 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
               BildirimBaloncuklari(merkez: widget.durum.bildirim),
             ]),
           ),
+          // Açılış perdesi bütün aşamaların üstünde oynar, oturum denetimi
+          // bitince açılır; aşamalar arası geçiş asamaGecisi ile.
           home: ListenableBuilder(
             listenable: widget.durum,
-            builder: (context, _) => AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
+            builder: (context, _) => AcilisKatmani(
+              hazir: widget.durum.asama != Asama.acilis,
+              surum: widget.durum.surum,
+              child: AnimatedSwitcher(
+              duration: Hareket.uzun,
+              reverseDuration: Hareket.kisa,
+              switchInCurve: Curves.linear,
+              transitionBuilder: asamaGecisi,
               child: switch (widget.durum.asama) {
-                Asama.acilis => const AcilisEkrani(key: ValueKey('acilis')),
+                Asama.acilis => ColoredBox(key: const ValueKey('acilis'), color: Renk.zemin, child: const SizedBox.expand()),
                 Asama.baglantiYok => BaglantiBekleniyor(key: const ValueKey('baglanti'), mesaj: widget.durum.sonHata),
                 Asama.aktivasyon => const AktivasyonEkrani(key: ValueKey('aktivasyon')),
                 Asama.pin => const PinEkrani(key: ValueKey('pin')),
                 // Cihaz/istasyon değişirse kabuk sıfırdan kurulsun.
                 Asama.calisma => Kabuk(key: ValueKey('kabuk-${widget.durum.oturum?.cihazId}-${widget.durum.oturum?.istasyon}')),
               },
+            ),
             ),
           ),
         ),

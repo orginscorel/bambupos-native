@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -305,7 +306,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
           mainAxisSpacing: 8,
         ),
         itemCount: gorunen.length,
-        itemBuilder: (_, i) => _masaKarti(gorunen[i]),
+        itemBuilder: (_, i) => Belirme(sira: i, child: _masaKarti(gorunen[i])),
       ));
     }
     if (w.isEmpty) {
@@ -537,7 +538,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                       maxCrossAxisExtent: 420, mainAxisExtent: 128, crossAxisSpacing: 10, mainAxisSpacing: 10),
                   itemCount: l.length,
-                  itemBuilder: (_, i) => _KanalKarti(adisyon: l[i], fark: _fark, dokun: () => _adisyonuAc(l[i].id)),
+                  itemBuilder: (_, i) => Belirme(sira: i, child: _KanalKarti(adisyon: l[i], fark: _fark, dokun: () => _adisyonuAc(l[i].id))),
                 ),
         ),
       ]),

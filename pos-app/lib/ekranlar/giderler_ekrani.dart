@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -391,7 +392,7 @@ class _GiderlerEkraniState extends State<GiderlerEkrani> {
     var kaydediliyor = false;
     if (turler.any((t) => t['value'] == _tur && t['personel'] == true)) _personelYukle((f) => setState(f));
 
-    await showDialog<void>(
+    await pencereAc<void>(
       context: context,
       barrierDismissible: false,
       barrierColor: const Color(0x730F172A),
@@ -616,7 +617,7 @@ class _GiderlerEkraniState extends State<GiderlerEkrani> {
   Future<void> _iptalPenceresi(Map<String, dynamic> s) async {
     final neden = TextEditingController();
     var isleniyor = false;
-    await showDialog<void>(
+    await pencereAc<void>(
       context: context,
       barrierDismissible: false,
       barrierColor: const Color(0x730F172A),

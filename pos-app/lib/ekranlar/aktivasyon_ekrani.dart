@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import 'ortak.dart';
@@ -127,7 +128,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
   /// ardından olağan "Aktive Et" akışı çalışır.
   Future<void> _demoAc() async {
     final alan = TextEditingController();
-    final anahtar = await showDialog<String>(
+    final anahtar = await pencereAc<String>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Demo anahtarı'),

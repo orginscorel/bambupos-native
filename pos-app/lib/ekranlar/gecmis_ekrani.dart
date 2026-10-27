@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -138,7 +139,7 @@ class _GecmisEkraniState extends State<GecmisEkrani> {
     }
   }
 
-  Future<void> _detayAc(int id) => showDialog<void>(
+  Future<void> _detayAc(int id) => pencereAc<void>(
         context: context,
         builder: (_) => _Detay(id: id, api: _api, fisBas: _fisBas, basiliyor: () => _basiliyor == id),
       );

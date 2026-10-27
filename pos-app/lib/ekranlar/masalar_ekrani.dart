@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -242,7 +243,7 @@ class _MasalarEkraniState extends State<MasalarEkrani> {
   }
 
   Future<void> _qrOnizle(Json m) async {
-    await showDialog<void>(
+    await pencereAc<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('QR önizleme — ${m['name']}'),

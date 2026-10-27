@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -14,7 +15,7 @@ import 'ortak.dart';
 Future<({int? kisi, String? not})?> bilgiPenceresi(BuildContext context, Adisyon a) {
   final kisi = TextEditingController(text: a.kisi?.toString() ?? '');
   final not = TextEditingController(text: a.not ?? '');
-  return showDialog(
+  return pencereAc(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, yenile) => AlertDialog(
@@ -92,7 +93,7 @@ Future<TasimaSonucu?> tasimaPenceresi(
   List<({Kalem k, int adet})>? toplu,
   bool partiOnayi = false,
 }) {
-  return showDialog<TasimaSonucu>(
+  return pencereAc<TasimaSonucu>(
     context: context,
     builder: (_) => _Tasima(adisyon: adisyon, kalem: kalem, toplu: toplu, partiOnayi: partiOnayi),
   );
@@ -359,7 +360,7 @@ class _TasimaState extends State<_Tasima> {
 /* ───────── İndirim (§4.6) ───────── */
 
 Future<bool> indirimPenceresi(BuildContext context, Adisyon a) async {
-  final r = await showDialog<bool>(context: context, builder: (_) => _Indirim(adisyon: a));
+  final r = await pencereAc<bool>(context: context, builder: (_) => _Indirim(adisyon: a));
   return r ?? false;
 }
 
@@ -571,7 +572,7 @@ class _IndirimState extends State<_Indirim> {
 /* ───────── Birleştir (§4.7) ───────── */
 
 Future<int?> birlestirPenceresi(BuildContext context, Adisyon a) {
-  return showDialog<int>(context: context, builder: (_) => _Birlestir(adisyon: a));
+  return pencereAc<int>(context: context, builder: (_) => _Birlestir(adisyon: a));
 }
 
 class _Birlestir extends StatefulWidget {
@@ -642,7 +643,7 @@ Future<bool> partiKapatSor(BuildContext context, Adisyon a) async {
   final n = tamSayi(a.ham['aktif_parti'], 1);
   final ad = a.ham['parti_adlari'] is Map ? (a.ham['parti_adlari'] as Map)['$n'] : null;
   final kalemler = a.aktifKalemler.where((k) => (k.ham['parti_no'] == null ? n : tamSayi(k.ham['parti_no'])) == n).toList();
-  final r = await showDialog<bool>(
+  final r = await pencereAc<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text('$n. parti sonlandırılsın mı?'),
@@ -687,7 +688,7 @@ Future<bool> partiKapatSor(BuildContext context, Adisyon a) async {
 
 Future<String?> partiAdiSor(BuildContext context, int no, String? mevcut) {
   final c = TextEditingController(text: mevcut ?? '');
-  return showDialog<String>(
+  return pencereAc<String>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text('$no. partiye isim'),
@@ -714,7 +715,7 @@ Future<String?> partiAdiSor(BuildContext context, int no, String? mevcut) {
 }
 
 Future<bool> adisyonBosaldiSor(BuildContext context) async {
-  final r = await showDialog<bool>(
+  final r = await pencereAc<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: const Text('Adisyonda ürün kalmadı'),

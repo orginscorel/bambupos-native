@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/durum.dart';
@@ -132,7 +133,7 @@ class BaglantiSeridi extends StatelessWidget {
 Future<String?> metinSor(BuildContext context,
     {required String baslik, String? ipucu, String? ilkDeger, String onay = 'Tamam', int enAz = 0, List<String> hazir = const []}) {
   final c = TextEditingController(text: ilkDeger);
-  return showDialog<String>(
+  return pencereAc<String>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, yenile) => AlertDialog(
@@ -169,7 +170,7 @@ Future<String?> metinSor(BuildContext context,
 }
 
 Future<bool> onayla(BuildContext context, String baslik, String metin, {String onay = 'Evet', bool tehlikeli = false}) async {
-  final r = await showDialog<bool>(
+  final r = await pencereAc<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(baslik),

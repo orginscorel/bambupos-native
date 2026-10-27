@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -11,7 +12,7 @@ import 'ortak.dart';
 /// KALAN gönderilir, fark para üstü olarak gösterilir.
 /// Başarılıysa güncel adisyon döner.
 Future<Adisyon?> odemeAc(BuildContext context, Adisyon adisyon) {
-  return showDialog<Adisyon>(
+  return pencereAc<Adisyon>(
     context: context,
     barrierDismissible: false,
     builder: (_) => Dialog(

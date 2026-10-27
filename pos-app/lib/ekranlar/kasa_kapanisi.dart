@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -41,7 +42,7 @@ Future<T?> syPencere<T>(
   bool perdeKapatir = true,
   bool kapatDugmesi = false,
 }) {
-  return showDialog<T>(
+  return pencereAc<T>(
     context: context,
     barrierDismissible: perdeKapatir,
     barrierColor: const Color(0x730F172A),

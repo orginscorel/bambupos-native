@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -217,7 +218,7 @@ class _BorclarEkraniState extends State<BorclarEkrani> {
   }
 
   Future<void> _sil(Map<String, dynamic> r) async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => _SilPenceresi(kayit: r, api: _api));
+    final ok = await pencereAc<bool>(context: context, builder: (_) => _SilPenceresi(kayit: r, api: _api));
     if (ok == true && mounted) _sahislariYukle();
   }
 
@@ -840,12 +841,12 @@ class _DetayState extends State<_Detay> {
   int get _bakiye => tamSayi(_r['balance_minor']);
 
   Future<void> _devir() async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => _DevirPenceresi(kayit: _r, api: widget.api));
+    final ok = await pencereAc<bool>(context: context, builder: (_) => _DevirPenceresi(kayit: _r, api: widget.api));
     if (ok == true && mounted) await Future.wait([_yukle(), widget.listeyiYenile()]);
   }
 
   Future<void> _tahsilat() async {
-    final ok = await showDialog<bool>(
+    final ok = await pencereAc<bool>(
       context: context,
       builder: (_) => _TahsilatPenceresi(kayit: _r, borcAdisyonlari: _liste('debt_orders'), api: widget.api),
     );

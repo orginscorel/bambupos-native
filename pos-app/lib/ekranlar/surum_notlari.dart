@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import 'ortak.dart';
@@ -8,7 +9,7 @@ import 'ortak.dart';
 /// (web: /panel/surum-notlari). Kaynak sunucuda config/native_changelog.php
 /// (uygulama) + config/changelog.php (panel) → GET /api/v1/changelog/notlar.
 Future<void> surumNotlariAc(BuildContext context) {
-  return showDialog<void>(
+  return pencereAc<void>(
     context: context,
     builder: (_) => Dialog(
       insetPadding: const EdgeInsets.all(16),

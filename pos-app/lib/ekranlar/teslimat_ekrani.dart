@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -93,7 +94,7 @@ class _TeslimatEkraniState extends State<TeslimatEkrani> {
     });
   }
 
-  Future<void> _yonet(Map<String, dynamic> d) => showDialog<void>(
+  Future<void> _yonet(Map<String, dynamic> d) => pencereAc<void>(
         context: context,
         builder: (_) => _Yonet(teslimat: d, kuryeler: _kuryeler, api: _api, yansit: _yansit),
       );

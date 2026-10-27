@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -606,7 +607,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     }
   }
 
-  Future<bool?> _birlestirmeTeklifi(String mesaj) => showDialog<bool>(
+  Future<bool?> _birlestirmeTeklifi(String mesaj) => pencereAc<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Adisyonu taşı'),

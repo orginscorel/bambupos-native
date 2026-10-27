@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -979,7 +980,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
   Future<void> _fisOnizle(Json kart, List<Json> kalemler, {required bool teslim}) async {
     final o = _o;
     final sube = o.sube ?? '';
-    await showDialog<void>(
+    await pencereAc<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(teslim ? 'Teslim fişi önizleme' : 'İstasyon fişi önizleme'),
@@ -1029,7 +1030,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
     }
   }
 
-  Future<void> _recete(Json x) => showDialog<void>(
+  Future<void> _recete(Json x) => pencereAc<void>(
         context: context,
         builder: (ctx) {
           final alerjen = _l(x['allergens']).map((a) => _m(a['name'])).whereType<String>().toList();
@@ -1071,7 +1072,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
   Future<void> _yaziciPenceresi() async {
     await _yazicilariYukle();
     if (!mounted) return;
-    await showDialog<void>(
+    await pencereAc<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, yenile) => AlertDialog(
@@ -1154,7 +1155,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
     );
   }
 
-  Future<void> _istasyonYonetimi() => showDialog<void>(context: context, builder: (_) => const _IstasyonYonetimi());
+  Future<void> _istasyonYonetimi() => pencereAc<void>(context: context, builder: (_) => const _IstasyonYonetimi());
 }
 
 /* ═════════════ Bileşenler ═════════════ */
@@ -1200,7 +1201,7 @@ class _KalemGorseli extends StatelessWidget {
       message: '$ad — büyüt',
       child: InkWell(
         borderRadius: koseYuvarlak,
-        onTap: () => showDialog<void>(
+        onTap: () => pencereAc<void>(
           context: context,
           builder: (ctx) => Dialog(
             backgroundColor: Colors.black,

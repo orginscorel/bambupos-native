@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../core/ajan.dart';
 import '../core/api.dart';
 import '../core/modeller.dart';
@@ -261,7 +262,16 @@ class Kabuk extends StatefulWidget {
 class _KabukState extends State<Kabuk> {
   PosEkrani? _secili;
 
-  void _git(PosEkrani e) => setState(() => _secili = e);
+  /// Sekme geçiş yönü: sağdaki sekmeye geçince yeni ekran sağdan gelir.
+  int _yon = 1;
+
+  void _git(PosEkrani e) {
+    final l = ekranlariHesapla(context.durum.oturum!);
+    final simdi = l.indexOf(l.contains(_secili) ? _secili! : l.first);
+    final yeni = l.indexOf(e);
+    if (yeni >= 0 && simdi >= 0 && yeni != simdi) _yon = yeni > simdi ? 1 : -1;
+    setState(() => _secili = e);
+  }
 
   void _istek() {
     final e = ekranIstegi.value;
@@ -321,7 +331,7 @@ class _KabukState extends State<Kabuk> {
           bottomNavigationBar: posAltSerit(context, secili: ekran, git: _git),
           body: Column(children: [
             const GuncellemeSeridi(),
-            Expanded(child: KeyedSubtree(key: ValueKey(ekran), child: _govde(ekran))),
+            Expanded(child: EkranGecisi(anahtar: ekran, yon: _yon, child: _govde(ekran))),
           ]),
         );
       },

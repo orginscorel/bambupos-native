@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
@@ -19,7 +20,7 @@ class UrunSecimi {
 /// "Boyut / Porsiyon" varyantları, seçenek grupları (tek seçim / en çok n /
 /// çoklu), ücretsiz seçenek limiti, adet sınırları, not.
 Future<UrunSecimi?> urunSecimiAc(BuildContext context, Urun urun, {String kanal = 'table'}) {
-  return showDialog<UrunSecimi>(
+  return pencereAc<UrunSecimi>(
     context: context,
     builder: (_) => Dialog(
       insetPadding: const EdgeInsets.all(16),
@@ -118,7 +119,7 @@ class _UrunSecimiState extends State<_UrunSecimi> {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (gorsel != null) ...[
               InkWell(
-                onTap: () => showDialog<void>(
+                onTap: () => pencereAc<void>(
                   context: context,
                   builder: (ctx) => Dialog(child: InkWell(onTap: () => Navigator.pop(ctx), child: CachedNetworkImage(imageUrl: u.ham['image_url']?.toString() ?? gorsel))),
                 ),

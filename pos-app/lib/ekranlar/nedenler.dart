@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 
 /// Web'deki hazır neden listeleri (resources/js/lib/reasons.ts).
@@ -100,7 +101,7 @@ Future<String?> nedenSor(BuildContext context, {required String tur, String? ust
     _ => 'İade et',
   };
   var neden = '';
-  return showDialog<String>(
+  return pencereAc<String>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, yenile) => AlertDialog(

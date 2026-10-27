@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'hareket.dart';
+
 /// Koyu / açık tema anahtarı (web: `<html data-theme>`, localStorage `theme`).
 /// Değişince kök uygulama bütün ağacı yeniden çizer; renkler aşağıdaki
 /// getter'lardan okunduğu için ekran durumu (açık adisyon vb.) kaybolmaz.
@@ -113,6 +115,8 @@ ThemeData temaKur({String? yaziTipiAdi}) {
     scaffoldBackgroundColor: Renk.zemin,
     visualDensity: VisualDensity.standard,
     splashFactory: InkRipple.splashFactory,
+    // Sayfa geçişleri: app/hareket.dart (bütün platformlarda aynı dil).
+    pageTransitionsTheme: posSayfaGecisleri(),
     textTheme: (_k ? Typography.whiteMountainView : Typography.blackMountainView).apply(fontFamily: ad, bodyColor: Renk.yazi, displayColor: Renk.yazi),
     appBarTheme: AppBarTheme(
       backgroundColor: Renk.yuzey,

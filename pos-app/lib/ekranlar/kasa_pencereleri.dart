@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
@@ -91,7 +92,7 @@ String yontemAdi(String? y) => kasaYontemleri.where((e) => e.$1 == y).map((e) =>
 
 Future<T?> kasaPenceresi<T>(BuildContext context,
     {required String baslik, required Widget Function(BuildContext, StateSetter) icerik, required List<Widget> Function(BuildContext, StateSetter) dugmeler, double genislik = 384}) {
-  return showDialog<T>(
+  return pencereAc<T>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, yenile) => AlertDialog(

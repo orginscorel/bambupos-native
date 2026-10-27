@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: sistem açılış ekranı simgeyi koyu lacivert üstünde gösterir,
+         ardından uygulamanın açılış perdesi aynı renkten devam eder. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/acilis_zemin</item>
+    </style>
+</resources>
