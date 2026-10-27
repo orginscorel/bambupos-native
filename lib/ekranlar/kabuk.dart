@@ -106,7 +106,11 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
 
   void _hesapSaatiKur() {
     _hesapSaati?.cancel();
-    _hesapSaati = Timer.periodic(const Duration(seconds: 60), (_) => Uyg.hesapTazele(enAz: const Duration(seconds: 50)));
+    _hesapSaati = Timer.periodic(const Duration(seconds: 60), (_) {
+      Uyg.hesapTazele(enAz: const Duration(seconds: 50));
+      // Uygulama açık kaldıkça yeni sürüme de bakılır (Guncelleme.bak kendi 15 dk sınırını uygular).
+      Guncelleme.bak();
+    });
   }
 
   @override

@@ -57,7 +57,7 @@ class Guncelleme {
 
   /// Yeni sürüm varsa true. [zorla] = 30 dk sınırını yok say (Profil'deki düğme).
   static Future<bool> bak({bool zorla = false}) async {
-    if (!zorla && _sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 30)) {
+    if (!zorla && _sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 15)) {
       return bulunan.value != null;
     }
     _sonBakis = DateTime.now();
