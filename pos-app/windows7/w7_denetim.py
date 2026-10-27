@@ -142,7 +142,10 @@ def main():
         t = tablolar[ad]
         if t['mak'] != 0x8664:
             sorun(ad, f'x64 değil (makine {hex(t["mak"])})')
-        if t['alt'] > (6, 1):
+        # Alt sistem sürümünü Windows 7 yükleyicisi yalnız EXE için denetler;
+        # DLL'lerde (ör. Windows 10 SDK'nın Windows 7 için dağıttığı UCRT
+        # api-ms-win-*.dll'leri: 10.0, d3dcompiler_47.dll: 6.2) bakmaz.
+        if ad.endswith('.exe') and t['alt'] > (6, 1):
             sorun(ad, f'PE alt sistem sürümü {t["alt"][0]}.{t["alt"][1]} > 6.1 (Windows 7 yükleyicisi reddeder)')
         for tur, liste in (('', t['imp']), (' (gecikmeli)', t['gec'])):
             gec = bool(tur)
