@@ -18,13 +18,15 @@ import 'masa_panosu.dart';
 import 'masalar_ekrani.dart';
 import 'mesailer_ekrani.dart';
 import 'mesai_qr_ekrani.dart';
+import 'raporlar_ekrani.dart';
 import 'teslimat_ekrani.dart';
 import 'ortak.dart';
 
 /// Panelin OPERASYON ekranları — web resources/js/config/navigation.ts ile
 /// AYNI sıra, anahtar, yol, izin, istasyon ve özellik bayrağı. Yönetim
-/// ekranları (Menü, Stok, Raporlar, Personel, Ayarlar, Rezervasyon …) bilerek
+/// ekranları (Menü, Stok, Personel, Ayarlar, Rezervasyon …) bilerek
 /// yok — onlar İşletme Yönetimi'nde (kullanıcı kararı 2026-10-26).
+/// Raporlar 2026-10-27'de sahip isteğiyle POS'a eklendi.
 enum PosEkrani {
   siparis('orders', 'Siparişler', 'Sipariş girişi ekranı', Icons.content_paste_rounded, '/panel/siparisler', izin: 'orders.view'),
   gecmis('orders-gecmis', 'Önceki adisyonlar', 'Önceki adisyonlar', Icons.history_rounded, '/panel/siparisler/gecmis', izin: 'orders.view'),
@@ -45,7 +47,8 @@ enum PosEkrani {
   mesaiQr('mesai-qr', 'Mesai / mola QR', 'Mesai QR', Icons.schedule_rounded, '/panel/mesai-qr', izin: null, ozellik: 'shifts'),
   borclar('receivables', 'Borçlar / Şahıslar', 'Borçlar / Şahıslar', Icons.inbox_outlined, '/panel/borclar', izin: 'receivables.view', ozellik: 'receivables', para: true),
   giderler('expenses', 'Giderler', 'Giderler', Icons.receipt_outlined, '/panel/gelir-gider', izin: 'cash.close', para: true),
-  gunSonu('eod', 'Gün Sonu', 'Gün sonu', Icons.assignment_outlined, '/panel/gun-sonu', izin: 'reports.view', para: true);
+  gunSonu('eod', 'Gün Sonu', 'Gün sonu', Icons.assignment_outlined, '/panel/gun-sonu', izin: 'reports.view', para: true),
+  raporlar('reports', 'Raporlar', 'Raporlar', Icons.bar_chart_rounded, '/panel/raporlar', izin: 'reports.view', para: true);
 
   const PosEkrani(this.anahtar, this.etiket, this.rozet, this.ikon, this.yol,
       {required this.izin, this.istasyonlar = const [], this.ozellik, this.serit, this.para = false});
@@ -350,6 +353,7 @@ class _KabukState extends State<Kabuk> {
         PosEkrani.borclar => const BorclarEkrani(),
         PosEkrani.giderler => const GiderlerEkrani(),
         PosEkrani.gunSonu => const GunSonuEkrani(),
+        PosEkrani.raporlar => const RaporlarEkrani(),
         PosEkrani.mesaiQr => const MesaiQrEkrani(),
         PosEkrani.gorevler => const GorevlerEkrani(),
         PosEkrani.mesailer => const MesailerEkrani(),
