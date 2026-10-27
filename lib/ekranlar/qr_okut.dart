@@ -16,6 +16,9 @@ import '../ortak/ortak.dart';
 ///   mesaide       → Molaya çık · Mesaiyi bitir · Kısa mola
 ///   molada        → Molayı bitir · (Mesai bitir kilitli)
 /// Uçlar: GET/POST /api/v1/portal/qr-mesai/{token}/{kod} (web ile aynı).
+/// EK (2026-10-27): kasa/terminal PIN ekranındaki GİRİŞ karesi de okunur
+/// (…/qr-giris/{40 karakter}) → onay panosu → POST /api/v1/portal/qr-giris/{anahtar};
+/// o ekran bu personelin hesabıyla açılır.
 class QrOkutEkrani extends StatefulWidget {
   const QrOkutEkrani({super.key});
   @override
@@ -24,6 +27,9 @@ class QrOkutEkrani extends StatefulWidget {
 
 class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderStateMixin {
   static final _desen = RegExp(r'/qr-mesai/([A-Za-z0-9]{10,64})/([0-9A-Fa-f]{12})');
+  static final _girisDesen = RegExp(r'/qr-giris/([A-Za-z0-9]{40})(?:[/?#]|$)');
+  String? _girisAnahtar; // PIN ekranı giriş karesi okundu → onay bekliyor
+  bool _girisIsleniyor = false;
 
   final _kamera = MobileScannerController(detectionSpeed: DetectionSpeed.noDuplicates, formats: const [BarcodeFormat.qrCode]);
   late final _tarama = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))..repeat(reverse: true);
@@ -51,14 +57,23 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
   }
 
   Future<void> _algila(BarcodeCapture c) async {
-    if (_mesgul || _pano != null || _bitti != null) return;
+    if (_mesgul || _pano != null || _bitti != null || _girisAnahtar != null) return;
     final ham = c.barcodes.firstOrNull?.rawValue;
     if (ham == null) return;
+    final g = _girisDesen.firstMatch(ham);
+    if (g != null) {
+      HapticFeedback.mediumImpact();
+      setState(() {
+        _isabet = true;
+        _girisAnahtar = g.group(1);
+      });
+      return;
+    }
     final m = _desen.firstMatch(ham);
     if (m == null) {
       if (DateTime.now().difference(_sonYanlis).inSeconds > 3) {
         _sonYanlis = DateTime.now();
-        bildir('Bu bir mesai QR\'ı değil', mesaj: 'Kasadaki ya da giriş ekranındaki mesai QR\'ını okutun.', tur: BildirimTur.uyari);
+        bildir('Bu QR tanınmadı', mesaj: 'Mesai QR\'ını ya da kasadaki PIN ekranının giriş QR\'ını okutun.', tur: BildirimTur.uyari);
       }
       return;
     }
@@ -102,6 +117,46 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
     unawaited(_kamera.stop().catchError((_) {}));
     final nav = Navigator.of(context);
     if (nav.canPop()) nav.pop();
+  }
+
+  void _girisiKapat() {
+    if (_girisIsleniyor) return;
+    setState(() {
+      _girisAnahtar = null;
+      _isabet = false;
+    });
+  }
+
+  Future<void> _girisOnayla() async {
+    final a = _girisAnahtar;
+    if (a == null || _girisIsleniyor) return;
+    HapticFeedback.selectionClick();
+    setState(() => _girisIsleniyor = true);
+    try {
+      final r = await Uyg.api.post('/api/v1/portal/qr-giris/$a') as Map;
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _girisAnahtar = null;
+        _bitti = {
+          'eylem': 'giris',
+          'mesaj': 'Giriş yapıldı',
+          'alt': '${r['ad'] ?? 'Hesabın'} olarak ekran açılıyor',
+        };
+      });
+      unawaited(_kamera.stop());
+      await Future<void>.delayed(const Duration(milliseconds: 1700));
+      _kapat();
+    } on ApiHata catch (e) {
+      bildir('Giriş yapılamadı', mesaj: e.mesaj, tur: BildirimTur.hata);
+      if (mounted) {
+        setState(() {
+          _girisAnahtar = null;
+          _isabet = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _girisIsleniyor = false);
+    }
   }
 
   void _panoyuKapat() {
@@ -169,13 +224,13 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
             Positioned.fill(
               child: IgnorePointer(
                 child: AnimatedOpacity(
-                  opacity: _pano != null ? .6 : 1,
+                  opacity: _pano != null || _girisAnahtar != null ? .6 : 1,
                   duration: const Duration(milliseconds: 300),
                   child: CustomPaint(painter: _CerceveCizer(isabet: _isabet)),
                 ),
               ),
             ),
-          if (_bitti == null && _pano == null && !_isabet)
+          if (_bitti == null && _pano == null && _girisAnahtar == null && !_isabet)
             Positioned.fill(
               child: IgnorePointer(
                 child: LayoutBuilder(builder: (_, k) {
@@ -203,7 +258,7 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
               ),
             ),
           // Kamera seçimi
-          if (_pano == null && _bitti == null)
+          if (_pano == null && _bitti == null && _girisAnahtar == null)
             Positioned(
               left: 0,
               right: 0,
@@ -250,6 +305,10 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
             Positioned.fill(child: GestureDetector(onTap: _islem == null ? _panoyuKapat : null, child: Container(color: Colors.transparent))),
             Align(alignment: Alignment.bottomCenter, child: _Pano(veri: _pano!, kalan: _kalan, islem: _islem, islemTur: _islemTur, calistir: _calistir, yeniden: _panoyuKapat)),
           ],
+          if (_girisAnahtar != null) ...[
+            Positioned.fill(child: GestureDetector(onTap: _girisiKapat, child: Container(color: Colors.transparent))),
+            Align(alignment: Alignment.bottomCenter, child: _GirisPano(isleniyor: _girisIsleniyor, onayla: _girisOnayla, vazgec: _girisiKapat)),
+          ],
           if (_bitti != null) Positioned.fill(child: GestureDetector(onTap: _kapat, child: _Basari(veri: _bitti!))),
           // Üst çubuk — EN ÜSTTE: pano arkasındaki dokunma katmanı ve başarı ekranı X'i örtmesin
           Positioned(
@@ -260,7 +319,7 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(color: Colors.black.withValues(alpha: .4), borderRadius: BorderRadius.circular(30)),
-                child: const Text('Mesai / mola QR\'ını okut', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                child: const Text('Mesai ya da giriş QR\'ını okut', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
               ),
               const Spacer(),
               _YuvarlakDugme(
@@ -767,6 +826,7 @@ class _Basari extends StatelessWidget {
     final grad = switch (eylem) {
       'mola_basla' => const LinearGradient(colors: [Color(0xFFC4B5FD), Color(0xFF7C3AED)]),
       'mesai_bitir' => const LinearGradient(colors: [Color(0xFF6EE7B7), Color(0xFF059669)]),
+      'giris' => Marka.grad,
       _ => const LinearGradient(colors: [Color(0xFF7DD3FC), Marka.mavi]),
     };
     final cihaz = veri['cihaz'] as Map? ?? const {};
@@ -864,6 +924,80 @@ class _Konfeti extends StatelessWidget {
           angle: v * (i * 47 % 360) * math.pi / 180,
           child: Opacity(opacity: (1 - v).clamp(0, 1), child: Container(width: 10, height: 10, decoration: BoxDecoration(color: _renk[i % 5], borderRadius: BorderRadius.circular(2)))),
         ),
+      ),
+    );
+  }
+}
+
+/* ───────────────────────── PIN ekranı girişi ───────────────────────── */
+
+/// Kasa / terminal PIN ekranındaki giriş karesi okununca açılan onay panosu.
+class _GirisPano extends StatelessWidget {
+  const _GirisPano({required this.isleniyor, required this.onayla, required this.vazgec});
+  final bool isleniyor;
+  final VoidCallback onayla;
+  final VoidCallback vazgec;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = context.pa;
+    final alt = MediaQuery.paddingOf(context).bottom;
+    final h = Uyg.hesap.value ?? const {};
+    final ad = (h['ad'] ?? h['name'] ?? '').toString();
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 1, end: 0),
+      duration: const Duration(milliseconds: 520),
+      curve: const Cubic(.22, 1, .36, 1),
+      builder: (_, v, child) => Transform.translate(offset: Offset(0, 400 * v), child: child),
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxWidth: 560),
+        padding: EdgeInsets.fromLTRB(18, 10, 18, 18 + alt),
+        decoration: BoxDecoration(
+          color: r.kart,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          boxShadow: const [BoxShadow(color: Color(0x880D0B2B), blurRadius: 60, offset: Offset(0, -20))],
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Center(child: Container(width: 42, height: 5, decoration: BoxDecoration(color: r.kenar, borderRadius: BorderRadius.circular(9)))),
+          const SizedBox(height: 18),
+          Row(children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(gradient: Marka.grad, borderRadius: BorderRadius.circular(17)),
+              child: const Icon(Icons.point_of_sale_rounded, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Ekrana giriş yap', style: gosterim(19, renk: r.metin)),
+                const SizedBox(height: 2),
+                Text(
+                  ad.isEmpty ? 'Kasadaki ekran senin hesabınla açılır.' : 'Kasadaki ekran $ad hesabıyla açılır.',
+                  style: TextStyle(fontSize: 13, height: 1.35, color: r.soluk),
+                ),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: r.ic, borderRadius: BorderRadius.circular(16)),
+            child: Row(children: [
+              Icon(Icons.info_outline_rounded, size: 18, color: r.soluk),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('PIN girmene gerek yok. Kare yaklaşık 2 dakika geçerli; ekranda yenilenirse tekrar okut.',
+                    style: TextStyle(fontSize: 12.5, height: 1.35, color: r.soluk)),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          GradDugme(yazi: 'Giriş yap', ikon: Icons.login_rounded, yukleniyor: isleniyor, onTap: onayla),
+          const SizedBox(height: 6),
+          TextButton(onPressed: isleniyor ? null : vazgec, child: Text('Vazgeç', style: TextStyle(color: r.soluk, fontWeight: FontWeight.w600))),
+        ]),
       ),
     );
   }
