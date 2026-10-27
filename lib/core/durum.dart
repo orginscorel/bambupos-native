@@ -38,15 +38,35 @@ class Uyg {
     api = await Api.kur(kullaniciAjani: 'BamBumPOS-Personel/1.0 (Flutter)');
   }
 
+  /// İşletmenin mesai konum kuralı (hesap › mesai_konum). Alan yoksa (eski
+  /// sunucu) zorunlu değil. Kural yalnız web konsolunda açılıp kapatılır.
+  static bool get konumZorunlu => (hesap.value?['mesai_konum'] as Map?)?['zorunlu'] == true;
+  static int? get konumYaricap => ((hesap.value?['mesai_konum'] as Map?)?['yaricap_m'] as num?)?.round();
+
+  static DateTime _hesapZamani = DateTime.fromMillisecondsSinceEpoch(0);
+
   /// Oturum var mı? Varsa kimliği yükler.
   static Future<bool> hesapYukle() async {
     try {
       final r = await api.get('/api/v1/portal/hesap');
       hesap.value = Map<String, dynamic>.from(r as Map);
+      _hesapZamani = DateTime.now();
       return true;
     } on ApiHata catch (e) {
       if (e.oturumYok) return false;
       rethrow;
+    }
+  }
+
+  /// Uygulamaya dönünce hafif tazeleme (en çok 5 dk'da bir): konsolda açılan
+  /// konum kuralı gibi değişiklikler açık uygulamalara da ulaşsın. Hata sessiz.
+  static Future<void> hesapTazele({Duration enAz = const Duration(minutes: 5)}) async {
+    if (hesap.value == null || DateTime.now().difference(_hesapZamani) < enAz) return;
+    _hesapZamani = DateTime.now(); // ağ yavaşsa üst üste istek atma
+    try {
+      await hesapYukle();
+    } catch (_) {
+      // Bir sonraki dönüşte yeniden denenir.
     }
   }
 

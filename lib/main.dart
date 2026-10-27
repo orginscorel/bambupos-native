@@ -7,6 +7,7 @@ import 'core/bildirim.dart';
 import 'core/durum.dart';
 import 'core/tema.dart';
 import 'ekranlar/acilis.dart';
+import 'ekranlar/konum_kapisi.dart';
 import 'ortak/ortak.dart';
 
 Future<void> main() async {
@@ -48,7 +49,8 @@ class PersonelUygulamasi extends StatelessWidget {
               data: MediaQuery.of(ctx).copyWith(
                 textScaler: MediaQuery.of(ctx).textScaler.clamp(maxScaleFactor: 1.25),
               ),
-              child: child!,
+              // Konum kapısı TÜM sayfaların üstünde (kural açık + izin yoksa).
+              child: Stack(fit: StackFit.expand, children: [child!, const KonumKapisi()]),
             );
           }),
         ]),

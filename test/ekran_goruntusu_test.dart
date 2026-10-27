@@ -20,6 +20,7 @@ import 'package:bambumpos_personel/ekranlar/eslesme.dart';
 import 'package:bambumpos_personel/ekranlar/gorevler.dart';
 import 'package:bambumpos_personel/ekranlar/hedefler.dart';
 import 'package:bambumpos_personel/ekranlar/kabuk.dart';
+import 'package:bambumpos_personel/ekranlar/konum_kapisi.dart';
 import 'package:bambumpos_personel/ekranlar/mesaim.dart';
 import 'package:bambumpos_personel/ekranlar/primler.dart';
 import 'package:bambumpos_personel/ekranlar/profil.dart';
@@ -217,14 +218,6 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
             {'tarih': _gun(i), 'etiket': i == 0 ? 'Bugün' : i == 1 ? 'Yarın' : '${['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'][_simdi.add(Duration(days: i)).weekday - 1]} ${_simdi.add(Duration(days: i)).day}', 'sayi': i == 3 ? 0 : [5, 4, 6, 0, 3, 7, 2][i]},
         ],
       };
-    case '/api/v1/portal/yonetici/mesai-noktalari':
-      return {
-        'destekli': Platform.environment['NOKTA_YOK'] != '1',
-        'noktalar': [
-          {'id': 1, 'ad': 'Giriş kapısı QR', 'sube': 'Merkez Şube', 'lat': 40.9873512, 'lng': 29.0284471, 'yaricap_m': 150, 'zorunlu': true},
-          {'id': 2, 'ad': 'Mutfak tableti', 'sube': 'Merkez Şube', 'lat': null, 'lng': null, 'yaricap_m': 100, 'zorunlu': false},
-        ],
-      };
     case '/api/v1/personel-eslesme/baslat':
       return {'kod': 'K7M4QX', 'gizli': 'x', 'bitis': _iso(const Duration(minutes: 29, seconds: 41))};
     case '/api/v1/personel-eslesme/durum':
@@ -314,6 +307,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     MesaiHatirlatma.androidZorla = null;
+    KonumKapisi.etkin.value = false;
     PackageInfo.setMockInitialValues(appName: 'BamBumPOS Personel', packageName: 'com.bambumpos.personel', version: '1.0.0', buildNumber: '1', buildSignature: '', installerStore: null);
     Uyg.tercih = await SharedPreferences.getInstance();
     Uyg.api = Api.bellekte(_SahteSunucu(), tabanUrl: 'https://personel.bambumpos.com');
@@ -345,7 +339,6 @@ void main() {
     '12-puantaj': () => const PuantajEkrani(),
     '13-ekibim': () => const EkibimEkrani(),
     '14-ekibim-gorevler': () => const EkibimEkrani(ilkSekme: 1),
-    '15-mesai-noktalari': () => const EkibimEkrani(ilkSekme: 2),
     '16-konum-panosu': () => const _PanoGosterici(_PanoTur.konum),
     '17-uzak-panosu': () => const _PanoGosterici(_PanoTur.uzak),
     '18-dugmeler': () => const _DugmeVitrini(),
@@ -371,6 +364,16 @@ void main() {
       bottomNavigationBar: PaAltCubuk(secili: 0, onSec: (_) {}, onQr: () {}),
     );
   };
+  // KONUM KAPISI: konsolda konum kuralı açık, izin yok → tüm sayfaların üstünde.
+  Widget kapili(KonumDurum d) {
+    Uyg.hesap.value = {...?Uyg.hesap.value, 'mesai_konum': {'zorunlu': true, 'yaricap_m': 150}};
+    KonumKapisi.denetci = () async => d;
+    KonumKapisi.etkin.value = true;
+    return Stack(fit: StackFit.expand, children: [menulu(const AnaSayfa(), 0), const KonumKapisi()]);
+  }
+  ekranlar['19-konum-zorunlu'] = () => kapili(KonumDurum.izinYok);
+  ekranlar['19-konum-zorunlu-ayar'] = () => kapili(KonumDurum.kaliciRed);
+  ekranlar['19-konum-zorunlu-servis'] = () => kapili(KonumDurum.servisKapali);
   final secilen = Platform.environment['EKRAN'];
 
   for (final b in boyutlar.entries) {
@@ -382,6 +385,10 @@ void main() {
         if (e.key.startsWith('00-menu')) {
           t.view.padding = const FakeViewPadding(bottom: 34);
           t.view.viewPadding = const FakeViewPadding(bottom: 34);
+        }
+        if (e.key.startsWith('19-konum')) {
+          t.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+          t.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
         }
         addTearDown(t.view.reset);
         await t.pumpWidget(_uygulama(e.value()));
@@ -457,7 +464,7 @@ class _DugmeVitriniState extends State<_DugmeVitrini> {
           const SizedBox(height: 8),
           const Row(children: [PaMetinDugme(yazi: 'Geçmiş', kucuk: true, sonIkon: Icons.chevron_right_rounded, onTap: _bos), SizedBox(width: 8), PaMetinDugme(yazi: 'Süzgeci kaldır', ikon: Icons.close_rounded, kucuk: true, onTap: _bos)]),
           const SizedBox(height: 16),
-          PaSegment(secili: _s, ogeler: const ['Kişiler', 'Görevler', 'Noktalar'], sayilar: const [8, 3, null], onSec: (i) => setState(() => _s = i)),
+          PaSegment(secili: _s, ogeler: const ['Kişiler', 'Görevler', 'Arşiv'], sayilar: const [8, 3, null], onSec: (i) => setState(() => _s = i)),
           const SizedBox(height: 16),
           HataDurum(hata: ApiHata(null, 'Sunucuya ulaşılamıyor. İnternet bağlantısını kontrol edin.'), onTekrar: _bos),
         ]),

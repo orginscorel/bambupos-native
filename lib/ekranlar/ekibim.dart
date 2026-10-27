@@ -9,7 +9,6 @@ import '../core/durum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'gorevler.dart';
-import 'mesai_noktalari.dart';
 
 /// EKİBİM — yönetici modu. Yalnız `staff.view` / `staff.manage` /
 /// `tasks.assign` yetkisi olanlar görür (Uyg.yonetici).
@@ -18,7 +17,7 @@ import 'mesai_noktalari.dart';
 /// (durum noktası, giriş saati, çalışılan, gecikme). Görevler sekmesi: şube
 /// görevleri (fotoğraflarıyla) — SALT OKUNUR: görev atama konsolda/yönetimde
 /// yapılır, Personel uygulaması yalnız görevin okunup yapıldığı yerdir.
-/// Mesai noktaları sekmesi: QR konum doğrulaması (mesai_noktalari.dart).
+/// Mesai QR konum kuralı (mesai noktası) yalnız web konsolundan ayarlanır.
 /// Ekran açıkken 30 sn'de bir kendini yeniler.
 class EkibimEkrani extends StatefulWidget {
   const EkibimEkrani({super.key, this.ilkSekme = 0});
@@ -39,7 +38,7 @@ class EkibimEkrani extends StatefulWidget {
 
 class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver {
   final _saat = DateFormat('HH:mm', 'tr_TR');
-  late int _sekme = widget.ilkSekme;
+  late int _sekme = widget.ilkSekme.clamp(0, 1);
   String? _suzgec;
 
   Map<String, dynamic>? _ekip;
@@ -75,10 +74,7 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
     if (_onde) _yenile(sessiz: true);
   }
 
-  int _noktaTur = 0; // çekip yenileyince Mesai noktaları da yeniden yüklensin
-
   Future<void> _yenile({bool sessiz = false}) {
-    if (!sessiz) setState(() => _noktaTur++);
     return Future.wait([_ekipYukle(sessiz), _gorevYukle(sessiz)]);
   }
 
@@ -152,8 +148,8 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
       govde: Kaydir(altBosluk: 40, children: [
         PaSegment(
           secili: _sekme,
-          ogeler: const ['Kişiler', 'Görevler', 'Noktalar'],
-          sayilar: [_ekip == null ? null : _i(_ozet, 'toplam'), _gorevler?.where((g) => g['status'] != 'done').length, null],
+          ogeler: const ['Kişiler', 'Görevler'],
+          sayilar: [_ekip == null ? null : _i(_ozet, 'toplam'), _gorevler?.where((g) => g['status'] != 'done').length],
           onSec: (i) => setState(() => _sekme = i),
         ),
         const SizedBox(height: 14),
@@ -161,11 +157,7 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
           duration: const Duration(milliseconds: 250),
           child: KeyedSubtree(
             key: ValueKey(_sekme),
-            child: switch (_sekme) {
-              0 => _kisilerSekmesi(),
-              1 => _gorevlerSekmesi(),
-              _ => MesaiNoktalari(key: ValueKey('mn$_noktaTur')),
-            },
+            child: _sekme == 1 ? _gorevlerSekmesi() : _kisilerSekmesi(),
           ),
         ),
       ]),

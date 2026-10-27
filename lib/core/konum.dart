@@ -7,7 +7,8 @@ import '../ortak/ortak.dart';
 import 'tema.dart';
 
 /// Mesai/mola QR'ının işletmede okutulduğunu doğrulamak için konum.
-/// Yalnız QR okuturken (ve yöneticinin "mesai noktası" ayarında) alınır.
+/// Yalnız QR okuturken alınır. İşletme konum kuralını açtıysa izin zorunludur
+/// (konum_kapisi.dart); kural ve mesai noktası yalnız web konsolunda ayarlanır.
 enum KonumDurum { tamam, servisKapali, izinYok, kaliciRed, alinamadi }
 
 class KonumSonuc {
@@ -28,6 +29,22 @@ class KonumSonuc {
 
 class Konum {
   Konum._();
+
+  /// İzin + servis durumu — UCUZ, izin penceresi AÇMAZ (konum kapısı için).
+  /// tamam = servis açık ve izin "kullanırken"/"her zaman". Eklenti
+  /// yanıt vermezse (ör. desteklenmeyen platform) kilitlememek için tamam.
+  static Future<KonumDurum> izinDurumu() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return KonumDurum.servisKapali;
+      return switch (await Geolocator.checkPermission()) {
+        LocationPermission.deniedForever => KonumDurum.kaliciRed,
+        LocationPermission.denied => KonumDurum.izinYok,
+        _ => KonumDurum.tamam,
+      };
+    } catch (_) {
+      return KonumDurum.tamam;
+    }
+  }
 
   /// Konum alır. `izinIste` false ise izin penceresi açılmaz (önceden alma).
   /// Yüksek doğruluk, ~8 sn zaman aşımı; alınamazsa son bilinen konum.

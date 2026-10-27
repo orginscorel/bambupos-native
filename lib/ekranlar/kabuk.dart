@@ -15,6 +15,7 @@ import 'davet.dart';
 import 'destek.dart';
 import 'gorevler.dart';
 import 'hedefler.dart';
+import 'konum_kapisi.dart';
 import 'mesaim.dart';
 import 'primler.dart';
 import 'profil.dart';
@@ -82,6 +83,7 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
     BildirimMerkezi.acildi = adreseGit;
     BildirimMerkezi.basla();
     WidgetsBinding.instance.addObserver(this);
+    KonumKapisi.etkin.value = true; // oturumlu alan: konum kuralı denetlensin
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 3), () {
         if (mounted) Guncelleme.bak();
@@ -96,12 +98,15 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
       Guncelleme.bak();
       // Shift planı değişmiş olabilir: sesli hatırlatmaları tazele (Android).
       BildirimMerkezi.hatirlatmaEsitle();
+      // Konsolda değişen ayarlar (ör. mesai konum kuralı) gelsin — en çok 5 dk'da bir.
+      Uyg.hesapTazele();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    KonumKapisi.etkin.value = false;
     BildirimMerkezi.durdur();
     super.dispose();
   }

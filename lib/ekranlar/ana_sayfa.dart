@@ -956,7 +956,7 @@ class _EkipKarti extends StatelessWidget {
             Text('Ekibim', style: gosterim(16.5, renk: r.metin)),
             const SizedBox(height: 3),
             if (ozet == null)
-              Text('Ekip, görevler ve mesai noktaları', style: TextStyle(color: r.soluk, fontSize: 12))
+              Text('Ekip ve görevler', style: TextStyle(color: r.soluk, fontSize: 12))
             else if (parcalar.isEmpty)
               Text('Şu an mesaide kimse yok', style: TextStyle(color: r.soluk, fontSize: 12))
             else
