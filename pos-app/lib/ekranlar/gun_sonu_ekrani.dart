@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app/tema.dart';
@@ -14,7 +16,8 @@ import 'ortak.dart';
 /// formatCurrencyMinor: "₺1.234,56".
 String _tl(int m) => '${m < 0 ? '-' : ''}₺${para(m.abs(), simge: false)}';
 
-String _yuzde(num v) => '%${(v.toDouble()).toStringAsFixed(1).replaceAll('.', ',')}';
+/// Pay (sunucu 0–100 verir) → "%26,20" — Raporlar › Özet biçimi.
+String _pay(num v) => '%${v.toDouble().toStringAsFixed(2).replaceAll('.', ',')}';
 
 const _gunler = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 const _aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -28,10 +31,13 @@ String _gunEtiketi(String? g) {
   return '${t.day} ${_aylar[t.month - 1]} ${t.year} ${_gunler[t.weekday - 1]}';
 }
 
-const _renkler = [Color(0xFF5047CE), Color(0xFF0891B2), Color(0xFF15803D), Color(0xFFD97706), Color(0xFF94A3B8)];
+const _tabular = [FontFeature.tabularFigures()];
 
 class GunSonuEkrani extends StatefulWidget {
-  const GunSonuEkrani({super.key});
+  const GunSonuEkrani({super.key, this.gomulu = false});
+
+  /// Raporlar sayfasının içinde (sekme): dış boşluk yok, başlık "Kapanış dönemi".
+  final bool gomulu;
 
   @override
   State<GunSonuEkrani> createState() => _GunSonuEkraniState();
@@ -428,83 +434,115 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
     }
   }
 
-  /* ── görünüm ── */
+  /* ── görünüm ──
+     RAPORLAR DİLİ (web rapor-dili.css, 2026-10-28): tek sayfa kartı →
+     başlık satırı (ad + dönem listesi | düğmeler) → dönem bilgisi → rakam
+     kutuları → tablolar (tek kap; genişte yan yana). İşleyiş aynı. */
 
   @override
   Widget build(BuildContext context) {
-    final g = MediaQuery.sizeOf(context).width;
-    final s = _s;
-    final bos = s != null && tamSayi(s['orders']) == 0 && tamSayi(s['orders_opened']) == 0;
-    final kartlar = <Widget>[
-      _donemKarti(g),
-      if (_hata != null) Text(_hata!, style: TextStyle(color: Renk.hata, fontSize: 13)),
-      if (bos)
-        _bosDurum(Icons.receipt_long_outlined, 'Bu dönemde hareket yok', 'Adisyon açıldıkça gün sonu özeti (ciro, tahsilat, kasadaki nakit) burada oluşur.')
-      else if (s != null) ...[
-        _kpi(s, g),
-        if (tamSayi(s['debt_transferred_balance_minor']) == 0 && s['open_receivables_available'] == true && tamSayi(s['open_receivables_total_minor']) > 0)
-          Text(
-            'Bu dönemde borca yazılan adisyon yok — ancak ${_tl(tamSayi(s['open_receivables_total_minor']))} tutarında açık borç (${tamSayi(s['open_receivables_count'])} şahıs) hâlâ tahsil edilmemiş.',
-            style: TextStyle(fontSize: 12, color: Renk.soluk),
-          ),
-        _yontemKarti(s),
-        if (s['collection_breakdown'] is Map) _dokumKarti(_harita(s['collection_breakdown'])),
-        if (tamSayi(s['collected_debt_minor']) > 0 || _tahsilatlar.isNotEmpty) _borcKarti(s),
-        if (_seciliGun != null && _gununKapanislari(_seciliGun!).isNotEmpty) _bolunmeKarti(_gununKapanislari(_seciliGun!)),
-        _saatKarti(s),
-        _digerKarti(s, g),
-      ],
-    ];
-
+    final ekran = MediaQuery.sizeOf(context).width;
+    final dis = widget.gomulu
+        ? const EdgeInsets.only(bottom: 12)
+        : (ekran >= 1024 ? const EdgeInsets.fromLTRB(16, 12, 16, 16) : const EdgeInsets.fromLTRB(12, 8, 12, 12));
     return ColoredBox(
-      color: Kabuk.sunken,
-      child: RefreshIndicator(
-        onRefresh: () async {
-          await _durumYukle();
-          await _raporYukle();
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: g >= 1024 ? const EdgeInsets.fromLTRB(18, 12, 18, 26) : const EdgeInsets.fromLTRB(14, 10, 14, 22),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Wrap(spacing: 10, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.end, children: [
-              Text('Gün sonu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -.36, color: Kabuk.ink)),
-              Text('gün takvimle değil kasa kapanışıyla biter; rapor alındığında gün kapanır', style: TextStyle(fontSize: 11.5, color: Kabuk.soft)),
-            ]),
-            const SizedBox(height: 10),
-            for (var i = 0; i < kartlar.length; i++) ...[if (i > 0) const SizedBox(height: 10), kartlar[i]],
-          ]),
-        ),
-      ),
+      color: Renk.ic,
+      child: LayoutBuilder(builder: (context, k) {
+        final w = k.maxWidth.isFinite ? k.maxWidth : ekran;
+        final genis = w >= 900;
+        final kartIc = genis ? const EdgeInsets.fromLTRB(18, 16, 18, 18) : const EdgeInsets.all(12);
+        final ic = w - dis.horizontal - kartIc.horizontal - 2;
+        final s = _s;
+        final bos = s != null && tamSayi(s['orders']) == 0 && tamSayi(s['orders_opened']) == 0;
+        final dokum = s != null && s['collection_breakdown'] is Map ? _harita(s['collection_breakdown']) : null;
+        final bolumler = <Widget>[
+          _baslikSatiri(ic),
+          if (_durum != null) _donemBilgisi(),
+          if (_hata != null) Text(_hata!, style: TextStyle(color: Renk.hata, fontSize: 13)),
+          if (bos)
+            _kap([
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(children: [
+                  const Text('Bu dönemde hareket yok', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text('Adisyon açıldıkça gün sonu özeti (ciro, tahsilat, kasadaki nakit) burada oluşur.',
+                      textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: Renk.soluk)),
+                ]),
+              ),
+            ], genis)
+          else if (s != null) ...[
+            _kpi(s, w),
+            _notlar(s),
+            _kap([_yontemPaneli(s, dokum), if (dokum != null) _mutabakatPaneli(dokum)], genis),
+            if (tamSayi(s['collected_debt_minor']) > 0 || _tahsilatlar.isNotEmpty) _kap([_borcPaneli(s)], genis),
+            if (_seciliGun != null && _gununKapanislari(_seciliGun!).isNotEmpty) _kap([_bolunmePaneli(_gununKapanislari(_seciliGun!))], genis),
+            _kap([_saatPaneli(s)], genis),
+          ],
+        ];
+        return RefreshIndicator(
+          onRefresh: () async {
+            await _durumYukle();
+            await _raporYukle();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: dis,
+            child: Container(
+              padding: kartIc,
+              decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+              child: DefaultTextStyle.merge(
+                style: TextStyle(fontSize: 13, height: 1.45, color: Renk.yazi),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (var i = 0; i < bolumler.length; i++) ...[if (i > 0) const SizedBox(height: 12), bolumler[i]],
+                ]),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
   Widget _iki(String e, Widget d) => Row(children: [Expanded(child: Text(e, style: const TextStyle(fontSize: 13))), d]);
 
-  Widget _bosDurum(IconData ikon, String b, String m) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-        child: Column(children: [
-          Icon(ikon, size: 30, color: Renk.soluk),
-          const SizedBox(height: 6),
-          Text(b, style: const TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          Text(m, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Renk.ikinci)),
-        ]),
+  TextSpan _b(String m) => TextSpan(text: m, style: TextStyle(fontWeight: FontWeight.w600, color: Renk.yazi));
+
+  /// 34 px liste kutusu (rx-sec): sağda aşağı ok.
+  Widget _secimKutusu<T>({required T? deger, required List<DropdownMenuItem<T>> ogeler, required ValueChanged<T?> degisti, required String etiket}) => Semantics(
+        label: etiket,
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.only(left: 10, right: 6),
+          decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: deger,
+              isExpanded: true,
+              isDense: true,
+              icon: Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Renk.soluk),
+              dropdownColor: Renk.yuzey,
+              borderRadius: koseYuvarlak,
+              style: (Theme.of(context).textTheme.bodyMedium ?? const TextStyle()).copyWith(fontSize: 13, fontWeight: FontWeight.w500, color: Renk.yazi),
+              items: ogeler,
+              onChanged: degisti,
+            ),
+          ),
+        ),
       );
 
-  Widget _donemKarti(double g) {
-    final d = _durum;
+  /* 1. BAŞLIK SATIRI: ad + dönem listesi | düğmeler */
+  Widget _baslikSatiri(double ic) {
     final gun = _seciliGun;
     final kap = _seciliKapanis;
-    final aralik = _harita(d?['aralik']);
+    final aralik = _harita(_durum?['aralik']);
     final esler = <DropdownMenuItem<String>>[
       DropdownMenuItem(value: 'acik', child: Text('Açık gün · ${aralik['etiket'] ?? 'şu an'}', overflow: TextOverflow.ellipsis)),
       for (final ig in _isGunleri) ...[
         DropdownMenuItem(
           enabled: false,
           value: '#${ig['is_gunu']}',
-          child: Text(_gunEtiketi('${ig['is_gunu']}'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Renk.soluk)),
+          child: Text(_gunEtiketi('${ig['is_gunu']}'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.soluk)),
         ),
         DropdownMenuItem(
           value: 'gun:${ig['is_gunu']}',
@@ -526,119 +564,158 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
     // Aynı kapanış iki gruba düşmesin (değerler tekil olmalı).
     final gorulen = <String>{};
     final tekil = [for (final e in esler) if (gorulen.add(e.value!)) e];
+    final secici = _secimKutusu<String>(
+      etiket: 'Kapanış dönemi',
+      deger: tekil.any((e) => e.value == _secim) ? _secim : 'acik',
+      ogeler: tekil,
+      degisti: (v) {
+        if (v != null && !v.startsWith('#')) _secimDegis(v);
+      },
+    );
+    final yaziciSecici = _yazicilar.length > 1
+        ? _secimKutusu<int>(
+            etiket: 'Rapor yazıcısı',
+            deger: _yazici,
+            ogeler: [for (final y in _yazicilar) DropdownMenuItem(value: tamSayi(y['id']), child: Text('${y['name']} · ${y['station_label'] ?? ''}', overflow: TextOverflow.ellipsis))],
+            degisti: (v) => setState(() => _yazici = v),
+          )
+        : null;
+    final baslik = Text(widget.gomulu ? 'Kapanış dönemi' : 'Gün sonu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Renk.yazi));
+    final acikDon = _secim != 'acik' ? _Dugme('Açık güne dön', () => _secimDegis('acik')) : null;
+    const yukleniyor = SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2));
 
-    final dugmeler = <Widget>[
-      if (_yazicilar.length > 1)
-        Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-          child: DropdownButton<int>(
-            value: _yazici,
-            underline: const SizedBox(),
-            style: TextStyle(fontSize: 12, color: Renk.yazi),
-            items: [for (final y in _yazicilar) DropdownMenuItem(value: tamSayi(y['id']), child: Text('${y['name']} · ${y['station_label'] ?? ''}'))],
-            onChanged: (v) => setState(() => _yazici = v),
-          ),
-        ),
-      if (_secim == 'acik') syDugme('Gün sonu raporu al', _basiliyor ? null : _kapanisSor, birincil: true, ikon: Icons.print_outlined, yukseklik: 34),
+    // (düğme, ana mı)
+    final dugmeler = <(Widget Function(bool dolu), bool)>[
+      if (_secim == 'acik') ((d) => _Dugme('Gün sonu raporu al', _basiliyor ? null : _kapanisSor, ikon: Icons.print_outlined, ana: true, dolu: d), true),
       if (gun != null)
         for (final k in _gununKapanislari(gun))
-          Tooltip(
-            message: '${k['baslangic']} → ${k['bitis']} kapanışının fişini tekrar bas',
-            child: syDugme('${k['saat']} fişini bas', _basiliyor ? null : () => _raporuBas(false, tamSayi(k['id'])), ikon: Icons.print_outlined, yukseklik: 34),
+          (
+            (d) => _Dugme('${k['saat']} fişini bas', _basiliyor ? null : () => _raporuBas(false, tamSayi(k['id'])),
+                ikon: Icons.print_outlined, ipucu: '${k['baslangic']} → ${k['bitis']} kapanışının fişini tekrar bas', dolu: d),
+            false
           ),
       if (kap != null)
-        Tooltip(
-          message: 'Bu kapanışın raporunu tekrar bas (hiçbir şeyi değiştirmez)',
-          child: syDugme('Bu dönemi tekrar bas', _basiliyor ? null : () => _raporuBas(false, tamSayi(kap['id'])), birincil: true, ikon: Icons.print_outlined, yukseklik: 34),
+        (
+          (d) => _Dugme('Bu dönemi tekrar bas', _basiliyor ? null : () => _raporuBas(false, tamSayi(kap['id'])),
+              ikon: Icons.print_outlined, ana: true, ipucu: 'Bu kapanışın raporunu tekrar bas (hiçbir şeyi değiştirmez)', dolu: d),
+          true
         ),
       if (_secim == 'acik' && _gecmis.isNotEmpty)
-        Tooltip(
-          message: '${_gecmis.first['is_gunu']} kapanışının raporunu tekrar bas',
-          child: syDugme('Önceki kapanış', _basiliyor ? null : () => _raporuBas(false, tamSayi(_gecmis.first['id'])), ikon: Icons.history_rounded, yukseklik: 34),
+        (
+          (d) => _Dugme('Önceki kapanış', _basiliyor ? null : () => _raporuBas(false, tamSayi(_gecmis.first['id'])),
+              ikon: Icons.history_rounded, ipucu: '${_gecmis.first['is_gunu']} kapanışının raporunu tekrar bas', dolu: d),
+          false
         ),
-      if (gun == null) Tooltip(message: 'Fişi basmadan ekranda gör', child: syDugme('Fiş önizleme', _onizleme, ikon: Icons.visibility_outlined, yukseklik: 34)),
-      TextButton.icon(onPressed: () => _disaAktar('ops-eod'), icon: const Icon(Icons.download_rounded, size: 16), label: const Text('Dışa aktar')),
-      if (_basiliyor) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      if (gun == null) ((d) => _Dugme('Fiş önizleme', _onizleme, ikon: Icons.visibility_outlined, ipucu: 'Fişi basmadan ekranda gör', dolu: d), false),
+      ((d) => _Dugme('Dışa aktar', () => _disaAktar('ops-eod'), ikon: Icons.download_rounded, dolu: d), false),
     ];
 
-    Widget? alt;
-    if (d != null) {
-      final etiket = gun != null
-          ? '${gun['baslangic']} → ${gun['bitis']}'
-          : (kap != null ? '${kap['baslangic']} → ${kap['bitis']}' : '${aralik['etiket'] ?? ''}');
-      final ek = gun != null
-          ? ' · ${_gunEtiketi('${gun['is_gunu']}')} iş gününün tamamı'
-          : (kap != null
-              ? ' · kapanmış dönem, rakamlar donmuştur'
-              : (d['son_kapanis'] is Map ? ' · son kapanış ${_harita(d['son_kapanis'])['kapanis']}' : ' · henüz hiç kapanış yapılmadı; ilk rapor günü kapatır'));
+    Widget govde;
+    if (ic < 560) {
+      // TELEFON: ana düğme tam satır, diğerleri ikişer eşit genişlik.
+      final digerleri = [for (final d in dugmeler) if (!d.$2) d.$1(true)];
       final satirlar = <Widget>[
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.schedule_rounded, size: 13, color: Renk.ikinci)),
-          const SizedBox(width: 5),
-          Expanded(child: Text.rich(TextSpan(children: [TextSpan(text: etiket, style: const TextStyle(fontWeight: FontWeight.w700)), TextSpan(text: ek)]))),
+        Row(children: [
+          baslik,
+          const SizedBox(width: 8),
+          Expanded(child: secici),
+          if (_basiliyor) ...[const SizedBox(width: 8), yukleniyor],
         ]),
+        if (acikDon != null) Align(alignment: Alignment.centerLeft, child: acikDon),
+        ?yaziciSecici,
+        for (final d in dugmeler)
+          if (d.$2) d.$1(true),
+        for (var i = 0; i < digerleri.length; i += 2)
+          Row(children: [
+            Expanded(child: digerleri[i]),
+            const SizedBox(width: 8),
+            Expanded(child: i + 1 < digerleri.length ? digerleri[i + 1] : const SizedBox()),
+          ]),
       ];
-      if (kap != null && tamSayi(kap['devir_masa']) > 0) {
-        satirlar.add(_uyariSatiri(Icons.merge_rounded, Renk.ikinci, [
-          TextSpan(text: 'Önceki kapanıştan (${kap['devir_kapanis'] ?? ''}) devralınan '),
-          TextSpan(text: '${tamSayi(kap['devir_masa'])} açık masa · ${_tl(tamSayi(kap['devir_minor']))}', style: const TextStyle(fontWeight: FontWeight.w700)),
-          const TextSpan(text: ' — hesapları bu dönemde kapandı.'),
-        ]));
-      }
-      if (kap != null && tamSayi(kap['acik_masa']) > 0) {
-        satirlar.add(_uyariSatiri(Icons.warning_amber_rounded, Kabuk.warning, [
-          TextSpan(text: 'Kapanış anında ${tamSayi(kap['acik_masa'])} masa açıktı (${_tl(tamSayi(kap['acik_masa_minor']))}) — hesapları SONRAKİ döneme devretti.'),
-        ]));
-      } else if (kap == null && gun == null && tamSayi(d['acik_adisyon']) > 0) {
-        satirlar.add(_uyariSatiri(Icons.warning_amber_rounded, Kabuk.warning, [
-          TextSpan(
-              text:
-                  'Şu an ${tamSayi(d['acik_adisyon'])} masa açık (${_tl(tamSayi(d['acik_adisyon_kalan_minor']))} tahsil edilmedi) — şimdi kapatırsanız bu tutar sonraki döneme devreder.'),
-        ]));
-      }
-      alt = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final s in satirlar) Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: s)]);
+      govde = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < satirlar.length; i++) ...[if (i > 0) const SizedBox(height: 8), satirlar[i]],
+      ]);
+    } else {
+      govde = Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            baslik,
+            SizedBox(width: math.min(420.0, ic - 110), child: secici),
+            ?acikDon,
+            if (_basiliyor) yukleniyor,
+          ]),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            if (yaziciSecici != null) SizedBox(width: 220, child: yaziciSecici),
+            for (final d in dugmeler) d.$1(false),
+          ]),
+        ],
+      );
     }
+    return Container(
+      padding: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi))),
+      child: govde,
+    );
+  }
 
-    return _RaporKart(
-      ikon: Icons.receipt_long_outlined,
-      baslik: 'Kapanış dönemi',
-      not: 'Gün takvimle değil kasa kapanışıyla biter; rapor alındığında gün kapanır.',
-      alt: alt,
+  /* 2. DÖNEM BİLGİSİ: ne zamandan ne zamana, ne devretti */
+  Widget _donemBilgisi() {
+    final d = _durum!;
+    final gun = _seciliGun;
+    final kap = _seciliKapanis;
+    final aralik = _harita(d['aralik']);
+    final etiket = gun != null ? '${gun['baslangic']} → ${gun['bitis']}' : (kap != null ? '${kap['baslangic']} → ${kap['bitis']}' : '${aralik['etiket'] ?? ''}');
+    final ek = gun != null
+        ? ' · ${_gunEtiketi('${gun['is_gunu']}')} iş gününün tamamı'
+        : (kap != null
+            ? ' · kapanmış dönem, rakamlar donmuştur'
+            : (d['son_kapanis'] is Map ? ' · son kapanış ${_harita(d['son_kapanis'])['kapanis']}' : ' · henüz hiç kapanış yapılmadı; ilk rapor günü kapatır'));
+    final satirlar = <Widget>[
+      _bilgiSatiri(Icons.schedule_rounded, Renk.soluk, [_b(etiket), TextSpan(text: ek)]),
+    ];
+    if (kap != null && tamSayi(kap['devir_masa']) > 0) {
+      satirlar.add(_bilgiSatiri(Icons.merge_rounded, Renk.soluk, [
+        TextSpan(text: 'Önceki kapanıştan (${kap['devir_kapanis'] ?? ''}) devralınan '),
+        _b('${tamSayi(kap['devir_masa'])} açık masa'),
+        const TextSpan(text: ' · '),
+        _b(_tl(tamSayi(kap['devir_minor']))),
+        const TextSpan(text: ' — hesapları bu dönemde kapandı.'),
+      ]));
+    }
+    if (kap != null && tamSayi(kap['acik_masa']) > 0) {
+      satirlar.add(_bilgiSatiri(Icons.warning_amber_rounded, Renk.uyari, [
+        const TextSpan(text: 'Kapanış anında '),
+        _b('${tamSayi(kap['acik_masa'])} masa açıktı'),
+        TextSpan(text: ' (${_tl(tamSayi(kap['acik_masa_minor']))}) — hesapları SONRAKİ döneme devretti.'),
+      ]));
+    } else if (kap == null && gun == null && tamSayi(d['acik_adisyon']) > 0) {
+      satirlar.add(_bilgiSatiri(Icons.warning_amber_rounded, Renk.uyari, [
+        const TextSpan(text: 'Şu an '),
+        _b('${tamSayi(d['acik_adisyon'])} masa açık'),
+        TextSpan(text: ' (${_tl(tamSayi(d['acik_adisyon_kalan_minor']))} tahsil edilmedi) — şimdi kapatırsanız bu tutar sonraki döneme devreder.'),
+      ]));
+    }
+    satirlar.add(Text('Gün takvimle değil kasa kapanışıyla biter; rapor alındığında gün kapanır.', style: TextStyle(fontSize: 12, color: Renk.soluk)));
+    return DefaultTextStyle.merge(
+      style: TextStyle(fontSize: 12.5, color: Renk.soluk),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Container(
-            height: 36,
-            constraints: BoxConstraints(maxWidth: g >= 640 ? 448 : g - 60),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-            child: DropdownButton<String>(
-              value: tekil.any((e) => e.value == _secim) ? _secim : 'acik',
-              isExpanded: true,
-              underline: const SizedBox(),
-              style: TextStyle(fontSize: 13, color: Renk.yazi),
-              items: tekil,
-              onChanged: (v) {
-                if (v != null && !v.startsWith('#')) _secimDegis(v);
-              },
-            ),
-          ),
-          if (_secim != 'acik') syDugme('Açık güne dön', () => _secimDegis('acik'), yukseklik: 34),
-        ]),
-        const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: dugmeler),
+        for (var i = 0; i < satirlar.length; i++) ...[if (i > 0) const SizedBox(height: 4), satirlar[i]],
       ]),
     );
   }
 
-  Widget _uyariSatiri(IconData ikon, Color renk, List<InlineSpan> metin) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(padding: const EdgeInsets.only(top: 2), child: Icon(ikon, size: 13, color: renk)),
-        const SizedBox(width: 5),
+  Widget _bilgiSatiri(IconData ikon, Color renk, List<InlineSpan> metin) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(top: 3), child: Icon(ikon, size: 13, color: renk)),
+        const SizedBox(width: 6),
         Expanded(child: Text.rich(TextSpan(children: metin))),
       ]);
 
-  Widget _kpi(Map<String, dynamic> s, double g) {
+  /* 3. RAKAM KUTULARI — sıra SABİT (fişin başı → dönemin diğer rakamları) */
+  Widget _kpi(Map<String, dynamic> s, double w) {
     final rev = tamSayi(s['revenue_minor']);
     final borc = tamSayi(s['debt_transferred_balance_minor']);
     final collected = tamSayi(s['collected_minor']);
@@ -655,195 +732,283 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
       return m;
     }
 
-    final kutular = [
-      _StatTile('Ciro — tahsil edilen', _tl(rev - borc), '${tamSayi(s['orders'])} adisyon kapandı · parası kasaya giren kısım', Kabuk.success),
-      _StatTile('Borca yazılan', _tl(borc), '${tamSayi(s['debt_transferred_count'])} adisyon · satıldı, parası ALINMADI', Kabuk.warning),
-      _StatTile('Ciro toplamı', _tl(rev), 'tahsil edilen + borca yazılan', Renk.yazi),
-      _StatTile('Kasaya giren toplam', _tl(collected), tahsilatAyrimi, Renk.marka),
-      if (cekmece != null) _StatTile('Kasadaki nakit', _tl(tamSayi(cekmece)), kasaIpucu(), tamSayi(cekmece) < 0 ? Renk.hata : Renk.yazi),
+    final siparis = tamSayi(s['orders']);
+    final misafir = tamSayi(s['guests']);
+    final borcAcik = s['open_receivables_available'] == true;
+    final kutular = <Widget>[
+      _Kutu('Ciro — tahsil edilen', _tl(rev - borc), '$siparis adisyon kapandı · parası kasaya giren kısım'),
+      _Kutu('Borca yazılan', _tl(borc), '${tamSayi(s['debt_transferred_count'])} adisyon · satıldı, parası ALINMADI'),
+      _Kutu('Ciro toplamı', _tl(rev), 'tahsil edilen + borca yazılan'),
+      _Kutu('Kasaya giren toplam', _tl(collected), tahsilatAyrimi),
+      if (cekmece != null) _Kutu('Kasadaki nakit', _tl(tamSayi(cekmece)), kasaIpucu(), eksi: tamSayi(cekmece) < 0),
+      _Kutu('Açılan adisyon', '${tamSayi(s['orders_opened'])}', 'bu dönemde sipariş verildi'),
+      _Kutu('Kapanan adisyon', '${tamSayi(s['orders_closed'])}', 'tam ödenip kapandı'),
+      _Kutu('Ortalama sepet', siparis > 0 ? _tl(tamSayi(s['avg_basket_minor'])) : '—', ''),
+      _Kutu('Kişi başı', s['per_guest_minor'] == null ? '—' : _tl(tamSayi(s['per_guest_minor'])), misafir > 0 ? '$misafir misafir' : 'misafir girilmemiş'),
+      _Kutu('Açık masa', _tl(tamSayi(s['open_table_minor'])), '${tamSayi(s['open_table_orders'])} adisyon · ciro DEĞİL'),
+      _Kutu('İndirim', _tl(tamSayi(s['discount_total_minor'])), 'kapanan adisyonlarda'),
+      _Kutu('İkram', _tl(tamSayi(s['comp_minor'])), tamSayi(s['comp_count']) > 0 ? '${tamSayi(s['comp_count'])} adet · maliyet ${_tl(tamSayi(s['comp_cost_minor']))}' : 'yok'),
+      _Kutu('İptal', '${tamSayi(s['cancelled_orders'])}', tamSayi(s['cancelled_orders']) > 0 ? _tl(tamSayi(s['cancelled_minor'])) : 'yok'),
+      _Kutu('İade', _tl(tamSayi(s['refunded_minor'])), tamSayi(s['refund_payments_count']) > 0 ? '${tamSayi(s['refund_payments_count'])} işlem' : 'yok'),
+      _Kutu('Açık borç', borcAcik ? _tl(tamSayi(s['open_receivables_total_minor'])) : '—', borcAcik ? '${tamSayi(s['open_receivables_count'])} şahıs (güncel)' : 'şahıs modülü kapalı'),
     ];
-    return _Izgara(sutun: g >= 1280 ? 5 : 2, aralik: 10, children: kutular);
+    return _Izgara(sutun: w >= 900 ? 5 : (w >= 641 ? 3 : 2), aralik: 8, children: kutular);
   }
 
-  Widget _yontemKarti(Map<String, dynamic> s) {
-    final yontem = _liste(s['collection_methods']);
-    final seg = <(String, int, String)>[
-      for (final y in yontem.take(4)) ('${y['label']}', tamSayi(y['amount_minor']), '${tamSayi(y['count'])} işlem'),
-      if (yontem.length > 4) ('Diğer', yontem.skip(4).fold<int>(0, (t, y) => t + tamSayi(y['amount_minor'])), '${yontem.length - 4} yöntem'),
-    ].where((x) => x.$2 > 0).toList();
-    final borc = tamSayi(s['collected_debt_minor']);
-    final adisyon = tamSayi(s['collected_payments_minor']);
-    return _RaporKart(
-      ikon: Icons.account_balance_wallet_outlined,
-      baslik: 'Tahsilat — ödeme yöntemi',
-      not: 'Fişteki kırılımın aynısı: adisyon ödemeleri ve borç tahsilatı birlikte.',
-      ozet: _tl(tamSayi(s['collected_minor'])),
-      alt: borc > 0
-          ? Text(
-              'Bu tutarın ${_tl(borc)} kadarı ESKİ BORÇ tahsilatıdır (${tamSayi(s['collected_debt_count'])} işlem); bu dönemin cirosu değildir, önceki günlerde borca yazılan paranın geri ödemesidir.${adisyon > 0 ? ' Kalanı ${_tl(adisyon)} adisyon ödemesidir.' : ''}')
-          : null,
-      child: seg.isEmpty
-          ? Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Column(children: [
-                Icon(Icons.account_balance_wallet_outlined, size: 26, color: Renk.soluk),
-                Text('Tahsilat yok', style: TextStyle(fontWeight: FontWeight.w700)),
-                Text('Bu dönemde kasadan ödeme alınmadı.', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
-              ]),
-            )
-          : _YiginCubuk(segmentler: seg),
+  Widget _notlar(Map<String, dynamic> s) {
+    final stil = TextStyle(fontSize: 12, color: Renk.soluk);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (tamSayi(s['debt_transferred_balance_minor']) == 0 && s['open_receivables_available'] == true && tamSayi(s['open_receivables_total_minor']) > 0) ...[
+        Text.rich(
+          TextSpan(children: [
+            const TextSpan(text: 'Bu dönemde borca yazılan adisyon yok — ancak '),
+            _b(_tl(tamSayi(s['open_receivables_total_minor']))),
+            TextSpan(text: ' tutarında açık borç (${tamSayi(s['open_receivables_count'])} şahıs) hâlâ tahsil edilmemiş.'),
+          ]),
+          style: stil,
+        ),
+        const SizedBox(height: 4),
+      ],
+      Text('İndirim / ikram / iptal dökümü: Adisyonlar → İndirim · iptal · Kim ne kadar borçlu: Borçlar sekmesi.', style: stil),
+    ]);
+  }
+
+  /* 4. TABLO KABI: 1 px çizgi, soluk zemin; genişte iki tablo yan yana */
+  Widget _kap(List<Widget> paneller, bool genis) {
+    final Widget ic;
+    if (paneller.length == 2 && genis) {
+      ic = LayoutBuilder(
+        builder: (context, k) => Stack(children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: paneller[0]), const SizedBox(width: 1), Expanded(child: paneller[1])]),
+          Positioned(top: 0, bottom: 0, left: (k.maxWidth - 1) / 2, width: 1, child: ColoredBox(color: Renk.cizgi)),
+        ]),
+      );
+    } else {
+      ic = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < paneller.length; i++) ...[if (i > 0) Container(height: 1, color: Renk.cizgi), paneller[i]],
+      ]);
+    }
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: Renk.ic, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+      child: ic,
     );
   }
 
-  Widget _dokumKarti(Map<String, dynamic> b) {
-    final rows = _liste(b['rows']);
-    final lines = _liste(b['lines']);
-    Widget iki(Widget sol, Widget sag, {double girinti = 0}) =>
-        Padding(padding: EdgeInsets.only(left: girinti, top: 3, bottom: 3), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: sol), const SizedBox(width: 8), sag]));
-    return _RaporKart(
-      ikon: Icons.account_balance_wallet_outlined,
-      baslik: 'Tahsilat dökümü',
-      not: 'Para hangi yöntemle girdi, ne kadarı borca yazıldı, ciro ile tahsilat tutuyor mu. Basılan fişteki kalemlerin aynısı.',
-      ozet: _tl(tamSayi(b['total_minor'])),
-      flush: true,
-      alt: const Text.rich(TextSpan(children: [
-        TextSpan(text: 'Ciro, borca yazılanı da içerir; borca yazılan kısmın parası kasaya girmemiştir. Bu yüzden '),
-        TextSpan(text: 'ciro − borca yazılan = adisyon tahsilatı', style: TextStyle(fontWeight: FontWeight.w700)),
-        TextSpan(text: ' olmalıdır. Eski borç tahsilatı bu denklemin dışındadır: kasaya girer ama bu dönemin cirosu değildir.'),
-      ])),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _Tablo(
-          basliklar: const ['Ödeme yöntemi', 'İşlem', 'Tahsil edilen', 'Pay'],
-          sag: const {1, 2, 3},
-          bos: 'Bu dönemde kasadan ödeme alınmadı.',
-          satirlar: [
-            for (final r in rows) ['${r['label']}', '${tamSayi(r['count'])}', _tl(tamSayi(r['amount_minor'])), _yuzde((r['share'] as num?) ?? 0)],
-          ],
-          kalin: const {2},
-        ),
+  /// Tablo başlığı (ad + soluk toplam [+ eylem]) · tablo · dipnot.
+  Widget _panel({required String baslik, String? ozet, Widget? eylem, required Widget tablo, Widget? dip}) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: Renk.cizgi))),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: DefaultTextStyle.merge(
-            style: const TextStyle(fontSize: 14),
-            child: Column(children: [
-              iki(const Text('TOPLAM TAHSİL EDİLEN', style: TextStyle(fontWeight: FontWeight.w700)),
-                  Text.rich(TextSpan(children: [
-                    TextSpan(text: _tl(tamSayi(b['total_minor'])), style: const TextStyle(fontWeight: FontWeight.w800)),
-                    TextSpan(text: ' · ${tamSayi(b['total_count'])} işlem', style: TextStyle(fontSize: 12, color: Renk.soluk)),
-                  ]))),
-              if (tamSayi(b['debt_collected_minor']) > 0) ...[
-                iki(Text('Adisyon tahsilatı (${tamSayi(b['order_count'])})', style: TextStyle(color: Renk.ikinci)), Text(_tl(tamSayi(b['order_minor'])), style: TextStyle(color: Renk.ikinci)), girinti: 12),
-                iki(Text('Tahsil edilen eski borç (${tamSayi(b['debt_collected_count'])})', style: TextStyle(color: Renk.ikinci)),
-                    Text(_tl(tamSayi(b['debt_collected_minor'])), style: TextStyle(color: Renk.ikinci)),
-                    girinti: 12),
-              ],
-              iki(
-                  Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'BORCA YAZILAN', style: TextStyle(fontWeight: FontWeight.w700)),
-                    TextSpan(text: ' (${tamSayi(b['debt_transferred_count'])} adisyon · satıldı, parası alınmadı)', style: TextStyle(fontSize: 12, color: Renk.soluk)),
-                  ])),
-                  Text(_tl(tamSayi(b['debt_transferred_minor'])), style: TextStyle(fontWeight: FontWeight.w800, color: Kabuk.warning))),
-            ]),
-          ),
-        ),
-        Container(
-          color: Renk.ic,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('CİRO ↔ TAHSİLAT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Renk.soluk, letterSpacing: .6)),
-            const SizedBox(height: 4),
-            for (final l in lines) _cizgiSatiri(l),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi))),
+          child: Row(children: [
+            Expanded(child: Text(baslik, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+            if (ozet != null) ...[
+              const SizedBox(width: 8),
+              Text(ozet, softWrap: false, style: TextStyle(fontSize: 13, color: Renk.soluk, fontFeatures: _tabular)),
+            ],
+            if (eylem != null) ...[const SizedBox(width: 8), eylem],
           ]),
         ),
-      ]),
+        tablo,
+        if (dip != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(border: Border(top: BorderSide(color: Renk.cizgi))),
+            child: DefaultTextStyle.merge(style: TextStyle(fontSize: 12, height: 1.45, color: Renk.soluk), child: dip),
+          ),
+      ]);
+
+  /// Hücre metni: 13 px, tabular rakam; [sag] sayısal sütun.
+  Widget _h(String m, {bool sag = false, TextStyle? stil}) => Text(
+        m.isEmpty ? '—' : m,
+        textAlign: sag ? TextAlign.right : TextAlign.left,
+        style: const TextStyle(fontSize: 13, fontFeatures: _tabular).merge(stil),
+      );
+
+  TextStyle get _sl => TextStyle(color: Renk.soluk);
+  static const _kalin = TextStyle(fontWeight: FontWeight.w600);
+
+  /* 4a. Tahsilat — Ödeme Yöntemi */
+  Widget _yontemPaneli(Map<String, dynamic> s, Map<String, dynamic>? b) {
+    final satirlar = b != null ? _liste(b['rows']) : _liste(s['collection_methods']);
+    final toplam = satirlar.fold<int>(0, (t, r) => t + tamSayi(r['amount_minor']));
+    num pay(Map<String, dynamic> r) => r['share'] is num ? r['share'] as num : (toplam == 0 ? 0 : tamSayi(r['amount_minor']) * 100 / toplam);
+    final borc = tamSayi(s['collected_debt_minor']);
+    final adisyon = tamSayi(s['collected_payments_minor']);
+    return _panel(
+      baslik: 'Tahsilat — Ödeme Yöntemi',
+      ozet: _tl(b != null ? tamSayi(b['total_minor']) : tamSayi(s['collected_minor'])),
+      tablo: _Tablo(
+        kolonlar: const [_Kol('Oran', 54), _Kol('Ödeme Tipi', 92), _Kol('Adet', 76, sag: true), _Kol('Tutar', 96, sag: true)],
+        esnek: 1,
+        bos: 'Bu dönemde kasadan ödeme alınmadı.',
+        satirlar: [
+          for (final r in satirlar)
+            _Satir([_h(_pay(pay(r))), _h('${r['label'] ?? ''}'), _h('${tamSayi(r['count'])} işlem', sag: true), _h(_tl(tamSayi(r['amount_minor'])), sag: true)]),
+        ],
+        alt: b == null
+            ? const []
+            : [
+                _Satir([
+                  _h('TOPLAM TAHSİL EDİLEN', stil: _kalin),
+                  _h('${tamSayi(b['total_count'])} işlem', sag: true, stil: _kalin),
+                  _h(_tl(tamSayi(b['total_minor'])), sag: true, stil: _kalin),
+                ], yay: const {0: 2}),
+                if (tamSayi(b['debt_collected_minor']) > 0) ...[
+                  _Satir([
+                    Padding(padding: const EdgeInsets.only(left: 24), child: _h('Adisyon tahsilatı', stil: _sl)),
+                    _h('${tamSayi(b['order_count'])}', sag: true, stil: _sl),
+                    _h(_tl(tamSayi(b['order_minor'])), sag: true, stil: _sl),
+                  ], yay: const {0: 2}),
+                  _Satir([
+                    Padding(padding: const EdgeInsets.only(left: 24), child: _h('Tahsil edilen eski borç', stil: _sl)),
+                    _h('${tamSayi(b['debt_collected_count'])}', sag: true, stil: _sl),
+                    _h(_tl(tamSayi(b['debt_collected_minor'])), sag: true, stil: _sl),
+                  ], yay: const {0: 2}),
+                ],
+                _Satir([
+                  Text.rich(TextSpan(children: [
+                    const TextSpan(text: 'BORCA YAZILAN', style: _kalin),
+                    TextSpan(text: ' satıldı, parası alınmadı', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+                  ]), style: const TextStyle(fontSize: 13)),
+                  _h('${tamSayi(b['debt_transferred_count'])} adisyon', sag: true, stil: _kalin),
+                  _h(_tl(tamSayi(b['debt_transferred_minor'])), sag: true, stil: _kalin),
+                ], yay: const {0: 2}),
+              ],
+      ),
+      dip: Text.rich(TextSpan(children: [
+        const TextSpan(text: 'Fişteki kırılımın aynısı: adisyon ödemeleri ve borç tahsilatı birlikte.'),
+        if (borc > 0) ...[
+          const TextSpan(text: ' Bu tutarın '),
+          _b(_tl(borc)),
+          TextSpan(text: ' kadarı ESKİ BORÇ tahsilatıdır (${tamSayi(s['collected_debt_count'])} işlem); bu dönemin cirosu değildir, önceki günlerde borca yazılan paranın geri ödemesidir.'),
+          if (adisyon > 0) ...[const TextSpan(text: ' Kalanı '), _b(_tl(adisyon)), const TextSpan(text: ' adisyon ödemesidir.')],
+        ],
+      ])),
     );
   }
 
-  Widget _cizgiSatiri(Map<String, dynamic> l) {
+  /* 4b. Ciro ↔ Tahsilat */
+  Widget _mutabakatPaneli(Map<String, dynamic> b) => _panel(
+        baslik: 'Ciro ↔ Tahsilat',
+        tablo: _Tablo(
+          kolonlar: const [_Kol('Kalem', 180), _Kol('Tutar', 110, sag: true)],
+          bos: 'Kalem yok.',
+          satirlar: [for (final l in _liste(b['lines'])) _cizgiSatiri(l)],
+        ),
+        dip: Text.rich(TextSpan(children: [
+          const TextSpan(text: 'Ciro, borca yazılanı da içerir; borca yazılan kısmın parası kasaya girmemiştir. Bu yüzden '),
+          _b('ciro − borca yazılan = adisyon tahsilatı'),
+          const TextSpan(text: ' olmalıdır. Eski borç tahsilatı bu denklemin dışındadır: kasaya girer ama bu dönemin cirosu değildir.'),
+        ])),
+      );
+
+  _Satir _cizgiSatiri(Map<String, dynamic> l) {
     final tur = '${l['kind'] ?? ''}';
     final onek = tur == 'minus' ? '− ' : (tur == 'equals' ? '= ' : '');
     final m = tamSayi(l['amount_minor']);
     final tutar = tur == 'ok' ? 'TAMAM' : (tur == 'minus' ? '−${_tl(m.abs())}' : _tl(m));
     final stil = switch (tur) {
-      'diff' => TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Renk.hata),
-      'ok' => TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Renk.basari),
-      'info' => TextStyle(fontSize: 14, color: Renk.ikinci),
-      'base' || 'equals' || 'actual' => TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Renk.yazi),
-      _ => TextStyle(fontSize: 14, color: Renk.yazi),
+      'diff' => TextStyle(fontWeight: FontWeight.w700, color: Renk.hata),
+      'ok' => TextStyle(fontWeight: FontWeight.w600, color: Renk.basari),
+      'info' => TextStyle(color: Renk.soluk),
+      'base' || 'equals' || 'actual' => _kalin,
+      _ => const TextStyle(),
     };
     final sayi = l['count'] == null ? 0 : tamSayi(l['count']);
-    return Padding(
-      padding: EdgeInsets.only(left: tur == 'info' ? 12 : 0, top: 3, bottom: 3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text.rich(TextSpan(children: [
+    return _Satir([
+      Padding(
+        padding: EdgeInsets.only(left: tur == 'info' ? 24 : 0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text.rich(
+            TextSpan(children: [
               TextSpan(text: '$onek${l['label'] ?? ''}'),
               if (sayi > 0) TextSpan(text: ' ($sayi)', style: TextStyle(fontWeight: FontWeight.w400, color: Renk.soluk)),
-            ]), style: stil),
-            if (l['note'] != null && '${l['note']}'.isNotEmpty) Text('${l['note']}', style: TextStyle(fontSize: 11, color: Renk.soluk)),
-          ]),
-        ),
-        Text(tutar, style: stil),
-      ]),
-    );
+            ]),
+            style: const TextStyle(fontSize: 13).merge(stil),
+          ),
+          if (l['note'] != null && '${l['note']}'.isNotEmpty) Text('${l['note']}', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+        ]),
+      ),
+      _h(tutar, sag: true, stil: stil),
+    ]);
   }
 
-  Widget _borcKarti(Map<String, dynamic> s) {
+  /* 5. Borçtan Tahsil Edilenler */
+  Widget _borcPaneli(Map<String, dynamic> s) {
     final kapanan = _tahsilatlar.where((r) => tamSayi(r['balance_after_minor']) == 0).length;
     final kalan = _tahsilatlar.fold<int>(0, (t, r) => t + (tamSayi(r['balance_after_minor']) > 0 ? tamSayi(r['balance_after_minor']) : 0));
-    return _RaporKart(
-      ikon: Icons.receipt_long_outlined,
-      baslik: 'Borçtan tahsil edilenler',
-      not: 'Kim, ne zaman, hangi yöntemle ödedi; ödeme sonrası borcu ne kaldı.',
+    return _panel(
+      baslik: 'Borçtan Tahsil Edilenler',
       ozet: _tl(tamSayi(s['collected_debt_minor'])),
-      eylem: TextButton.icon(onPressed: () => _disaAktar('receivables-collections'), icon: const Icon(Icons.download_rounded, size: 15), label: const Text('Dışa aktar')),
-      flush: true,
-      alt: _tahsilatlar.isEmpty
-          ? null
-          : Text(
-              '${kapanan > 0 ? '$kapanan şahsın borcu tamamen kapandı. ' : ''}${kalan > 0 ? 'Ödeme yapanların üzerinde hâlâ ${_tl(kalan)} borç duruyor. ' : ''}Tahsilat en eski borçtan düşer; "kalan borcu" o şahsın ödeme anındaki toplam bakiyesidir.'),
-      child: _Tablo(
-        basliklar: const ['Tarih', 'Şahıs', 'Yöntem', 'Tahsil edilen', 'Kalan borcu', 'Alan'],
-        sag: const {3, 4},
-        kalin: const {3, 4},
+      eylem: _Dugme('Dışa aktar', () => _disaAktar('receivables-collections'), ikon: Icons.download_rounded, yukseklik: 28),
+      tablo: _Tablo(
+        kolonlar: const [
+          _Kol('Tarih', 104),
+          _Kol('Şahıs', 120),
+          _Kol('Yöntem', 92),
+          _Kol('Tahsil Edilen', 112, sag: true),
+          _Kol('Kalan Borcu', 108, sag: true),
+          _Kol('Alan', 104),
+        ],
+        esnek: 1,
         bos: 'Bu dönemde borçtan tahsilat yok.',
         satirlar: [
           for (final r in _tahsilatlar)
-            ['${r['at'] ?? '—'}', '${r['name'] ?? '—'}', '${r['method'] ?? '—'}', _tl(tamSayi(r['amount_minor'])), _tl(tamSayi(r['balance_after_minor'])), '${r['staff'] ?? '—'}'],
+            _Satir([
+              _h('${r['at'] ?? '—'}', stil: _sl),
+              _h('${r['name'] ?? '—'}'),
+              _h('${r['method'] ?? '—'}', stil: _sl),
+              _h(_tl(tamSayi(r['amount_minor'])), sag: true),
+              _h(_tl(tamSayi(r['balance_after_minor'])), sag: true),
+              _h('${r['staff'] ?? '—'}', stil: _sl),
+            ]),
         ],
       ),
+      dip: _tahsilatlar.isEmpty
+          ? null
+          : Text.rich(TextSpan(children: [
+              if (kapanan > 0) TextSpan(text: '$kapanan şahsın borcu tamamen kapandı. '),
+              if (kalan > 0) ...[const TextSpan(text: 'Ödeme yapanların üzerinde hâlâ '), _b(_tl(kalan)), const TextSpan(text: ' borç duruyor. ')],
+              const TextSpan(text: 'Tahsilat en eski borçtan düşer; "kalan borcu" o şahsın ödeme anındaki toplam bakiyesidir.'),
+            ])),
     );
   }
 
-  Widget _bolunmeKarti(List<Map<String, dynamic>> ks) => _RaporKart(
-        ikon: Icons.merge_rounded,
-        baslik: 'Bu iş günü kaç kapanışa bölündü',
-        not: '23:59\'da alınan gün sonu günü kapatır; mekân açıksa gece ayrı bir kapanışla biter. Yukarıdaki rakamlar bu kapanışların TOPLAMIDIR.',
-        flush: true,
-        alt: const Text('"Devreden" sütunu, o kapanış anında ödenmemiş masaların tutarıdır; hesapları bir sonraki kapanışta görünür. Bu yüzden bir kapanışın cirosu ile tahsilatı birbirini tutmayabilir.'),
-        child: _Tablo(
-          basliklar: const ['Kapanış', 'Bölüm', 'Dönem', 'Adisyon', 'Ciro', 'Tahsilat', 'Devreden'],
-          sag: const {3, 4, 5, 6},
-          kalin: const {4, 5, 6},
+  /* 6. Bu İş Günü Kaç Kapanışa Bölündü */
+  Widget _bolunmePaneli(List<Map<String, dynamic>> ks) => _panel(
+        baslik: 'Bu İş Günü Kaç Kapanışa Bölündü',
+        tablo: _Tablo(
+          kolonlar: const [
+            _Kol('Kapanış', 72),
+            _Kol('Bölüm', 112),
+            _Kol('Dönem', 180),
+            _Kol('Adisyon', 72, sag: true),
+            _Kol('Ciro', 100, sag: true),
+            _Kol('Tahsilat', 100, sag: true),
+            _Kol('Devreden', 100, sag: true),
+          ],
+          esnek: 2,
           bos: 'Bu iş gününde kapanış yok.',
           satirlar: [
             for (final k in ks)
-              [
-                '${k['saat'] ?? ''}',
-                k['tur'] == 'gece' ? 'Gece (ertesi gün)' : 'Gün',
-                '${k['baslangic']} → ${k['bitis']}',
-                '${tamSayi(k['kapanan_adisyon'])}',
-                _tl(tamSayi(k['ciro_minor'])),
-                _tl(tamSayi(k['tahsilat_minor'])),
-                _tl(tamSayi(k['acik_masa_minor'])),
-              ],
+              _Satir([
+                _h('${k['saat'] ?? ''}'),
+                _h(k['tur'] == 'gece' ? 'Gece (ertesi gün)' : 'Gün', stil: _sl),
+                _h('${k['baslangic']} → ${k['bitis']}', stil: _sl),
+                _h('${tamSayi(k['kapanan_adisyon'])}', sag: true),
+                _h(_tl(tamSayi(k['ciro_minor'])), sag: true),
+                _h(_tl(tamSayi(k['tahsilat_minor'])), sag: true),
+                _h(_tl(tamSayi(k['acik_masa_minor'])), sag: true),
+              ]),
           ],
         ),
+        dip: const Text(
+            '23:59\'da alınan gün sonu günü kapatır; mekân açıksa gece ayrı bir kapanışla biter. Yukarıdaki rakamlar bu kapanışların TOPLAMIDIR. "Devreden" sütunu, o kapanış anında ödenmemiş masaların tutarıdır; hesapları bir sonraki kapanışta görünür. Bu yüzden bir kapanışın cirosu ile tahsilatı birbirini tutmayabilir.'),
       );
 
-  Widget _saatKarti(Map<String, dynamic> s) {
+  /* 7. Saat Bazlı Satış */
+  Widget _saatPaneli(Map<String, dynamic> s) {
     final satirlar = _saatler.where((h) => tamSayi(h['orders']) > 0 || tamSayi(h['revenue_minor']) > 0).toList();
     final toplam = satirlar.fold<int>(0, (t, h) => t + tamSayi(h['revenue_minor']));
     final adisyon = satirlar.fold<int>(0, (t, h) => t + tamSayi(h['orders']));
@@ -854,148 +1019,108 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
     final gece = satirlar.where((h) => tamSayi(h['hour']) < _gunSaati).toList();
     final geceCiro = gece.fold<int>(0, (t, h) => t + tamSayi(h['revenue_minor']));
     String et(int h) => '${h.toString().padLeft(2, '0')}:00';
-    return _RaporKart(
-      ikon: Icons.schedule_rounded,
-      baslik: 'Saat bazlı satış',
-      not: 'Dönem içindeki satışın saatlere dağılımı; gece saatleri ayrıca toplanır.',
+    return _panel(
+      baslik: 'Saat Bazlı Satış',
       ozet: '${_tl(toplam)} · $adisyon adisyon',
-      flush: true,
-      alt: Wrap(spacing: 14, runSpacing: 2, children: [
-        Text('Toplam ${_tl(toplam)}'),
-        Text('En yoğun saat ${yogun == null ? '—' : '${et(tamSayi(yogun['hour']))} · ${_tl(tamSayi(yogun['revenue_minor']))}'}'),
-        if (geceCiro > 0)
-          Text('Gece (00:00–${_gunSaati.toString().padLeft(2, '0')}:00) ${_tl(geceCiro)} · ${gece.fold<int>(0, (t, h) => t + tamSayi(h['orders']))} adisyon — bu satışlar bir önceki iş gününe yazılır.'),
-      ]),
-      child: _Tablo(
-        basliklar: const ['Saat', 'Bölüm', 'Adisyon', 'Ciro'],
-        sag: const {2, 3},
-        kalin: const {3},
+      tablo: _Tablo(
+        kolonlar: const [_Kol('Saat', 72), _Kol('Bölüm', 96), _Kol('Adisyon', 80, sag: true), _Kol('Ciro', 110, sag: true)],
+        esnek: 1,
         bos: 'Bu dönemde saatlik satış yok.',
         satirlar: [
-          for (final h in satirlar) [et(tamSayi(h['hour'])), tamSayi(h['hour']) < _gunSaati ? 'Gece' : 'Gündüz', '${tamSayi(h['orders'])}', _tl(tamSayi(h['revenue_minor']))],
-        ],
-      ),
-    );
-  }
-
-  Widget _digerKarti(Map<String, dynamic> s, double g) {
-    final siparis = tamSayi(s['orders']);
-    final misafir = tamSayi(s['guests']);
-    final borcAcik = s['open_receivables_available'] == true;
-    final ogeler = <(String, String, String, Color?)>[
-      ('Açılan adisyon', '${tamSayi(s['orders_opened'])}', 'bu dönemde sipariş verildi', null),
-      ('Kapanan adisyon', '${tamSayi(s['orders_closed'])}', 'tam ödenip kapandı', null),
-      ('Ortalama sepet', siparis > 0 ? _tl(tamSayi(s['avg_basket_minor'])) : '—', '', null),
-      ('Kişi başı', s['per_guest_minor'] == null ? '—' : _tl(tamSayi(s['per_guest_minor'])), misafir > 0 ? '$misafir misafir' : 'misafir girilmemiş', null),
-      ('Açık masa', _tl(tamSayi(s['open_table_minor'])), '${tamSayi(s['open_table_orders'])} adisyon · ciro DEĞİL', Renk.hata),
-      ('İndirim', _tl(tamSayi(s['discount_total_minor'])), 'kapanan adisyonlarda', null),
-      ('İkram', _tl(tamSayi(s['comp_minor'])), tamSayi(s['comp_count']) > 0 ? '${tamSayi(s['comp_count'])} adet · maliyet ${_tl(tamSayi(s['comp_cost_minor']))}' : 'yok', null),
-      ('İptal', '${tamSayi(s['cancelled_orders'])}', tamSayi(s['cancelled_orders']) > 0 ? _tl(tamSayi(s['cancelled_minor'])) : 'yok', null),
-      ('İade', _tl(tamSayi(s['refunded_minor'])), tamSayi(s['refund_payments_count']) > 0 ? '${tamSayi(s['refund_payments_count'])} işlem' : 'yok', null),
-      ('Açık borç', borcAcik ? _tl(tamSayi(s['open_receivables_total_minor'])) : '—', borcAcik ? '${tamSayi(s['open_receivables_count'])} şahıs (güncel)' : 'şahıs modülü kapalı', Renk.hata),
-    ];
-    return _RaporKart(
-      ikon: Icons.format_list_bulleted_rounded,
-      baslik: 'Dönemin diğer rakamları',
-      not: 'Fişte yer alan ikincil rakamlar; ayrıntılı dökümler ilgili sekmelerde.',
-      alt: const Text('İndirim / ikram / iptal dökümü: Adisyonlar → İndirim · iptal · Kim ne kadar borçlu: Borçlar sekmesi.'),
-      child: _Izgara(
-        sutun: g >= 1280 ? 5 : (g >= 640 ? 3 : 2),
-        aralik: 16,
-        satirAraligi: 12,
-        children: [
-          for (final (e, d, n, r) in ogeler)
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(e.toUpperCase(), style: TextStyle(fontSize: 11, color: Renk.ikinci, letterSpacing: .3)),
-              Text(d, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: r ?? Renk.yazi)),
-              if (n.isNotEmpty) Text(n, style: TextStyle(fontSize: 11, color: Renk.soluk)),
+          for (final h in satirlar)
+            _Satir([
+              _h(et(tamSayi(h['hour']))),
+              _h(tamSayi(h['hour']) < _gunSaati ? 'Gece' : 'Gündüz', stil: _sl),
+              _h('${tamSayi(h['orders'])}', sag: true),
+              _h(_tl(tamSayi(h['revenue_minor'])), sag: true),
             ]),
         ],
       ),
+      dip: Text.rich(TextSpan(children: [
+        const TextSpan(text: 'Toplam '),
+        _b(_tl(toplam)),
+        const TextSpan(text: ' · En yoğun saat '),
+        _b(yogun == null ? '—' : '${et(tamSayi(yogun['hour']))} · ${_tl(tamSayi(yogun['revenue_minor']))}'),
+        if (geceCiro > 0) ...[
+          TextSpan(text: ' · Gece (00:00–${_gunSaati.toString().padLeft(2, '0')}:00) '),
+          _b(_tl(geceCiro)),
+          TextSpan(text: ' · ${gece.fold<int>(0, (t, h) => t + tamSayi(h['orders']))} adisyon — bu satışlar bir önceki iş gününe yazılır.'),
+        ],
+      ])),
     );
   }
 }
 
-/* ═════════════ Ortak rapor bileşenleri ═════════════ */
+/* ═════════════ Rapor dili parçaları (web rapor-dili.css) ═════════════ */
 
-class _RaporKart extends StatelessWidget {
-  const _RaporKart({required this.ikon, required this.baslik, required this.child, this.not, this.ozet, this.eylem, this.alt, this.flush = false});
-  final IconData ikon;
-  final String baslik;
-  final String? not;
-  final String? ozet;
-  final Widget? eylem;
-  final Widget child;
-  final Widget? alt;
-  final bool flush;
+/// rx-dug: 34 px, 12 yatay boşluk, 13/500, 15 px simge; [ana] marka dolu.
+/// [dolu]: bulunduğu genişliği doldurur (telefon düğme ızgarası).
+class _Dugme extends StatelessWidget {
+  const _Dugme(this.metin, this.onTap, {this.ikon, this.ana = false, this.ipucu, this.yukseklik = 34, this.dolu = false});
+  final String metin;
+  final VoidCallback? onTap;
+  final IconData? ikon;
+  final bool ana;
+  final String? ipucu;
+  final double yukseklik;
+  final bool dolu;
 
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-        clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Padding(padding: const EdgeInsets.only(top: 2), child: Icon(ikon, size: 16, color: Renk.soluk)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(baslik, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, letterSpacing: -.13)),
-                  if (not != null) Text(not!, style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
-                ]),
-              ),
-              if (ozet != null) ...[
-                const SizedBox(width: 8),
-                Text(ozet!, softWrap: false, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, fontFeatures: [FontFeature.tabularFigures()])),
-              ],
-              ?eylem,
+  Widget build(BuildContext context) {
+    final renk = ana ? Colors.white : Renk.yazi;
+    final w = Opacity(
+      opacity: onTap == null ? .5 : 1,
+      child: Material(
+        color: ana ? Kabuk.brand : Renk.yuzey,
+        shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: ana ? Kabuk.brand : Renk.cizgi)),
+        child: InkWell(
+          borderRadius: koseYuvarlak,
+          onTap: onTap,
+          child: Container(
+            height: yukseklik,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(mainAxisSize: dolu ? MainAxisSize.max : MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (ikon != null) ...[Icon(ikon, size: 15, color: renk), const SizedBox(width: 6)],
+              Flexible(child: Text(metin, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: renk))),
             ]),
           ),
-          Container(
-            decoration: BoxDecoration(border: Border(top: BorderSide(color: Renk.cizgi))),
-            padding: flush ? EdgeInsets.zero : const EdgeInsets.all(12),
-            child: child,
-          ),
-          if (alt != null)
-            Container(
-              decoration: BoxDecoration(color: Renk.ic, border: Border(top: BorderSide(color: Renk.cizgi))),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: DefaultTextStyle.merge(style: TextStyle(fontSize: 11.5, color: Renk.ikinci), child: alt!),
-            ),
-        ]),
-      );
+        ),
+      ),
+    );
+    return ipucu == null ? w : Tooltip(message: ipucu!, child: w);
+  }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile(this.etiket, this.deger, this.ipucu, this.ton);
-  final String etiket;
+/// Rakam kutusu (rx-kpi li): kalın etiket, soluk değer, tek satır açıklama.
+class _Kutu extends StatelessWidget {
+  const _Kutu(this.ad, this.deger, this.ipucu, {this.eksi = false});
+  final String ad;
   final String deger;
   final String ipucu;
-  final Color ton;
+  final bool eksi;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(etiket, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Renk.ikinci)),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(deger, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: ton, fontFeatures: const [FontFeature.tabularFigures()])),
-          ),
-          Text(ipucu, style: TextStyle(fontSize: 11, color: Renk.soluk)),
+        decoration: BoxDecoration(color: Renk.ic, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(ad, style: TextStyle(fontSize: 13.5, height: 1.4, fontWeight: FontWeight.w600, color: Renk.yazi)),
+          Text(deger,
+              style: TextStyle(fontSize: 13.5, height: 1.4, fontWeight: eksi ? FontWeight.w600 : FontWeight.w400, color: eksi ? Renk.hata : Renk.soluk, fontFeatures: _tabular)),
+          if (ipucu.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(ipucu, style: TextStyle(fontSize: 11.5, height: 1.35, color: Renk.soluk)),
+          ],
         ]),
       );
 }
 
+/// Eşit sütunlu ızgara: satır içi kutular aynı boy.
 class _Izgara extends StatelessWidget {
-  const _Izgara({required this.sutun, required this.children, this.aralik = 10, this.satirAraligi});
+  const _Izgara({required this.sutun, required this.children, this.aralik = 8});
   final int sutun;
   final List<Widget> children;
   final double aralik;
-  final double? satirAraligi;
 
   @override
   Widget build(BuildContext context) {
@@ -1010,92 +1135,90 @@ class _Izgara extends StatelessWidget {
         ]),
       ));
     }
-    return Column(children: [for (var i = 0; i < satirlar.length; i++) ...[if (i > 0) SizedBox(height: satirAraligi ?? aralik), satirlar[i]]]);
-  }
-}
-
-/// ReportTable: başlıklı tablo; dar ekranda yatay kayar.
-class _Tablo extends StatelessWidget {
-  const _Tablo({required this.basliklar, required this.satirlar, required this.bos, this.sag = const {}, this.kalin = const {}});
-  final List<String> basliklar;
-  final List<List<String>> satirlar;
-  final String bos;
-  final Set<int> sag;
-  final Set<int> kalin;
-
-  @override
-  Widget build(BuildContext context) {
-    if (satirlar.isEmpty) {
-      return Padding(padding: const EdgeInsets.all(16), child: Text(bos, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Renk.soluk)));
-    }
-    Widget hucre(String m, int i, {bool baslik = false}) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(
-            m.isEmpty ? '—' : m,
-            textAlign: sag.contains(i) ? TextAlign.right : TextAlign.left,
-            style: baslik
-                ? TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Renk.ikinci)
-                : TextStyle(fontSize: 13, fontWeight: kalin.contains(i) ? FontWeight.w700 : FontWeight.w400),
-          ),
-        );
-    return LayoutBuilder(
-      builder: (context, k) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: k.maxWidth),
-          child: Table(
-            defaultColumnWidth: const IntrinsicColumnWidth(),
-            border: TableBorder(horizontalInside: BorderSide(color: Renk.cizgi)),
-            children: [
-              TableRow(decoration: BoxDecoration(color: Renk.ic), children: [for (var i = 0; i < basliklar.length; i++) hucre(basliklar[i], i, baslik: true)]),
-              for (final s in satirlar) TableRow(children: [for (var i = 0; i < basliklar.length; i++) hucre(i < s.length ? s[i] : '', i)]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ChartStackedBar: 28 px yatay yığılmış çubuk + açıklama satırları.
-class _YiginCubuk extends StatelessWidget {
-  const _YiginCubuk({required this.segmentler});
-  final List<(String, int, String)> segmentler;
-
-  @override
-  Widget build(BuildContext context) {
-    final toplam = segmentler.fold<int>(0, (t, s) => t + s.$2);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Semantics(
-        label: 'Gün sonu ödeme yöntemi payı',
-        child: SizedBox(
-          height: 28,
-          child: Row(children: [
-            for (var i = 0; i < segmentler.length; i++) ...[
-              if (i > 0) const SizedBox(width: 2),
-              Expanded(
-                flex: (segmentler[i].$2 * 1000 ~/ (toplam == 0 ? 1 : toplam)).clamp(1, 1000),
-                child: Tooltip(
-                  message: '${_tl(segmentler[i].$2)}\n${segmentler[i].$1} · ${segmentler[i].$3}',
-                  child: Container(decoration: BoxDecoration(color: _renkler[i.clamp(0, 4)], borderRadius: BorderRadius.circular(3))),
-                ),
-              ),
-            ],
-          ]),
-        ),
-      ),
-      const SizedBox(height: 10),
-      Wrap(spacing: 14, runSpacing: 6, children: [
-        for (var i = 0; i < segmentler.length; i++)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: _renkler[i.clamp(0, 4)], borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 6),
-            Text(segmentler[i].$1, style: const TextStyle(fontSize: 12.5)),
-            const SizedBox(width: 6),
-            Text(_tl(segmentler[i].$2), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-            Text(' (${_yuzde(toplam == 0 ? 0 : segmentler[i].$2 * 100 / toplam)})', style: TextStyle(fontSize: 12, color: Renk.soluk)),
-          ]),
-      ]),
+      for (var i = 0; i < satirlar.length; i++) ...[if (i > 0) SizedBox(height: aralik), satirlar[i]],
     ]);
   }
+}
+
+class _Kol {
+  const _Kol(this.ad, this.en, {this.sag = false});
+  final String ad;
+
+  /// En az genişlik (px); artan genişlik [_Tablo.esnek] sütununa gider.
+  final double en;
+  final bool sag;
+}
+
+class _Satir {
+  const _Satir(this.hucreler, {this.yay = const {}});
+  final List<Widget> hucreler;
+
+  /// Hücre sırası → kapladığı sütun sayısı (colspan).
+  final Map<int, int> yay;
+}
+
+/// rx-tbl: başlık 13/600, hücre 13, 9/12 boşluk, alt çizgi; sayısal sütun
+/// sağa yaslı. Sığmazsa yatay kayar.
+class _Tablo extends StatelessWidget {
+  const _Tablo({required this.kolonlar, required this.satirlar, required this.bos, this.alt = const [], this.esnek = 0});
+  final List<_Kol> kolonlar;
+  final List<_Satir> satirlar;
+  final String bos;
+
+  /// Toplam satırları (tfoot): boş tabloda da görünür.
+  final List<_Satir> alt;
+  final int esnek;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, k) {
+        const ic = 12.0;
+        final enAz = kolonlar.fold<double>(0, (a, x) => a + x.en) + ic * 2;
+        final toplam = math.max(k.maxWidth, enAz);
+        final en = [for (var i = 0; i < kolonlar.length; i++) kolonlar[i].en + (i == esnek ? toplam - enAz : 0)];
+        final cizgi = BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi)));
+
+        Widget satir(_Satir s, {bool son = false}) {
+          final parcalar = <Widget>[];
+          var kol = 0;
+          for (var i = 0; i < s.hucreler.length && kol < kolonlar.length; i++) {
+            final n = s.yay[i] ?? 1;
+            final gen = en.sublist(kol, math.min(kol + n, en.length)).fold<double>(0, (a, b) => a + b);
+            final sag = n == 1 && kolonlar[kol].sag;
+            // Sağa yaslı sütundan sonra gelen sola yaslı sütun yapışmasın.
+            final sol = !sag && kol > 0 && kolonlar[kol - 1].sag ? 12.0 : 0.0;
+            parcalar.add(SizedBox(
+              width: gen,
+              child: Align(
+                alignment: sag ? Alignment.topRight : Alignment.topLeft,
+                child: Padding(padding: EdgeInsets.only(left: sol, right: sag ? 0 : 8), child: s.hucreler[i]),
+              ),
+            ));
+            kol += n;
+          }
+          return Container(
+            width: toplam,
+            padding: const EdgeInsets.symmetric(horizontal: ic, vertical: 9),
+            decoration: son ? null : cizgi,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: parcalar),
+          );
+        }
+
+        final hepsi = [...satirlar, ...alt];
+        final govde = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          satir(_Satir([
+            for (final c in kolonlar)
+              Text(c.ad, maxLines: 1, textAlign: c.sag ? TextAlign.right : TextAlign.left, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ])),
+          if (satirlar.isEmpty)
+            Container(
+              width: toplam,
+              padding: const EdgeInsets.all(18),
+              decoration: alt.isEmpty ? null : cizgi,
+              child: Text(bos, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Renk.soluk)),
+            ),
+          for (var i = 0; i < hepsi.length; i++) satir(hepsi[i], son: i == hepsi.length - 1),
+        ]);
+        return enAz <= k.maxWidth + .5 ? govde : SingleChildScrollView(scrollDirection: Axis.horizontal, child: govde);
+      });
 }

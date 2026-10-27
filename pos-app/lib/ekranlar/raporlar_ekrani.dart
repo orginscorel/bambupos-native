@@ -485,7 +485,7 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
                   anahtar: _aktif,
                   yon: _yon,
                   child: switch (_aktif) {
-                    'gunsonu' => const GunSonuEkrani(),
+                    'gunsonu' => const GunSonuEkrani(gomulu: true),
                     'ozet' => _ozet(g),
                     'adisyon-dokum' => _dokumListesi(g),
                     _ => _govde(g),
