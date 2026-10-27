@@ -145,7 +145,14 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
       _mesaj = 'İndiriliyor…';
     });
     try {
-      final dizin = await getTemporaryDirectory();
+      // macOS'ta ~/Library/Caches/<paket> klasörü ilk kurulumda YOK olabiliyor
+      // (PathNotFoundException) → önce oluştur; olmazsa İndirilenler'e düş.
+      var dizin = await getTemporaryDirectory();
+      try {
+        await dizin.create(recursive: true);
+      } catch (_) {
+        dizin = (await getDownloadsDirectory()) ?? dizin;
+      }
       final dosya = File('${dizin.path}${Platform.pathSeparator}${Uri.parse(adres).pathSegments.last}');
       final istemci = HttpClient();
       final yanit = await (await istemci.getUrl(Uri.parse(adres))).close();
