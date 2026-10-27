@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:bambumpos_pos/app/tema.dart';
 import 'package:bambumpos_pos/core/api.dart';
 import 'package:bambumpos_pos/core/durum.dart';
+import 'package:bambumpos_pos/ekranlar/cerceve.dart' show BildirimZili;
 import 'package:bambumpos_pos/ekranlar/adisyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/aktivasyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kabuk.dart';
@@ -38,6 +39,16 @@ class _SahteSunucu implements HttpClientAdapter {
       '/api/v1/orders/catalog' => _veri('katalog'),
       '/api/v1/cihaz-aktivasyon/baslat' => '{"kod":"K7M3QP","gizli":"x","bitis":"${DateTime.now().add(const Duration(minutes: 29, seconds: 41)).toUtc().toIso8601String()}"}',
       '/api/v1/cihaz-aktivasyon/durum' => '{"durum":"bekliyor"}',
+      '/api/v1/notifications' => jsonEncode({
+          'unread_count': 2,
+          'items': [
+            {'id': 5, 'type': 'service_call', 'title': 'Masa 12 garson çağırıyor', 'body': 'Bahçe · 2 dk önce çağrı', 'read': false, 'created_at': DateTime.now().subtract(const Duration(minutes: 2)).toIso8601String()},
+            {'id': 4, 'type': 'item_ready', 'title': 'Masa 4 siparişi hazır', 'body': '2 × Türk kahvesi, 1 × Sufle — bar ekranından teslim alınabilir. Lütfen sıcak servis edin.', 'read': false, 'created_at': DateTime.now().subtract(const Duration(minutes: 9)).toIso8601String()},
+            {'id': 3, 'type': 'awaiting_payment', 'title': 'Masa 7 hesap istiyor', 'body': null, 'read': true, 'created_at': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String()},
+            {'id': 2, 'type': 'delivery_sla_breach', 'title': 'Paket sipariş gecikti', 'body': 'Yemeksepeti #48213 — hazırlık süresi 25 dk aşıldı', 'read': true, 'created_at': DateTime.now().subtract(const Duration(days: 1)).toIso8601String()},
+            {'id': 1, 'type': 'order_needs_approval', 'title': 'Onay bekleyen sipariş', 'body': 'QR menüden gelen sipariş onayınızı bekliyor', 'read': true, 'created_at': DateTime.now().subtract(const Duration(days: 3)).toIso8601String()},
+          ],
+        }),
       _ when yol.startsWith('/api/v1/orders/') => _veri('adisyon'),
       _ => '{}',
     };
@@ -126,6 +137,22 @@ void main() {
   const telefon = Size(412, 900);
 
   const dikey = Size(800, 1280);
+  // Bildirim paneli (zil → açılır panel)
+  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon)]) {
+    testWidgets('bildirim paneli $ad', (t) async {
+      await _boyut(t, boyut);
+      final d = await _durum();
+      await t.runAsync(d.bildirim.yenile);
+      await t.pumpWidget(_uygulama(d, Scaffold(appBar: AppBar(actions: const [BildirimZili(), SizedBox(width: 12)]), body: const SizedBox())));
+      await _bekle(t);
+      await t.tap(find.byType(BildirimZili));
+      await _bekle(t);
+      await t.pump(const Duration(seconds: 2));
+      await _bekle(t);
+      await _yaz(t, '9-bildirim-$ad');
+      await t.pumpWidget(const SizedBox());
+    }, skip: _dizin == null);
+  }
   for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('dikey', dikey)]) {
     testWidgets('aktivasyon $ad', (t) async {
       await _boyut(t, boyut);

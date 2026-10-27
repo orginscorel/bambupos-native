@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app/tema.dart';
 import '../core/bicim.dart';
+import '../core/bildirim_merkezi.dart';
 import 'ortak.dart';
 import 'surum_notlari.dart';
 
@@ -246,64 +248,49 @@ class _BildirimZiliState extends State<BildirimZili> {
     if (mounted) setState(() {});
   }
 
+  /* AÇILIR PANEL (2026-10-27): eskiden showMenu ile her bildirim ayrı bir
+     menü satırıydı → liste ekran boyu uzuyor, iç içe menü gibi görünüyordu.
+     Artık zilin altında sabit genişlik + sınırlı yükseklikte, kendi içinde
+     kayan tek bir panel; okunmamışlar vurgulu, metinler kısaltılmış. */
   Future<void> _ac(BuildContext context) async {
+    final yeniler = _liste.where((n) => n['read'] != true).map((n) => n['id']).toSet();
     if (_okunmamis > 0) _m.hepsiOkundu();
     final kutu = context.findRenderObject() as RenderBox?;
     final konum = kutu?.localToGlobal(Offset.zero) ?? Offset.zero;
-    await showMenu<void>(
+    final boy = kutu?.size ?? const Size(40, 40);
+    await showGeneralDialog<void>(
       context: context,
-      position: RelativeRect.fromLTRB(konum.dx - 280, konum.dy + 44, 16, 0),
-      constraints: const BoxConstraints(minWidth: 320, maxWidth: 320),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(13),
-        side: BorderSide(color: Kabuk.line),
-      ),
-      items: [
-        PopupMenuItem<void>(
-          enabled: false,
-          child: Row(
-            children: [
-              Text(
-                'Bildirimler',
-                style: TextStyle(fontWeight: FontWeight.w800, color: Kabuk.ink),
-              ),
-              const Spacer(),
-              Text('${_liste.length} kayıt', style: TextStyle(fontSize: 12, color: Kabuk.soft)),
-              const SizedBox(width: 6),
-              // Web "bu cihazda ses" tercihi.
-              StatefulBuilder(
-                builder: (ctx, yenile) => IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: _m.sesAcik ? 'Sesi kapat' : 'Sesi aç',
-                  onPressed: () => yenile(() => _m.sesAcik = !_m.sesAcik),
-                  icon: Icon(_m.sesAcik ? Icons.volume_up_rounded : Icons.volume_off_rounded, size: 18, color: Kabuk.soft),
-                ),
-              ),
-            ],
+      barrierDismissible: true,
+      barrierLabel: 'Kapat',
+      barrierColor: Colors.black.withValues(alpha: .12),
+      transitionDuration: const Duration(milliseconds: 180),
+      transitionBuilder: (_, a, _, child) {
+        final e = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: e,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, -.02), end: Offset.zero).animate(e),
+            child: child,
           ),
-        ),
-        if (_liste.isEmpty)
-          PopupMenuItem<void>(
-            enabled: false,
-            child: Text('Bildirim yok.', style: TextStyle(color: Kabuk.soft)),
-          )
-        else
-          for (final n in _liste.take(20))
-            PopupMenuItem<void>(
-              enabled: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${n['title'] ?? ''}',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: Kabuk.ink, fontSize: 13),
-                  ),
-                  if (n['body'] != null) Text('${n['body']}', style: TextStyle(fontSize: 12, color: Kabuk.soft)),
-                  Text(saatMetni(n['created_at']?.toString()), style: TextStyle(fontSize: 11, color: Kabuk.soft)),
-                ],
-              ),
+        );
+      },
+      pageBuilder: (ctx, _, _) {
+        final ekran = MediaQuery.sizeOf(ctx);
+        final genislik = math.min(380.0, ekran.width - 24);
+        final sag = math.max(12.0, ekran.width - (konum.dx + boy.width) - 4);
+        final ust = konum.dy + boy.height + 6;
+        final yukseklik = math.min(520.0, ekran.height - ust - 16);
+        return Stack(
+          children: [
+            Positioned(
+              top: ust,
+              right: sag,
+              width: genislik,
+              child: _BildirimPaneli(m: _m, yeniler: yeniler, azamiYukseklik: yukseklik),
             ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -319,6 +306,227 @@ class _BildirimZiliState extends State<BildirimZili> {
       ),
     ),
   );
+}
+
+class _BildirimPaneli extends StatefulWidget {
+  const _BildirimPaneli({required this.m, required this.yeniler, required this.azamiYukseklik});
+  final BildirimMerkezi m;
+  final Set<dynamic> yeniler;
+  final double azamiYukseklik;
+
+  @override
+  State<_BildirimPaneli> createState() => _BildirimPaneliState();
+}
+
+class _BildirimPaneliState extends State<_BildirimPaneli> {
+  @override
+  void initState() {
+    super.initState();
+    widget.m.addListener(_tazele);
+  }
+
+  @override
+  void dispose() {
+    widget.m.removeListener(_tazele);
+    super.dispose();
+  }
+
+  void _tazele() {
+    if (mounted) setState(() {});
+  }
+
+  static (IconData, Color) _tur(String t) {
+    final k = t.toLowerCase();
+    if (k.contains('approval') || k.contains('onay')) return (Icons.pending_actions_rounded, Kabuk.warning);
+    if (k.contains('sla') || k.contains('breach') || k.contains('gecik')) return (Icons.timer_off_rounded, Kabuk.negative);
+    if (k.contains('task') || k.contains('gorev')) return (Icons.task_alt_rounded, Kabuk.brand);
+    if (k.contains('leave') || k.contains('izin')) return (Icons.event_available_rounded, Kabuk.info);
+    if (k.contains('shift') || k.contains('vardiya')) return (Icons.schedule_rounded, Kabuk.info);
+    if (k.contains('debt') || k.contains('borc')) return (Icons.account_balance_wallet_rounded, Kabuk.warning);
+    if (k.contains('iptal') || k.contains('cancel') || k.contains('void')) return (Icons.cancel_rounded, Kabuk.negative);
+    if (k.contains('garson') || k.contains('waiter') || k.contains('call') || k.contains('cagri')) return (Icons.room_service_rounded, Kabuk.warning);
+    if (k.contains('pay') || k.contains('odeme') || k.contains('kasa')) return (Icons.payments_rounded, Kabuk.success);
+    if (k.contains('stok') || k.contains('stock')) return (Icons.inventory_2_rounded, Kabuk.warning);
+    if (k.contains('order') || k.contains('siparis') || k.contains('adisyon')) return (Icons.receipt_long_rounded, Kabuk.brand);
+    if (k.contains('ready') || k.contains('hazir')) return (Icons.check_circle_rounded, Kabuk.success);
+    return (Icons.notifications_rounded, Kabuk.info);
+  }
+
+  static String _zaman(String? iso) {
+    final t = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (t == null) return '';
+    final f = DateTime.now().difference(t);
+    if (f.inMinutes < 1) return 'şimdi';
+    if (f.inMinutes < 60) return '${f.inMinutes} dk';
+    final bugun = DateTime.now();
+    if (t.year == bugun.year && t.month == bugun.month && t.day == bugun.day) return saatMetni(iso);
+    final dun = bugun.subtract(const Duration(days: 1));
+    if (t.year == dun.year && t.month == dun.month && t.day == dun.day) return 'dün ${saatMetni(iso)}';
+    return '${t.day.toString().padLeft(2, '0')}.${t.month.toString().padLeft(2, '0')} ${saatMetni(iso)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.m;
+    final liste = m.liste.take(30).toList();
+    final yeniSayi = liste.where((n) => widget.yeniler.contains(n['id'])).length;
+    return DecoratedBox(
+      // Gölge OPAK kutunun dışında çizilir (içeriden görünmez)
+      decoration: BoxDecoration(
+        color: Kabuk.surface,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: koyuTema.value ? .5 : .16),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
+            spreadRadius: -6,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Kabuk.surface,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          constraints: BoxConstraints(maxHeight: widget.azamiYukseklik),
+          // Zemin OPAK olmalı: saydam kutuda gölge içeriden görünüp "iç içe kutu" yapıyordu.
+          decoration: BoxDecoration(
+            color: Kabuk.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Kabuk.line),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Başlık
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 10),
+                child: Row(
+                  children: [
+                    Text(
+                      'Bildirimler',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Kabuk.ink),
+                    ),
+                    const SizedBox(width: 8),
+                    if (yeniSayi > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(color: Kabuk.brand.withValues(alpha: .14), borderRadius: BorderRadius.circular(6)),
+                        child: Text(
+                          '$yeniSayi yeni',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Kabuk.brand),
+                        ),
+                      ),
+                    const Spacer(),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: m.sesAcik ? 'Sesi kapat' : 'Sesi aç',
+                      onPressed: () => setState(() => m.sesAcik = !m.sesAcik),
+                      icon: Icon(m.sesAcik ? Icons.volume_up_rounded : Icons.volume_off_rounded, size: 18, color: Kabuk.soft),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Kapat',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: Icon(Icons.close_rounded, size: 18, color: Kabuk.soft),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(height: 1, color: Kabuk.line),
+              if (liste.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 16),
+                  child: Column(
+                    children: [
+                      Icon(Icons.notifications_off_outlined, size: 30, color: Kabuk.soft),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Bildirim yok',
+                        style: TextStyle(fontWeight: FontWeight.w700, color: Kabuk.ink),
+                      ),
+                      const SizedBox(height: 2),
+                      Text('Yeni sipariş ve çağrılar burada görünür.', style: TextStyle(fontSize: 12, color: Kabuk.soft)),
+                    ],
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    itemCount: liste.length,
+                    separatorBuilder: (_, _) => Divider(height: 1, indent: 60, color: Kabuk.line),
+                    itemBuilder: (_, i) {
+                      final n = liste[i];
+                      final yeni = widget.yeniler.contains(n['id']);
+                      final (ikon, renk) = _tur('${n['type'] ?? ''}');
+                      final govde = '${n['body'] ?? ''}'.trim();
+                      return Container(
+                        color: yeni ? Kabuk.brand.withValues(alpha: .06) : null,
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(color: renk.withValues(alpha: .13), borderRadius: BorderRadius.circular(9)),
+                              child: Icon(ikon, size: 18, color: renk),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '${n['title'] ?? ''}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(fontWeight: yeni ? FontWeight.w800 : FontWeight.w600, fontSize: 13, color: Kabuk.ink),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(_zaman(n['created_at']?.toString()), style: TextStyle(fontSize: 11, color: Kabuk.soft)),
+                                      if (yeni) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          width: 7,
+                                          height: 7,
+                                          decoration: BoxDecoration(color: Kabuk.brand, shape: BoxShape.circle),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  if (govde.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        govde,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 12, height: 1.35, color: Kabuk.soft),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /* ═══════════════════════ ALT ŞERİT (.pg-alt) ═══════════════════════ */
@@ -413,10 +621,7 @@ class AltCubuk extends StatelessWidget {
       children: [
         if (tumu != null) _TumuDugmesi(bas: tumu!),
         if (sagMetin != null) Text(sagMetin!, style: TextStyle(fontSize: 12.5, color: Kabuk.soft)),
-        if (cihazlar.isNotEmpty || tumu != null) ...[
-          const SizedBox(width: 6),
-          for (final c in cihazlar) _CihazSimgesi(c: c, telefon: telefon),
-        ],
+        if (cihazlar.isNotEmpty || tumu != null) ...[const SizedBox(width: 6), for (final c in cihazlar) _CihazSimgesi(c: c, telefon: telefon)],
         if (g > 1100 && surum != null) ...[
           const SizedBox(width: 8),
           // Web: sürüme dokununca sürüm notları açılır.
@@ -872,7 +1077,9 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
             Container(
               height: 55,
               padding: const EdgeInsets.only(left: 14, right: 8),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Kabuk.line))),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Kabuk.line)),
+              ),
               child: Row(
                 children: [
                   Container(
@@ -893,11 +1100,21 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(color: renk.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(width: 7, height: 7, decoration: BoxDecoration(color: renk, shape: BoxShape.circle)),
-                      const SizedBox(width: 5),
-                      Text(_durumAdi(x.durum), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: renk)),
-                    ]),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(color: renk, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          _durumAdi(x.durum),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: renk),
+                        ),
+                      ],
+                    ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(ctx),
@@ -912,11 +1129,11 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(x.balon, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Kabuk.ink)),
-                    if (x.aciklama != null) ...[
-                      const SizedBox(height: 8),
-                      Text(x.aciklama!, style: TextStyle(fontSize: 13, height: 1.45, color: Kabuk.soft)),
-                    ],
+                    Text(
+                      x.balon,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Kabuk.ink),
+                    ),
+                    if (x.aciklama != null) ...[const SizedBox(height: 8), Text(x.aciklama!, style: TextStyle(fontSize: 13, height: 1.45, color: Kabuk.soft))],
                     if (x.ayrintilar.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -924,32 +1141,34 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                           border: Border.all(color: Kabuk.line),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Column(children: [
-                          for (var i = 0; i < x.ayrintilar.length; i++)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                              decoration: BoxDecoration(
-                                border: i == 0 ? null : Border(top: BorderSide(color: Kabuk.line)),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Text(x.ayrintilar[i].$1, style: TextStyle(fontSize: 12.5, color: Kabuk.soft)),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  ConstrainedBox(
-                                    constraints: const BoxConstraints(maxWidth: 170),
-                                    child: Text(
-                                      x.ayrintilar[i].$2,
-                                      textAlign: TextAlign.right,
-                                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Kabuk.ink),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < x.ayrintilar.length; i++)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                decoration: BoxDecoration(
+                                  border: i == 0 ? null : Border(top: BorderSide(color: Kabuk.line)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(x.ayrintilar[i].$1, style: TextStyle(fontSize: 12.5, color: Kabuk.soft)),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 10),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 170),
+                                      child: Text(
+                                        x.ayrintilar[i].$2,
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Kabuk.ink),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                        ]),
+                          ],
+                        ),
                       ),
                     ],
                     if (x.eylem != null) ...[
@@ -989,9 +1208,7 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                 clipBehavior: Clip.antiAlias,
                 elevation: 12,
                 shadowColor: const Color(0x2E0F172A),
-                child: c.dinle == null
-                    ? govde(c)
-                    : ListenableBuilder(listenable: c.dinle!, builder: (_, _) => govde(c.guncel)),
+                child: c.dinle == null ? govde(c) : ListenableBuilder(listenable: c.dinle!, builder: (_, _) => govde(c.guncel)),
               ),
             ),
           ),
