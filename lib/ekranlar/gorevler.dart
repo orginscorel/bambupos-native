@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../core/api.dart';
 import '../core/durum.dart';
+import '../core/onbellek.dart';
 import '../core/tema.dart';
 import '../ortak/gorev_foto.dart';
 import '../ortak/ortak.dart';
@@ -27,26 +28,37 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
   int _yeniBiten = 0;
   int _fotoYukleniyor = 0;
 
+  static const _uc = '/api/v1/portal/tasks';
+
   @override
   void initState() {
     super.initState();
+    // Son bilinen liste hemen çizilir, sunucudan arkadan tazelenir.
+    final o = Onbellek.harita(_uc);
+    if (o != null) {
+      _uygula(o);
+      _yukleniyor = false;
+    }
     _yukle();
+  }
+
+  void _uygula(Map r) {
+    final l = ((r['tasks'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final c = (r['counts'] as Map?) ?? const {};
+    _gorevler = l;
+    _sayac = {
+      'open': (c['open'] as num?)?.toInt() ?? 0,
+      'in_progress': (c['in_progress'] as num?)?.toInt() ?? 0,
+      'done': (c['done'] as num?)?.toInt() ?? 0,
+    };
   }
 
   Future<void> _yukle() async {
     try {
-      final r = await Uyg.api.get('/api/v1/portal/tasks') as Map;
-      final l = ((r['tasks'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-      final c = (r['counts'] as Map?) ?? const {};
+      final r = await Uyg.api.get(_uc) as Map;
+      Onbellek.yaz(_uc, r);
       if (!mounted) return;
-      setState(() {
-        _gorevler = l;
-        _sayac = {
-          'open': (c['open'] as num?)?.toInt() ?? 0,
-          'in_progress': (c['in_progress'] as num?)?.toInt() ?? 0,
-          'done': (c['done'] as num?)?.toInt() ?? 0,
-        };
-      });
+      setState(() => _uygula(r));
     } on ApiHata catch (e) {
       bildir('Görevler yüklenemedi', mesaj: e.mesaj, tur: BildirimTur.hata);
     } finally {

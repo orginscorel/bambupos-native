@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -98,6 +99,15 @@ class Api {
       },
     ));
 
+    // TEK kalıcı bağlantı havuzu: varsayılan 15 sn boşta kalma süresi 20-60 sn'lik
+    // yoklamalarda her seferinde yeni TLS el sıkışması demekti (CPU + radyo).
+    // gzip: dart:io HttpClient zaten "Accept-Encoding: gzip" gönderip açar.
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () => HttpClient()
+        ..idleTimeout = const Duration(seconds: 65)
+        ..connectionTimeout = const Duration(seconds: 10)
+        ..maxConnectionsPerHost = 6,
+    );
     final api = Api._(dio, jar, Uri.parse(tabanUrl));
     dio.interceptors.add(CookieManager(jar));
     dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) async {
@@ -133,8 +143,23 @@ class Api {
 
   String yeniIslemKimligi() => _uuid.v4();
 
-  Future<dynamic> get(String yol, {Map<String, dynamic>? sorgu, Duration? zamanAsimi, Map<String, String>? basliklar}) =>
-      _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi, basliklar: basliklar);
+  /// Uçuştaki GET istekleri: aynı adres aynı anda iki kez istenirse (ör. açılışta
+  /// ana sayfa + hatırlatma eşitlemesi + Shift ekranı) TEK istek gider, hepsi
+  /// aynı yanıtı alır.
+  final _ucusta = <String, Future<dynamic>>{};
+
+  Future<dynamic> get(String yol, {Map<String, dynamic>? sorgu, Duration? zamanAsimi, Map<String, String>? basliklar}) {
+    if (basliklar != null && basliklar.isNotEmpty) {
+      return _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi, basliklar: basliklar);
+    }
+    final anahtar = sorgu == null || sorgu.isEmpty ? yol : '$yol?${Uri(queryParameters: sorgu.map((k, v) => MapEntry(k, '$v'))).query}';
+    final eski = _ucusta[anahtar];
+    if (eski != null) return eski;
+    final f = _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi);
+    _ucusta[anahtar] = f;
+    f.then((_) {}, onError: (_) {}).whenComplete(() => _ucusta.remove(anahtar));
+    return f;
+  }
 
   Future<dynamic> post(String yol, [Object? govde, Map<String, String>? basliklar]) =>
       _istek('POST', yol, govde: govde ?? const {}, basliklar: basliklar);

@@ -89,15 +89,7 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
       return (islendi: true, tekrar: tekrar);
     }
     if (e.kod == 403 && g['mesafe_m'] != null) {
-      final m = (g['mesafe_m'] as num?)?.round();
-      final yaricap = (g['yaricap_m'] as num?)?.round();
-      final tekrar = await konumUyariPanosu(
-        context,
-        ikon: Icons.wrong_location_rounded,
-        baslik: m == null ? 'Mesai noktasına uzaksın' : 'Mesai noktasına uzaksın (≈${_mesafe(m)})',
-        aciklama: '${yaricap != null ? 'QR yalnız işletmenin ${_mesafe(yaricap)} yakınında okutulabilir. ' : ''}İşletmeye geldiğinde yeniden okut; konumun yanlışsa açık alanda tekrar dene.',
-        tekrarYazi: 'Konumu yenile ve dene',
-      );
+      final tekrar = await uzakPanosu(context, mesafe: (g['mesafe_m'] as num?)?.round(), yaricap: (g['yaricap_m'] as num?)?.round() ?? Uyg.konumYaricap);
       return (islendi: true, tekrar: tekrar);
     }
     if (e.kod == 409) {
@@ -106,8 +98,6 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
     }
     return (islendi: false, tekrar: false);
   }
-
-  static String _mesafe(int m) => m >= 1000 ? '${(m / 1000).toStringAsFixed(m % 1000 == 0 ? 0 : 1).replaceAll('.', ',')} km' : '$m m';
 
   @override
   void dispose() {
@@ -391,11 +381,14 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
             Align(alignment: Alignment.bottomCenter, child: _GirisPano(isleniyor: _girisIsleniyor, onayla: _girisOnayla, vazgec: _girisiKapat)),
           ],
           if (_bitti != null) Positioned.fill(child: GestureDetector(onTap: _kapat, child: _Basari(veri: _bitti!))),
+          // İşletme dışındaysan uyarı (giriş QR'ını engellemez; mesai/mola QR'ını sunucu reddeder).
+          if (_pano == null && _bitti == null)
+            Positioned(left: 16, right: 16, top: ust + 66, child: const IgnorePointer(child: KonumQrUyarisi())),
           // "Konum alınıyor…" — kamerayı engellemeyen ince durum
           Positioned(
             left: 0,
             right: 0,
-            top: ust + 70,
+            top: ust + (KonumIzleyici.canli.value?.icerde == false ? 124 : 70),
             child: IgnorePointer(
               child: Center(
                 child: AnimatedSwitcher(

@@ -10,7 +10,6 @@ import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'kabuk.dart';
 import 'puantaj.dart';
-import 'qr_okut.dart';
 
 /// MESAİM — web Shift.vue karşılığı.
 ///
@@ -39,8 +38,13 @@ class _MesaimEkraniState extends State<MesaimEkrani> {
   void initState() {
     super.initState();
     _yenile();
-    _tik = Timer.periodic(const Duration(seconds: 15), (_) => setState(() => _simdi = DateTime.now()));
-    _yokla = Timer.periodic(const Duration(seconds: 60), (_) => _durumYukle());
+    // Arka planda / alttaki sayfa örtülüyken saat ve yoklama boşuna çalışmasın.
+    _tik = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted && ekranGorunur(context)) setState(() => _simdi = DateTime.now());
+    });
+    _yokla = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted && ekranGorunur(context)) _durumYukle();
+    });
     Uyg.mesaiDegisti.addListener(_durumYukle);
   }
 
@@ -230,7 +234,7 @@ class _MesaimEkraniState extends State<MesaimEkrani> {
     return PaKart(
       gradient: Marka.kart,
       onTap: () async {
-        await git(context, const QrOkutEkrani());
+        await qrOkutAc(context);
         _yenile();
       },
       child: Row(children: [

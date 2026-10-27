@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../core/api.dart';
 import '../core/bildirim.dart';
 import '../core/durum.dart';
+import '../core/konum.dart';
+import '../core/onbellek.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'bildirimler.dart';
@@ -16,7 +18,6 @@ import 'hedefler.dart';
 import 'kabuk.dart';
 import 'mesaim.dart';
 import 'primler.dart';
-import 'qr_okut.dart';
 
 /// ANA SAYFA — web /panelim ile aynı: selamlama, halkalar (çalışma · mola ·
 /// mola sayısı), kaydırılabilir Bugün / Bu ay kartları, vardiya ilerlemesi,
@@ -43,13 +44,22 @@ class _AnaSayfaState extends State<AnaSayfa> {
   final _sayfa = PageController();
   int _kart = 0;
 
+  DateTime _sonDurum = DateTime.fromMillisecondsSinceEpoch(0);
+
   @override
   void initState() {
     super.initState();
+    _onbellektenDoldur();
     _yukle();
-    _tik = Timer.periodic(const Duration(seconds: 15), (_) => setState(() => _simdi = DateTime.now()));
-    _yokla = Timer.periodic(const Duration(seconds: 60), (_) => _durumYukle());
+    // Gizli sekmede / arka planda saat ve yoklama boşuna çalışmasın.
+    _tik = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted && ekranGorunur(context)) setState(() => _simdi = DateTime.now());
+    });
+    _yokla = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted && ekranGorunur(context)) _durumYukle();
+    });
     Uyg.mesaiDegisti.addListener(_durumYukle);
+    uygulamaOnde.addListener(_oneGeldi);
   }
 
   @override
@@ -57,21 +67,61 @@ class _AnaSayfaState extends State<AnaSayfa> {
     _tik?.cancel();
     _yokla?.cancel();
     Uyg.mesaiDegisti.removeListener(_durumYukle);
+    uygulamaOnde.removeListener(_oneGeldi);
     _sayfa.dispose();
     super.dispose();
+  }
+
+  /// Öne gelince saat + mesai durumu hemen tazelensin (arka planda durmuştu).
+  void _oneGeldi() {
+    if (!mounted || !uygulamaOnde.value) return;
+    setState(() => _simdi = DateTime.now());
+    if (DateTime.now().difference(_sonDurum) > const Duration(seconds: 30) && TickerMode.valuesOf(context).enabled) _durumYukle();
+  }
+
+  // Son bilinen veriler (önce eldekini çiz, sonra tazele). Mesai durumu
+  // çabuk eskir: 15 dk'dan eskisi kullanılmaz; sayaç kaydedildiği andan yürür.
+  static const _ucDurum = '/api/v1/portal/state';
+  static const _ucGorev = '/api/v1/portal/tasks';
+  static const _ucGun = '/api/v1/portal/reports?period=day';
+  static const _ucAy = '/api/v1/portal/reports?period=month';
+  static const _ucGecmis = '/api/v1/portal/history';
+  static const _ucPrim = '/api/v1/portal/earnings?period=month';
+  static const _ucEkip = '/api/v1/portal/yonetici/ekip';
+
+  void _onbellektenDoldur() {
+    final d = Onbellek.oku(_ucDurum, enEski: const Duration(minutes: 15));
+    final gun = Onbellek.harita(_ucGun, enEski: const Duration(hours: 12));
+    final gorev = Onbellek.harita(_ucGorev);
+    if (d == null && gun == null && gorev == null) return;
+    if (d?.veri is Map) {
+      _durum = Map<String, dynamic>.from(d!.veri as Map);
+      _sunucuAni = d.zaman;
+    }
+    _gorev = gorev;
+    _bugun = gun;
+    _ay = Onbellek.harita(_ucAy);
+    _gecmis = ((Onbellek.harita(_ucGecmis)?['entries'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final prim = Uyg.eklenti('commission') ? Onbellek.harita(_ucPrim) : null;
+    _prim = prim?['scheme_name'] != null ? prim : null;
+    _ekip = Uyg.yonetici ? Onbellek.harita(_ucEkip, enEski: const Duration(hours: 1)) : null;
+    _yukleniyor = false;
   }
 
   Future<Map<String, dynamic>?> _al(String yol) async {
     try {
       final r = await Uyg.api.get(yol);
-      return r is Map ? Map<String, dynamic>.from(r) : null;
+      if (r is! Map) return null;
+      Onbellek.yaz(yol, r);
+      return Map<String, dynamic>.from(r);
     } on ApiHata {
       return null;
     }
   }
 
   Future<void> _durumYukle() async {
-    final d = await _al('/api/v1/portal/state');
+    _sonDurum = DateTime.now();
+    final d = await _al(_ucDurum);
     if (d != null && mounted) {
       setState(() {
         _durum = d;
@@ -81,25 +131,31 @@ class _AnaSayfaState extends State<AnaSayfa> {
   }
 
   Future<void> _yukle() async {
+    _sonDurum = DateTime.now();
     final sonuc = await Future.wait([
-      _al('/api/v1/portal/state'),
-      _al('/api/v1/portal/tasks'),
-      _al('/api/v1/portal/reports?period=day'),
-      _al('/api/v1/portal/reports?period=month'),
-      _al('/api/v1/portal/history'),
-      Uyg.eklenti('commission') ? _al('/api/v1/portal/earnings?period=month') : Future.value(null),
-      Uyg.yonetici ? _al('/api/v1/portal/yonetici/ekip') : Future.value(null),
+      _al(_ucDurum),
+      _al(_ucGorev),
+      _al(_ucGun),
+      _al(_ucAy),
+      _al(_ucGecmis),
+      Uyg.eklenti('commission') ? _al(_ucPrim) : Future.value(null),
+      Uyg.yonetici ? _al(_ucEkip) : Future.value(null),
     ]);
     if (!mounted) return;
     setState(() {
-      _durum = sonuc[0];
-      _sunucuAni = DateTime.now();
-      _gorev = sonuc[1];
-      _bugun = sonuc[2];
-      _ay = sonuc[3];
-      _gecmis = ((sonuc[4]?['entries'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-      _prim = (sonuc[5]?['scheme_name'] != null) ? sonuc[5] : null;
-      _ekip = sonuc[6];
+      // Ağ hatasında (null) önbellekten gelen son veri ekranda kalsın.
+      if (sonuc[0] != null || _durum == null) {
+        _durum = sonuc[0];
+        _sunucuAni = DateTime.now();
+      }
+      _gorev = sonuc[1] ?? _gorev;
+      _bugun = sonuc[2] ?? _bugun;
+      _ay = sonuc[3] ?? _ay;
+      if (sonuc[4] != null) {
+        _gecmis = ((sonuc[4]?['entries'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      if (sonuc[5] != null || !Uyg.eklenti('commission')) _prim = (sonuc[5]?['scheme_name'] != null) ? sonuc[5] : null;
+      if (sonuc[6] != null || !Uyg.yonetici) _ekip = sonuc[6];
       _yukleniyor = false;
     });
   }
@@ -470,7 +526,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
         ),
       ]),
       const SizedBox(height: 14),
-      _QrKarti(kip: _kip, onTap: () => git(context, const QrOkutEkrani()).then((_) => _yukle())),
+      _QrKarti(kip: _kip, onTap: () => qrOkutAc(context).then((_) => _yukle())),
+      const SizedBox(height: 10),
+      const KonumDurumSatiri(),
       const SizedBox(height: 14),
       if (Uyg.yonetici) ...[
         _EkipKarti(ozet: _ekip?['ozet'] as Map?, onTap: () => git(context, const EkibimEkrani()).then((_) => _yukle())),
@@ -655,7 +713,30 @@ class _HalkaMerkez extends StatefulWidget {
 }
 
 class _HalkaMerkezState extends State<_HalkaMerkez> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat(reverse: true);
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+
+  // Mesai dışıyken ölçek sabit (1) → denetleyici de durur (boşuna kare yok).
+  void _ayarla() {
+    final iste = widget.kip != 'off' && !hareketAzalt(context);
+    if (iste && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!iste && _c.isAnimating) {
+      _c.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ayarla();
+  }
+
+  @override
+  void didUpdateWidget(_HalkaMerkez o) {
+    super.didUpdateWidget(o);
+    _ayarla();
+  }
+
   @override
   void dispose() {
     _c.dispose();
@@ -666,7 +747,8 @@ class _HalkaMerkezState extends State<_HalkaMerkez> with SingleTickerProviderSta
   Widget build(BuildContext context) {
     final ikon = widget.kip == 'break' ? Icons.coffee_rounded : Icons.hourglass_bottom_rounded;
     final renk = widget.kip == 'work' ? const Color(0xFF7DD3FC) : widget.kip == 'break' ? const Color(0xFFC4B5FD) : Colors.white60;
-    return AnimatedBuilder(
+    return RepaintBoundary(
+      child: AnimatedBuilder(
       animation: _c,
       builder: (_, child) => Transform.scale(scale: widget.kip == 'off' ? 1 : 1 + .06 * _c.value, child: child),
       child: Container(
@@ -674,6 +756,7 @@ class _HalkaMerkezState extends State<_HalkaMerkez> with SingleTickerProviderSta
         height: 46,
         decoration: BoxDecoration(color: Colors.white.withValues(alpha: .1), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: .15))),
         child: Icon(ikon, color: renk, size: 22),
+      ),
       ),
     );
   }
@@ -722,7 +805,30 @@ class _CanliNokta extends StatefulWidget {
 }
 
 class _CanliNoktaState extends State<_CanliNokta> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+
+  // Canlı değilken nabız çizilmiyordu ama denetleyici dönmeye devam ediyordu.
+  void _ayarla() {
+    final iste = widget.canli && !hareketAzalt(context);
+    if (iste && !_c.isAnimating) {
+      _c.repeat();
+    } else if (!iste && _c.isAnimating) {
+      _c.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ayarla();
+  }
+
+  @override
+  void didUpdateWidget(_CanliNokta o) {
+    super.didUpdateWidget(o);
+    _ayarla();
+  }
+
   @override
   void dispose() {
     _c.dispose();
@@ -735,11 +841,13 @@ class _CanliNoktaState extends State<_CanliNokta> with SingleTickerProviderState
         height: 9,
         child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
           if (widget.canli)
-            AnimatedBuilder(
-              animation: _c,
-              builder: (_, _) => Transform.scale(
-                scale: 1 + 1.4 * _c.value,
-                child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: widget.renk.withValues(alpha: .6 * (1 - _c.value)))),
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (_, _) => Transform.scale(
+                  scale: 1 + 1.4 * _c.value,
+                  child: Container(decoration: BoxDecoration(shape: BoxShape.circle, color: widget.renk.withValues(alpha: .6 * (1 - _c.value)))),
+                ),
               ),
             ),
           Container(decoration: BoxDecoration(shape: BoxShape.circle, color: widget.renk)),

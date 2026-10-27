@@ -20,4 +20,15 @@ void main() {
     expect(MesaiHatirlatma.baslikMi('Mesain bitti — çıkış QR\'ını okut'), isTrue);
     expect(MesaiHatirlatma.baslikMi('Yeni görev'), isFalse);
   });
+
+  test('Saat dilimli ISO (sunucu +03:00) doğru ana çevrilir; gövdede YEREL saat', () {
+    final l = MesaiHatirlatma.anlar([
+      {'id': 9, 'starts_at': '2026-10-28T09:00:00+03:00', 'ends_at': '2026-10-28T17:00:00+03:00'},
+    ], DateTime.utc(2026, 10, 27));
+    expect(l.length, 4);
+    expect(l[1].zaman.toUtc(), DateTime.utc(2026, 10, 28, 6));
+    final yerel = DateTime.utc(2026, 10, 28, 6).toLocal();
+    final hm = '${yerel.hour.toString().padLeft(2, '0')}:${yerel.minute.toString().padLeft(2, '0')}';
+    expect(l[1].govde, contains(hm));
+  });
 }

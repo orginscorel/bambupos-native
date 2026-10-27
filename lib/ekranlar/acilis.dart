@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/durum.dart';
+import '../core/onbellek.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'eslesme.dart';
@@ -23,7 +24,7 @@ class _AcilisEkraniState extends State<AcilisEkrani> with TickerProviderStateMix
   /// Beklerken dönen mesai saati yayı.
   late final _saat = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
   /// Çıkış: işaret büyür, ekran ortadan açılır.
-  late final _cikis = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+  late final _cikis = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
   String? _hata;
 
   @override
@@ -33,22 +34,59 @@ class _AcilisEkraniState extends State<AcilisEkrani> with TickerProviderStateMix
     _basla();
   }
 
-  Future<void> _basla() async {
-    setState(() => _hata = null);
-    bool var_;
-    try {
-      var_ = await Uyg.hesapYukle();
-    } on ApiHata catch (e) {
-      if (mounted) setState(() => _hata = e.mesaj);
+  /// Veri hazır olunca koreografinin KALANINI hızlandırarak bitirir (≈%45
+  /// süre). Böylece açılış veriden uzun sürmez; en kısa hâli ~0,9 sn.
+  Future<void> _girisiBitir() async {
+    if (!_giris.isAnimating || hareketAzalt(context)) {
+      if (hareketAzalt(context)) _giris.value = 1;
       return;
     }
-    // Koreografi bitmeden geçme (en az ~1,9 sn); hesap daha geç gelirse saat yayı döner.
-    if (_giris.isAnimating) await _giris.forward().orCancel.catchError((_) {});
+    final ms = ((1 - _giris.value) * 1900 * .45).round();
+    await _giris.animateTo(1, duration: Duration(milliseconds: ms)).orCancel.catchError((_) {});
+  }
+
+  Future<void> _basla() async {
+    setState(() => _hata = null);
+    // Son bilinen hesap varsa ağı en çok koreografi kadar bekle; gecikirse ya
+    // da bağlantı yoksa eldekiyle aç (ekranlar da son veriyi gösterir, arkadan
+    // tazelenir). Oturum düşmüşse arkadan gelen 401 eşleme ekranına döndürür.
+    final onbellek = Uyg.onbellekHesap;
+    bool? sonuc;
+    ApiHata? hata;
+    final ag = Uyg.hesapYukle().then<void>((v) => sonuc = v, onError: (Object e) {
+      hata = e is ApiHata ? e : ApiHata(null, 'Sunucuya ulaşılamıyor. İnternet bağlantısını kontrol edin.');
+    });
+
+    if (onbellek == null) {
+      await ag;
+    } else {
+      await Future.any([ag, Future<void>.delayed(const Duration(milliseconds: 700))]);
+    }
     if (!mounted) return;
+    // Sunucu yanıt verip hata döndüyse (kilitli cihaz, bakım …) eskisi gibi göster.
+    final sunucuHatasi = hata != null && !hata!.baglantiYok;
+    if (sunucuHatasi || (hata != null && onbellek == null)) {
+      setState(() => _hata = hata!.mesaj);
+      return;
+    }
+    await _girisiBitir();
+    if (!mounted) return;
+    if (hata != null && !hata!.baglantiYok) {
+      setState(() => _hata = hata!.mesaj);
+      return;
+    }
+    final bool var_;
+    if (sonuc != null) {
+      var_ = sonuc!;
+    } else {
+      // Ağ hâlâ bekliyor ya da bağlantı yok: son bilinen hesapla devam.
+      Uyg.hesap.value ??= onbellek;
+      var_ = true;
+    }
     await _cikis.forward();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 750),
+      transitionDuration: Duration(milliseconds: hareketAzalt(context) ? 0 : 400),
       pageBuilder: (_, _, _) => var_ ? const Kabuk() : const EslesmeEkrani(),
       transitionsBuilder: (_, a, _, child) => ClipPath(
         clipper: _DaireAcilim(Curves.easeInOutCubic.transform(a.value)),
@@ -346,6 +384,7 @@ void oturumDustu() {
   final nav = Uyg.navigator.currentState;
   if (nav == null || Uyg.hesap.value == null) return;
   Uyg.hesap.value = null;
-  nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const EslesmeEkrani()), (_) => false);
+  Onbellek.temizle();
+  nav.pushAndRemoveUntil(HizliRota(builder: (_) => const EslesmeEkrani()), (_) => false);
   bildir('Oturum kapandı', mesaj: 'Telefonu yeniden eşle ya da parolayla gir.', tur: BildirimTur.uyari);
 }

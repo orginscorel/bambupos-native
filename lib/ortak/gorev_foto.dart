@@ -103,7 +103,7 @@ class FotoSeridi extends StatelessWidget {
             tag: 'foto-${fotolar[i]['url']}',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: SizedBox.square(dimension: boyut, child: KorumaliFoto(url: fotolar[i]['url'].toString())),
+              child: SizedBox.square(dimension: boyut, child: KorumaliFoto(url: fotolar[i]['url'].toString(), boyut: boyut)),
             ),
           ),
         ),
@@ -120,9 +120,11 @@ class FotoSeridi extends StatelessWidget {
 
 /// Oturumla korunan görseli API istemcisiyle indirip çizer (bellekte önbellekli).
 class KorumaliFoto extends StatefulWidget {
-  const KorumaliFoto({super.key, required this.url, this.sigdir = BoxFit.cover});
+  const KorumaliFoto({super.key, required this.url, this.sigdir = BoxFit.cover, this.boyut});
   final String url;
   final BoxFit sigdir;
+  /// Ekrandaki kenar uzunluğu (küçük resim); verilmezse ekran genişliği.
+  final double? boyut;
 
   static final _onbellek = <String, Future<Uint8List?>>{};
 
@@ -158,7 +160,19 @@ class _KorumaliFotoState extends State<KorumaliFoto> {
         if (s.connectionState != ConnectionState.done) return const Iskelet(yukseklik: double.infinity, radius: 0);
         final b = s.data;
         if (b == null) return yer(Icon(Icons.broken_image_rounded, color: r.silik));
-        return Image.memory(b, fit: widget.sigdir, gaplessPlayback: true, errorBuilder: (_, _, _) => yer(Icon(Icons.broken_image_rounded, color: r.silik)));
+        // Çözme boyutu ekrandaki boyuta göre: 1600 px fotoğraf 72 px küçük
+        // resim için tam boyut çözülmesin (bellek + açılış hızı). Kapla
+        // (cover) kipinde kırpma payı için 2 kat.
+        // (LayoutBuilder değil: küçük resimler IntrinsicHeight içinde.)
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final kenar = widget.boyut ?? MediaQuery.sizeOf(context).width;
+        final carpan = widget.sigdir == BoxFit.cover ? 2.0 : 1.0;
+        final genislik = (kenar * dpr * carpan).round().clamp(64, 2048);
+        return Image.memory(b,
+            fit: widget.sigdir,
+            gaplessPlayback: true,
+            cacheWidth: genislik,
+            errorBuilder: (_, _, _) => yer(Icon(Icons.broken_image_rounded, color: r.silik)));
       },
     );
   }

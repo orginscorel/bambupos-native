@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../core/api.dart';
 import '../core/durum.dart';
 import '../core/guncelleme.dart';
+import '../core/konum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'bildirimler.dart';
@@ -101,6 +102,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           ]),
           const BolumBasligi('Güvenlik ve cihaz'),
           SatirGrubu([
+            const KonumSatiri(),
             Satir(
               ikon: Icons.pin_rounded,
               baslik: 'POS PIN',
@@ -385,7 +387,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
     titret(2);
     await Uyg.cikis();
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const EslesmeEkrani()), (_) => false);
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(HizliRota(builder: (_) => const EslesmeEkrani()), (_) => false);
   }
 }
 

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../core/api.dart';
 import '../core/bildirim.dart';
 import '../core/durum.dart';
+import '../core/onbellek.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 
@@ -83,18 +84,43 @@ class _VardiyamEkraniState extends State<VardiyamEkrani> {
   bool _ekipYukleniyor = false;
   List<Map<String, dynamic>> _ekipGunler = const [];
 
+  static const _ucPlan = '/api/v1/portal/schedule';
+  static const _ucIzin = '/api/v1/portal/leave-requests';
+
   @override
   void initState() {
     super.initState();
+    // Son bilinen plan/izinler hemen çizilir, sunucudan arkadan tazelenir.
+    final plan = Onbellek.harita(_ucPlan);
+    if (plan != null) {
+      _vardiyalar = _planOku(plan);
+      _yukleniyor = false;
+    }
+    final izin = Onbellek.harita(_ucIzin);
+    if (izin != null) {
+      _izinler = _izinOku(izin);
+      _izinYukleniyor = false;
+    }
     _yenile();
-    // Geri sayım kartı dakikada bir tazelensin
+    // Vardiya planlandı/değişti/iptal bildirimi → hemen tazele.
+    BildirimMerkezi.vardiyaDegisti.addListener(_yenileSessiz);
+    // Geri sayım kartı yarım dakikada bir tazelensin (gizli sekmede / arka planda değil)
     _saatTik = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted && TickerMode.valuesOf(context).enabled) setState(() {});
+      if (mounted && ekranGorunur(context)) setState(() {});
     });
+  }
+
+  static List<_Vardiya> _planOku(Map r) =>
+      ((r['shifts'] as List?) ?? const []).whereType<Map>().map(_Vardiya.new).toList()..sort((a, b) => a.bas.compareTo(b.bas));
+  static List<_Izin> _izinOku(Map r) => ((r['requests'] as List?) ?? const []).whereType<Map>().map(_Izin.new).toList();
+
+  void _yenileSessiz() {
+    if (mounted) _yenile();
   }
 
   @override
   void dispose() {
+    BildirimMerkezi.vardiyaDegisti.removeListener(_yenileSessiz);
     _saatTik?.cancel();
     super.dispose();
   }
@@ -131,9 +157,10 @@ class _VardiyamEkraniState extends State<VardiyamEkrani> {
 
   Future<void> _vardiyaYukle() async {
     try {
-      final r = await Uyg.api.get('/api/v1/portal/schedule') as Map;
+      final r = await Uyg.api.get(_ucPlan) as Map;
+      Onbellek.yaz(_ucPlan, r);
       final ham = ((r['shifts'] as List?) ?? const []).whereType<Map>().toList();
-      final l = ham.map(_Vardiya.new).toList()..sort((a, b) => a.bas.compareTo(b.bas));
+      final l = _planOku(r);
       if (mounted) setState(() => _vardiyalar = l);
       // Sesli Shift hatırlatmalarını taze planla kur (Android; iOS'ta APNs).
       unawaited(BildirimMerkezi.hatirlatmaEsitle(vardiyalar: ham));
@@ -146,8 +173,9 @@ class _VardiyamEkraniState extends State<VardiyamEkrani> {
 
   Future<void> _izinYukle() async {
     try {
-      final r = await Uyg.api.get('/api/v1/portal/leave-requests') as Map;
-      final l = ((r['requests'] as List?) ?? const []).whereType<Map>().map(_Izin.new).toList();
+      final r = await Uyg.api.get(_ucIzin) as Map;
+      Onbellek.yaz(_ucIzin, r);
+      final l = _izinOku(r);
       if (mounted) setState(() => _izinler = l);
     } on ApiHata {
       // Sessiz: bölüm boş görünür.

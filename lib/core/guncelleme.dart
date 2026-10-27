@@ -33,6 +33,7 @@ class Guncelleme {
   static final kartGizli = ValueNotifier<bool>(false);
   static DateTime? _sonBakis;
   static StreamSubscription<OtaEvent>? _ota;
+  static Future<PackageInfo>? _paket; // sürüm bilgisi bir kez okunur
 
   static bool dahaYeni(String a, String b) {
     List<int> p(String s) => s.split(RegExp(r'[.+-]')).take(3).map((e) => int.tryParse(e) ?? 0).toList();
@@ -71,7 +72,7 @@ class Guncelleme {
       } else if (Platform.isIOS) {
         adres = (_iosSitedenKurulu ? indir['ios'] : (indir['ios_testflight'] ?? indir['ios']))?.toString();
       }
-      final bu = (await PackageInfo.fromPlatform()).version;
+      final bu = (await (_paket ??= PackageInfo.fromPlatform())).version;
       if (adres == null || adres.isEmpty || !dahaYeni(yeni, bu)) {
         bulunan.value = null;
         return false;

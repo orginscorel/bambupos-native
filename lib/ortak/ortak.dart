@@ -1,11 +1,55 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api.dart';
 import '../core/tema.dart';
+
+/* ───────────────────────── Ön plan / hareket azaltma ───────────────────────── */
+
+/// Uygulama ön planda mı? (tek yaşam döngüsü dinleyicisi; zamanlayıcılar ve
+/// yoklamalar arka planda boşuna CPU/ağ harcamasın diye buna bakar.)
+final ValueNotifier<bool> uygulamaOnde = () {
+  final n = ValueNotifier<bool>(true);
+  try {
+    WidgetsBinding.instance.addObserver(_OnPlanGozcu(n));
+  } catch (_) {
+    // Bağlama henüz kurulmadıysa ön planda say.
+  }
+  return n;
+}();
+
+class _OnPlanGozcu with WidgetsBindingObserver {
+  _OnPlanGozcu(this.n);
+  final ValueNotifier<bool> n;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) => n.value = s == AppLifecycleState.resumed || s == AppLifecycleState.inactive;
+}
+
+/// Sistem "hareketi azalt" açık mı?
+bool hareketAzalt(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+/// Bu ekran şu an görünür ve uygulama ön planda mı? (gizli sekmede /
+/// arka planda zamanlayıcı yenilemesi yapılmasın.)
+bool ekranGorunur(BuildContext context) => uygulamaOnde.value && TickerMode.valuesOf(context).enabled;
+
+/// Hızlı sayfa geçişi: iOS kaydırması (geri kaydırma hareketi dahil) ama
+/// 500 ms yerine 250 ms; "hareketi azalt" açıksa anında.
+class HizliRota<T> extends CupertinoPageRoute<T> {
+  HizliRota({required super.builder, super.settings});
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 250);
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 220);
+  @override
+  Widget buildTransitions(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) =>
+      hareketAzalt(context) ? child : super.buildTransitions(context, animation, secondaryAnimation, child);
+}
 
 /* ───────────────────────── Dokunma geri bildirimi ───────────────────────── */
 
@@ -201,7 +245,13 @@ class GradDugme extends StatefulWidget {
 }
 
 class _GradDugmeState extends State<GradDugme> with TickerProviderStateMixin {
+  // Işık şeridi: 3,64 sn bekler, 1,56 sn süzülür (eski 5,2 sn döngüyle aynı
+  // ritim). Beklerken ANİMASYON YOK → ekran boşta kare çizmez (pil). Eskiden
+  // denetleyici sürekli dönüyordu; bekleme sırasında da saniyede 60 kare.
+  static const _bekleme = Duration(milliseconds: 3640);
+  static const _supurme = Duration(milliseconds: 1560);
   AnimationController? _c;
+  Timer? _zaman;
 
   bool get _parlasin => widget.parilti && widget.onTap != null && !widget.yukleniyor;
 
@@ -218,17 +268,35 @@ class _GradDugmeState extends State<GradDugme> with TickerProviderStateMixin {
   }
 
   void _ayarla() {
-    final iste = _parlasin && !(MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+    final iste = _parlasin && !hareketAzalt(context);
     if (iste && _c == null) {
-      _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 5200))..repeat();
+      _c = AnimationController(vsync: this, duration: _supurme)
+        ..addStatusListener((s) {
+          if (s == AnimationStatus.completed) _planla();
+        });
+      _planla();
     } else if (!iste && _c != null) {
+      _zaman?.cancel();
+      _zaman = null;
       _c!.dispose();
       _c = null;
     }
   }
 
+  void _planla() {
+    _zaman?.cancel();
+    _zaman = Timer(_bekleme, () {
+      final c = _c;
+      if (!mounted || c == null) return;
+      // Gizli sekmede / arka planda süzülme yok; sonraki tura kalsın.
+      if (!ekranGorunur(context)) return _planla();
+      c.forward(from: 0);
+    });
+  }
+
   @override
   void dispose() {
+    _zaman?.cancel();
     _c?.dispose();
     super.dispose();
   }
@@ -283,9 +351,9 @@ class _GradDugmeState extends State<GradDugme> with TickerProviderStateMixin {
                 child: AnimatedBuilder(
                   animation: _c!,
                   builder: (_, _) {
-                    // Sürenin %70'i bekler, %30'unda soldan sağa süzülür.
-                    final t = _c!.value;
-                    final x = t < .7 ? -2.0 : -2.0 + (t - .7) / .3 * 4.0;
+                    // Beklerken (denetleyici durgun) şerit görünmez; süzülürken soldan sağa.
+                    final c = _c!;
+                    final x = c.isAnimating ? -2.0 + c.value * 4.0 : -2.0;
                     return FractionalTranslation(
                       translation: Offset(x * .5, 0),
                       child: DecoratedBox(
@@ -631,21 +699,30 @@ class _BelirState extends State<Belir> with SingleTickerProviderStateMixin {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (hareketAzalt(context)) _c.value = 1;
+  }
+
+  @override
   void dispose() {
+    _e.dispose();
     _c.dispose();
     super.dispose();
   }
 
+  late final _e = CurvedAnimation(parent: _c, curve: const Cubic(.22, 1, .36, 1));
+
   @override
   Widget build(BuildContext context) {
-    final e = CurvedAnimation(parent: _c, curve: const Cubic(.22, 1, .36, 1));
-    return AnimatedBuilder(
-      animation: e,
-      builder: (_, child) => Opacity(
-        opacity: e.value,
-        child: Transform.translate(offset: Offset(0, widget.kayma * (1 - e.value)), child: child),
+    // FadeTransition + kayma: her karede alt ağaç yeniden kurulmaz, yalnız boyanır.
+    return FadeTransition(
+      opacity: _e,
+      child: AnimatedBuilder(
+        animation: _e,
+        builder: (_, child) => Transform.translate(offset: Offset(0, widget.kayma * (1 - _e.value)), child: child),
+        child: widget.child,
       ),
-      child: widget.child,
     );
   }
 }
@@ -722,11 +799,55 @@ class Aurora extends StatefulWidget {
   State<Aurora> createState() => _AuroraState();
 }
 
-class _AuroraState extends State<Aurora> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(seconds: 18))..repeat(reverse: true);
+class _AuroraState extends State<Aurora> {
+  // Işıklar 18 sn'de bir gidip gelir; hareket saniyede 1-2 px. Saniyede 60
+  // kare yerine ~7 kare yeter (fark edilmez) → ekran boşta neredeyse hiç
+  // çizim yapmaz. Gizli sekmede, arka planda ve "hareketi azalt"ta durur.
+  static const _adim = Duration(milliseconds: 150);
+  static const _yari = 18000; // ms
+  final _t = ValueNotifier<double>(0);
+  Timer? _zaman;
+  int _gecen = 0;
+  ValueListenable<TickerModeData>? _tickerMode;
+
+  @override
+  void initState() {
+    super.initState();
+    uygulamaOnde.addListener(_ayarla);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final n = TickerMode.getValuesNotifier(context);
+    if (n != _tickerMode) {
+      _tickerMode?.removeListener(_ayarla);
+      _tickerMode = n..addListener(_ayarla);
+    }
+    _ayarla();
+  }
+
+  void _ayarla() {
+    if (!mounted) return;
+    final calis = uygulamaOnde.value && (_tickerMode?.value.enabled ?? true) && !hareketAzalt(context);
+    if (calis && _zaman == null) {
+      _zaman = Timer.periodic(_adim, (_) {
+        _gecen = (_gecen + _adim.inMilliseconds) % (2 * _yari);
+        final v = _gecen <= _yari ? _gecen / _yari : 2 - _gecen / _yari;
+        _t.value = Curves.easeInOut.transform(v);
+      });
+    } else if (!calis && _zaman != null) {
+      _zaman!.cancel();
+      _zaman = null;
+    }
+  }
+
   @override
   void dispose() {
-    _c.dispose();
+    _zaman?.cancel();
+    _tickerMode?.removeListener(_ayarla);
+    uygulamaOnde.removeListener(_ayarla);
+    _t.dispose();
     super.dispose();
   }
 
@@ -735,22 +856,20 @@ class _AuroraState extends State<Aurora> with SingleTickerProviderStateMixin {
         decoration: const BoxDecoration(gradient: Marka.hero),
         clipBehavior: Clip.hardEdge,
         child: Stack(children: [
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (_, _) => CustomPaint(painter: _AuroraCizer(Curves.easeInOut.transform(_c.value))),
-            ),
-          ),
-          widget.child,
+          // Ayrı katman: ışıklar oynarken üstteki içerik yeniden boyanmaz.
+          Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: _AuroraCizer(_t)))),
+          // İçerideki cam kutular (Cam) bulanıklığı TEK seferde paylaşsın.
+          BackdropGroup(child: widget.child),
         ]),
       );
 }
 
 class _AuroraCizer extends CustomPainter {
-  _AuroraCizer(this.t);
-  final double t;
+  _AuroraCizer(this._t) : super(repaint: _t);
+  final ValueListenable<double> _t;
   @override
   void paint(Canvas c, Size s) {
+    final t = _t.value;
     void blob(Offset m, double r, Color renk) {
       c.drawCircle(m, r, Paint()..shader = RadialGradient(colors: [renk, renk.withValues(alpha: 0)]).createShader(Rect.fromCircle(center: m, radius: r)));
     }
@@ -769,7 +888,7 @@ class _AuroraCizer extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AuroraCizer o) => o.t != t;
+  bool shouldRepaint(_AuroraCizer o) => o._t != _t;
 }
 
 /// Cam efektli koyu kart (üst alandaki kutular).
@@ -781,7 +900,9 @@ class Cam extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
+        // grouped: aynı Aurora içindeki tüm cam kutular arka planı tek
+        // geçişte bulanıklaştırır (görünüm aynı, GPU işi çok daha az).
+        child: BackdropFilter.grouped(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
             padding: padding,
@@ -978,8 +1099,10 @@ class _BaloncukState extends State<_Baloncuk> with SingleTickerProviderStateMixi
       top: MediaQuery.paddingOf(context).top + 8,
       child: AnimatedBuilder(
         animation: e,
-        builder: (_, child) => Transform.translate(offset: Offset(0, -90 * (1 - e.value)), child: Opacity(opacity: _c.value, child: child)),
-        child: Material(
+        builder: (_, child) => Transform.translate(offset: Offset(0, -90 * (1 - e.value)), child: child),
+        child: FadeTransition(
+          opacity: _c,
+          child: Material(
           color: Colors.transparent,
           child: GestureDetector(
             onTap: _git,
@@ -1010,6 +1133,7 @@ class _BaloncukState extends State<_Baloncuk> with SingleTickerProviderStateMixi
               ]),
             ),
           ),
+        ),
         ),
       ),
     );

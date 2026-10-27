@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'onbellek.dart';
 import 'tema.dart';
 
 /// Uygulama genel durumu: API istemcisi + oturumdaki personelin kimliği.
@@ -32,11 +33,23 @@ class Uyg {
   static bool eklenti(String k) => (hesap.value?['eklentiler'] as Map?)?[k] == true;
 
   static Future<void> kur() async {
-    tercih = await SharedPreferences.getInstance();
+    // Tercihler + API istemcisi (çerez dizini) birlikte okunur.
+    final sonuc = await Future.wait<Object>([
+      SharedPreferences.getInstance(),
+      Api.kur(kullaniciAjani: 'BamBumPOS-Personel/1.0 (Flutter)'),
+    ]);
+    tercih = sonuc[0] as SharedPreferences;
+    api = sonuc[1] as Api;
     final t = tercih.getString('tema');
     temaKipi.value = t == 'dark' ? ThemeMode.dark : t == 'light' ? ThemeMode.light : ThemeMode.system;
-    api = await Api.kur(kullaniciAjani: 'BamBumPOS-Personel/1.0 (Flutter)');
+    Onbellek.kur(tercih);
   }
+
+  static const _hesapAnahtari = '/api/v1/portal/hesap';
+
+  /// Son bilinen hesap (açılışta ağ beklemeden kabuğa geçmek için). 30 günden
+  /// eskiyse yok sayılır; oturum düşmüşse arkadan gelen 401 eşleme ekranına döndürür.
+  static Map<String, dynamic>? get onbellekHesap => Onbellek.harita(_hesapAnahtari, enEski: const Duration(days: 30));
 
   /// İşletmenin mesai konum kuralı (hesap › mesai_konum). Alan yoksa (eski
   /// sunucu) zorunlu değil. Kural yalnız web konsolunda açılıp kapatılır.
@@ -48,12 +61,20 @@ class Uyg {
   /// Oturum var mı? Varsa kimliği yükler.
   static Future<bool> hesapYukle() async {
     try {
-      final r = await api.get('/api/v1/portal/hesap');
-      hesap.value = Map<String, dynamic>.from(r as Map);
+      final r = await api.get(_hesapAnahtari);
+      final yeni = Map<String, dynamic>.from(r as Map);
+      // Başka personel eşlendiyse eski kişinin önbelleği gösterilmesin.
+      final eskiId = onbellekHesap?['id'];
+      if (eskiId != null && eskiId != yeni['id']) await Onbellek.temizle();
+      hesap.value = yeni;
       _hesapZamani = DateTime.now();
+      Onbellek.yaz(_hesapAnahtari, yeni);
       return true;
     } on ApiHata catch (e) {
-      if (e.oturumYok) return false;
+      if (e.oturumYok) {
+        await Onbellek.temizle();
+        return false;
+      }
       rethrow;
     }
   }
@@ -89,6 +110,7 @@ class Uyg {
       // Yine de yerelde çık.
     }
     await api.cerezleriSil();
+    await Onbellek.temizle();
     hesap.value = null;
   }
 }

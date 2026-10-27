@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,9 +16,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(durumCubugu);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  await initializeDateFormatting('tr_TR');
-  await Uyg.kur();
-  await BildirimMerkezi.kur();
+  // İlk kareden önce YALNIZ gerekenler, birlikte: tarih biçimleri + tercihler +
+  // API istemcisi. Bildirim eklentisi ve arka plan görevi ilk kareyi
+  // bekletmez (BildirimMerkezi.basla kurulumun bitmesini kendisi bekler).
+  await Future.wait([initializeDateFormatting('tr_TR'), Uyg.kur()]);
+  unawaited(BildirimMerkezi.kur());
   runApp(const PersonelUygulamasi());
 }
 

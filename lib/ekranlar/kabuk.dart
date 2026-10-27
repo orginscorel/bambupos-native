@@ -1,11 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/bildirim.dart';
 import '../core/guncelleme.dart';
+import '../core/konum.dart';
 import '../core/durum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
@@ -26,7 +26,7 @@ import 'vardiyam.dart';
 void kabugaGec(BuildContext context) {
   Navigator.of(context).pushAndRemoveUntil(
     PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 650),
+      transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (_, _, _) => const Kabuk(),
       transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
     ),
@@ -35,7 +35,7 @@ void kabugaGec(BuildContext context) {
 }
 
 /// Yeni sayfa aç (iOS tarzı kaydırmalı geçiş).
-Future<T?> git<T>(BuildContext context, Widget sayfa) => Navigator.of(context).push<T>(CupertinoPageRoute(builder: (_) => sayfa));
+Future<T?> git<T>(BuildContext context, Widget sayfa) => Navigator.of(context).push<T>(HizliRota(builder: (_) => sayfa));
 
 /// Web adresini (bildirim bağlantısı) uygulama ekranına çevirir.
 void adreseGit(String url) {
@@ -45,7 +45,7 @@ void adreseGit(String url) {
   final sekme = switch (yol) {
     '/panelim' => 0,
     '/gorevlerim' => 1,
-    '/takvim' => 2,
+    '/takvim' || '/vardiyam' || '/shift' => 2,
     '/profilim' => 3,
     _ => -1,
   };
@@ -63,7 +63,31 @@ void adreseGit(String url) {
     '/qr-okut' => const QrOkutEkrani(),
     _ => null,
   };
-  if (s != null) git(ctx, s);
+  if (s is QrOkutEkrani) {
+    qrOkutAc(ctx);
+  } else if (s != null) {
+    git(ctx, s);
+  }
+}
+
+/// QR okutucuyu açar — ÖNCE konum: servis kapalı / izin yoksa kamera açılmaz,
+/// izin panosu çıkar (işletme kuralı kapalıysa "Şimdilik geç" de var).
+/// Tüm girişler (alt çubuk, ana sayfa kartı, Mesaim, bildirim) bunu kullanır.
+Future<void> qrOkutAc(BuildContext context, {bool kabuktan = false}) async {
+  if (!await qrOncesiKonum(context) || !context.mounted) return;
+  if (!kabuktan) {
+    await git(context, const QrOkutEkrani());
+    return;
+  }
+  await Navigator.of(context).push(PageRouteBuilder(
+    transitionDuration: const Duration(milliseconds: 250),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
+    pageBuilder: (_, _, _) => const QrOkutEkrani(),
+    transitionsBuilder: (_, a, _, child) {
+      final e = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+      return FadeTransition(opacity: e, child: ScaleTransition(scale: Tween(begin: .92, end: 1.0).animate(e), child: child));
+    },
+  ));
 }
 
 class Kabuk extends StatefulWidget {
@@ -84,6 +108,9 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
     BildirimMerkezi.basla();
     WidgetsBinding.instance.addObserver(this);
     KonumKapisi.etkin.value = true; // oturumlu alan: konum kuralı denetlensin
+    // Canlı uzaklık (yalnız kural açık + izin tamam + önde iken akış çalışır).
+    KonumIzleyici.tazele();
+    KonumIzleyici.takipBaslat();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 3), () {
         if (mounted) Guncelleme.bak();
@@ -93,13 +120,19 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
-    // Uygulamaya dönünce yeni sürüm var mı tekrar bak (30 dk sınırı içinde).
     if (s == AppLifecycleState.resumed) {
+      // Bildirim yoklaması yeniden (son yoklama eskiyse hemen).
+      BildirimMerkezi.devam();
+      // Uygulamaya dönünce yeni sürüm var mı tekrar bak (30 dk sınırı içinde).
       Guncelleme.bak();
-      // Shift planı değişmiş olabilir: sesli hatırlatmaları tazele (Android).
-      BildirimMerkezi.hatirlatmaEsitle();
+      // Shift planı değişmiş olabilir: sesli hatırlatmaları tazele (Android, 15 dk sınırı).
+      BildirimMerkezi.hatirlatmaTazele();
       // Konsolda değişen ayarlar (ör. mesai konum kuralı) gelsin — en çok 5 dk'da bir.
       Uyg.hesapTazele();
+    } else if (s == AppLifecycleState.paused || s == AppLifecycleState.hidden) {
+      // Arka planda ön plan yoklaması yok (pil + veri). Android'de WorkManager,
+      // iPhone'da APNs bildirimleri getirir.
+      BildirimMerkezi.durdur();
     }
   }
 
@@ -107,21 +140,14 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     KonumKapisi.etkin.value = false;
+    KonumIzleyici.takipDurdur();
     BildirimMerkezi.durdur();
     super.dispose();
   }
 
   void _qr() {
     titret(1);
-    Navigator.of(context).push(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 450),
-      reverseTransitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, _, _) => const QrOkutEkrani(),
-      transitionsBuilder: (_, a, _, child) {
-        final e = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
-        return FadeTransition(opacity: e, child: ScaleTransition(scale: Tween(begin: .92, end: 1.0).animate(e), child: child));
-      },
-    ));
+    qrOkutAc(context, kabuktan: true);
   }
 
   @override
@@ -133,6 +159,10 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
         return Scaffold(
           extendBody: true,
           body: Stack(children: [
+            // Üstte canlı konum şeridi (tüm sekmeler); altında sekmeler.
+            Positioned.fill(
+              child: KonumSeridiKatmani(
+                child: Stack(children: [
             for (var i = 0; i < 4; i++)
               Offstage(
                 offstage: s != i,
@@ -146,6 +176,9 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
                       : const SizedBox(),
                 ),
               ),
+                ]),
+              ),
+            ),
             Positioned(
               left: 12,
               right: 12,
@@ -207,14 +240,15 @@ class PaAltCubuk extends StatelessWidget {
         return Stack(clipBehavior: Clip.none, children: [
           // Gölge — QR çentiğini de izler
           Positioned.fill(child: CustomPaint(painter: _CubukGolge(kesim: kesim, koyu: r.koyu))),
-          // Cam zemin (çentikli şekil)
+          // Zemin (çentikli şekil). Eskiden %90-94 opak renk + 22'lik bulanıklıktı:
+          // o kadar opak zeminde bulanıklık neredeyse görünmüyordu ama her
+          // kaydırma karesinde tüm çubuk alanını yeniden bulanıklaştırıyordu
+          // (zayıf tablette takılmanın ana sebebi). Artık bulanıklık yok, zemin
+          // tam opak → arkadan kayan yazı silik de olsa görünmez.
           Positioned.fill(
             child: ClipPath(
               clipper: kesim,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-                child: ColoredBox(color: r.kart.withValues(alpha: r.koyu ? .9 : .94)),
-              ),
+              child: ColoredBox(color: r.kart),
             ),
           ),
           // Üst kenar çizgisi
@@ -413,9 +447,33 @@ class _QrDugme extends StatefulWidget {
 }
 
 class _QrDugmeState extends State<_QrDugme> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))..repeat();
+  // Nefes: 2,8 sn halka açılır, 2,2 sn dinlenir. Eskiden durmadan dönüyordu →
+  // alt çubuk HER sekmede ekranı saniyede 60 kez yeniden çizdiriyordu (pil).
+  static const _dinlenme = Duration(milliseconds: 2200);
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.completed) _planla(_dinlenme);
+    });
+  Timer? _zaman;
+
+  @override
+  void initState() {
+    super.initState();
+    _planla(Duration.zero);
+  }
+
+  void _planla(Duration d) {
+    _zaman?.cancel();
+    _zaman = Timer(d, () {
+      if (!mounted) return;
+      if (!uygulamaOnde.value || hareketAzalt(context)) return _planla(_dinlenme);
+      _c.forward(from: 0);
+    });
+  }
+
   @override
   void dispose() {
+    _zaman?.cancel();
     _c.dispose();
     super.dispose();
   }
@@ -431,20 +489,20 @@ class _QrDugmeState extends State<_QrDugme> with SingleTickerProviderStateMixin 
         width: d,
         height: d,
         child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
-          // Nefes alan halka
-          AnimatedBuilder(
-            animation: _c,
-            builder: (_, _) {
-              final t = Curves.easeOut.transform(_c.value);
-              return Opacity(
-                opacity: (1 - t) * .55,
-                child: Container(
+          // Nefes alan halka (ayrı katman: çubuğun geri kalanı yeniden boyanmaz)
+          RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _c,
+              builder: (_, _) {
+                final t = Curves.easeOut.transform(_c.value);
+                // Dinlenirken (t = 1) halka tamamen saydam → çizilmez.
+                return Container(
                   width: d + 16 * t,
                   height: d + 16 * t,
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Marka.mor, width: 2)),
-                ),
-              );
-            },
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Marka.mor.withValues(alpha: (1 - t) * .55), width: 2)),
+                );
+              },
+            ),
           ),
           Container(
             width: d,

@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest_all.dart' as tzveri;
+// Yalnız son 10 yılın kuralları: tüm veritabanının ~1/6'sı (daha küçük uygulama,
+// ilk hatırlatma kurulumunda ana iş parçacığında çok daha kısa ayrıştırma).
+import 'package:timezone/data/latest_10y.dart' as tzveri;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../ortak/ortak.dart';
@@ -29,6 +31,9 @@ class MesaiHatirlatma {
   static const kanalId = 'mesai_hatirlatma';
   static const tercihAnahtari = 'mesai_hatirlatma_acik';
   static const _idAnahtari = 'mesai_hatirlatma_idleri';
+  static const _imzaAnahtari = 'mesai_hatirlatma_imza';
+  /// Bu süreçte en son kurulan planın imzası (ön plan).
+  static String? _sonImza;
   static const _konumAdi = 'Europe/Istanbul';
   static const _ileri = Duration(days: 7);
 
@@ -174,6 +179,16 @@ class MesaiHatirlatma {
       liste = anlar(l, DateTime.now());
     }
 
+    // Plan değişmediyse alarmları silip yeniden kurma (her açılış/dönüşte 28
+    // platform çağrısı). Ön planda sürecin İLK eşitlemesi her zaman kurar
+    // (zorla durdurma alarmları silmiş olabilir); arka plan görevi kayıtlı imzaya bakar.
+    final imza = '${acik.value}|${liste.map((a) => '${a.id}@${a.zaman.millisecondsSinceEpoch}').join(',')}';
+    final kayitli = p.getString(_imzaAnahtari);
+    if (kayitli == imza && (!onPlan || _sonImza == imza)) {
+      if (onPlan) _onPlanKur(liste);
+      return;
+    }
+
     final android = eklenti.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     // Eskileri sil
     final eski = (p.getStringList(_idAnahtari) ?? const []).map(int.tryParse).whereType<int>();
@@ -185,6 +200,7 @@ class MesaiHatirlatma {
     if (onPlan) _onPlanKur(liste);
     if (liste.isEmpty) {
       await p.setStringList(_idAnahtari, const []);
+      await _imzaKaydet(p, imza, onPlan);
       return;
     }
 
@@ -213,6 +229,13 @@ class MesaiHatirlatma {
       }
     }
     await p.setStringList(_idAnahtari, kurulan);
+    // Hepsi kurulduysa imzayı sakla (eksik kaldıysa sonraki eşitleme yeniden dener).
+    if (kurulan.length == liste.length) await _imzaKaydet(p, imza, onPlan);
+  }
+
+  static Future<void> _imzaKaydet(SharedPreferences p, String imza, bool onPlan) async {
+    if (onPlan) _sonImza = imza;
+    await p.setString(_imzaAnahtari, imza);
   }
 
   /* ───────── Uygulama açıkken: titreşim + baloncuk ───────── */

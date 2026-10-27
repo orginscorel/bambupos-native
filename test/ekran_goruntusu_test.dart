@@ -308,6 +308,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     MesaiHatirlatma.androidZorla = null;
     KonumKapisi.etkin.value = false;
+    KonumIzleyici.denetci = () async => KonumDurum.tamam;
+    KonumIzleyici.durum.value = null;
+    KonumIzleyici.canli.value = null;
     PackageInfo.setMockInitialValues(appName: 'BamBumPOS Personel', packageName: 'com.bambumpos.personel', version: '1.0.0', buildNumber: '1', buildSignature: '', installerStore: null);
     Uyg.tercih = await SharedPreferences.getInstance();
     Uyg.api = Api.bellekte(_SahteSunucu(), tabanUrl: 'https://personel.bambumpos.com');
@@ -374,6 +377,44 @@ void main() {
   ekranlar['19-konum-zorunlu'] = () => kapili(KonumDurum.izinYok);
   ekranlar['19-konum-zorunlu-ayar'] = () => kapili(KonumDurum.kaliciRed);
   ekranlar['19-konum-zorunlu-servis'] = () => kapili(KonumDurum.servisKapali);
+  // KONUM DURUMU (görünür): ana sayfa satırı + Profil satırı her durumda.
+  Widget durumlu(KonumDurum d, Widget ekran, {bool kural = true}) {
+    if (kural) Uyg.hesap.value = {...?Uyg.hesap.value, 'mesai_konum': {'zorunlu': true, 'yaricap_m': 150}};
+    KonumIzleyici.denetci = () async => d;
+    return ekran;
+  }
+  for (final d in {'tamam': KonumDurum.tamam, 'izinyok': KonumDurum.izinYok, 'servis': KonumDurum.servisKapali, 'kalici': KonumDurum.kaliciRed}.entries) {
+    ekranlar['20-konum-ana-${d.key}'] = () => durumlu(d.value, const AnaSayfa());
+    ekranlar['21-konum-profil-${d.key}'] = () => durumlu(d.value, const ProfilEkrani());
+  }
+  ekranlar['20-konum-ana-kuralsiz'] = () => durumlu(KonumDurum.tamam, const AnaSayfa(), kural: false);
+  // CANLI KONUM ŞERİDİ (kabuğun üstünde, tüm sekmeler): dışarıda / içeride / içeride-küçülmüş.
+  Widget seritli(double mesafe, Widget sayfa, int sekme) {
+    Uyg.hesap.value = {...?Uyg.hesap.value, 'mesai_konum': {'zorunlu': true, 'yaricap_m': 150, 'lat': 40.6680979, 'lng': 36.5677891}};
+    KonumIzleyici.denetci = () async => KonumDurum.tamam;
+    KonumIzleyici.durum.value = KonumDurum.tamam;
+    KonumIzleyici.canli.value = KonumCanli.hesapla(mesafe: mesafe, dogruluk: 12, yaricap: 150);
+    return Scaffold(
+      extendBody: true,
+      body: KonumSeridiKatmani(child: sayfa),
+      bottomNavigationBar: PaAltCubuk(secili: sekme, onSec: (_) {}, onQr: () {}),
+    );
+  }
+  ekranlar['23-serit-disarida'] = () => seritli(320, const AnaSayfa(), 0);
+  ekranlar['23-serit-disarida-gorevler'] = () => seritli(1840, const GorevlerEkrani(), 1);
+  ekranlar['23-serit-icerde'] = () => seritli(40, const AnaSayfa(), 0);
+  ekranlar['23-serit-icerde-kucuk'] = () => seritli(40, const AnaSayfa(), 0);
+  ekranlar['24-qr-uyari'] = () {
+    KonumIzleyici.canli.value = KonumCanli.hesapla(mesafe: 320, dogruluk: 12, yaricap: 150);
+    return const Material(
+      color: Color(0xFF222222),
+      child: Stack(children: [Positioned(left: 16, right: 16, top: 110, child: KonumQrUyarisi())]),
+    );
+  };
+  // QR kapısı: izin yokken okutucu yerine izin panosu (kural kapalı → "Şimdilik geç").
+  ekranlar['22-qr-kapisi'] = () => durumlu(KonumDurum.izinYok, const _PanoGosterici(_PanoTur.qrKapisi), kural: false);
+  ekranlar['22-qr-kapisi-zorunlu'] = () => durumlu(KonumDurum.izinYok, const _PanoGosterici(_PanoTur.qrKapisi));
+  ekranlar['22-qr-kapisi-servis'] = () => durumlu(KonumDurum.servisKapali, const _PanoGosterici(_PanoTur.qrKapisi));
   final secilen = Platform.environment['EKRAN'];
 
   for (final b in boyutlar.entries) {
@@ -386,13 +427,20 @@ void main() {
           t.view.padding = const FakeViewPadding(bottom: 34);
           t.view.viewPadding = const FakeViewPadding(bottom: 34);
         }
-        if (e.key.startsWith('19-konum')) {
+        if (e.key.startsWith('19-konum') || e.key.startsWith('23-serit') || e.key.startsWith('24-')) {
           t.view.padding = const FakeViewPadding(top: 44, bottom: 34);
           t.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
         }
         addTearDown(t.view.reset);
         await t.pumpWidget(_uygulama(e.value()));
         await _bekle(t);
+        if (e.key.endsWith('-kucuk')) await _bekle(t, 60); // 4 sn sonra küçülür
+        // Konum satırı sayfanın aşağısında: oraya kaydır.
+        if (e.key.startsWith('20-konum-ana') || e.key.startsWith('21-konum-profil')) {
+          final kaydirilan = find.byType(Scrollable).first;
+          await t.drag(kaydirilan, Offset(0, e.key.startsWith('20') ? -560 : -700));
+          await _bekle(t, 12);
+        }
         await _yaz(t, '${e.key}-${b.key}');
         await t.pumpWidget(const SizedBox());
         await t.pump(const Duration(seconds: 5));
@@ -401,7 +449,7 @@ void main() {
   }
 }
 
-enum _PanoTur { konum, uzak }
+enum _PanoTur { konum, uzak, qrKapisi }
 
 /// Konum panolarını ekran görüntüsü için açar.
 class _PanoGosterici extends StatefulWidget {
@@ -416,14 +464,12 @@ class _PanoGostericiState extends State<_PanoGosterici> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.tur == _PanoTur.konum) {
+      if (widget.tur == _PanoTur.qrKapisi) {
+        qrOncesiKonum(context);
+      } else if (widget.tur == _PanoTur.konum) {
         konumPanosu(context, KonumDurum.izinYok, sunucuMesaji: 'Bu işletmede mesai QR\'ı için konum doğrulaması zorunlu.');
       } else {
-        konumUyariPanosu(context,
-            ikon: Icons.wrong_location_rounded,
-            baslik: 'Mesai noktasına uzaksın (≈420 m)',
-            aciklama: 'QR yalnız işletmenin 150 m yakınında okutulabilir. İşletmeye geldiğinde yeniden okut; konumun yanlışsa açık alanda tekrar dene.',
-            tekrarYazi: 'Konumu yenile ve dene');
+        uzakPanosu(context, mesafe: 420, yaricap: 150);
       }
     });
   }

@@ -31,7 +31,9 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
   DateTime? _bitis;
   String _ad = '';
   String? _hata;
-  int _kalan = 0;
+  /// Kalan saniye: yalnız sayaç yazısı yeniden çizilir (eskiden her saniye
+  /// QR dahil tüm ekran yeniden kuruluyordu).
+  final _kalan = ValueNotifier<int>(0);
   Timer? _yokla;
   Timer? _say;
 
@@ -56,6 +58,7 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
   void dispose() {
     _yokla?.cancel();
     _say?.cancel();
+    _kalan.dispose();
     super.dispose();
   }
 
@@ -85,7 +88,7 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
     void tik() {
       final k = _bitis!.difference(DateTime.now()).inSeconds;
       if (!mounted) return;
-      setState(() => _kalan = k < 0 ? 0 : k);
+      _kalan.value = k < 0 ? 0 : k;
       if (k <= 0) _yeniKod();
     }
 
@@ -98,6 +101,7 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
 
   Future<void> _kontrol() async {
     if (_asama != _Asama.bekliyor || _kod == null) return;
+    if (!uygulamaOnde.value) return; // arka planda yoklama yok; öne gelince sürer
     try {
       final r = await Uyg.api.post('/api/v1/personel-eslesme/durum', {'kod': _kod, 'gizli': _gizli}) as Map;
       final d = r['durum']?.toString();
@@ -203,7 +207,7 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
                     ]),
                     const SizedBox(height: 12),
                     Basilir(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GirisEkrani())),
+                      onTap: () => Navigator.of(context).push(HizliRota(builder: (_) => const GirisEkrani())),
                       child: Container(
                         height: 52,
                         alignment: Alignment.center,
@@ -231,8 +235,6 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
 
   Widget _kodKarti() {
     final kod = _kod ?? '······';
-    final dk = _kalan ~/ 60;
-    final sn = (_kalan % 60).toString().padLeft(2, '0');
     return Cam(
       padding: const EdgeInsets.all(18),
       child: Column(children: [
@@ -242,7 +244,10 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
           if (_asama == _Asama.bekliyor) ...[
             Container(width: 7, height: 7, decoration: const BoxDecoration(color: Color(0xFF6EE7B7), shape: BoxShape.circle)),
             const SizedBox(width: 6),
-            Text('$dk:$sn', style: gosterim(13, agirlik: FontWeight.w600, renk: Colors.white60)),
+            ValueListenableBuilder<int>(
+              valueListenable: _kalan,
+              builder: (_, k, _) => Text('${k ~/ 60}:${(k % 60).toString().padLeft(2, '0')}', style: gosterim(13, agirlik: FontWeight.w600, renk: Colors.white60)),
+            ),
           ],
         ]),
         const SizedBox(height: 14),
