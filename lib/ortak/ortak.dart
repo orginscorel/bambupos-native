@@ -2,6 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'dugme.dart';
+import 'package:flutter/services.dart';
+
 import '../app/hareket.dart';
 import '../core/api.dart';
 import '../core/tema.dart';
@@ -41,74 +44,165 @@ void bildir(String baslik, {String? mesaj, BildirimTur tur = BildirimTur.basari}
 
 /* ───────────────────────── Marka işareti ───────────────────────── */
 
-/// Patron işareti: üç QR bulucu karesi + gök mavisi rozette çubuk grafik
-/// (web Pair.vue'deki SVG'nin birebir eşi). 64×64 koordinat düzleminde çizer.
+/// PATRON İŞARETİ (2026-10-27, yeni): yükselen üç tepeli TAÇ — tepeler soldan
+/// sağa yükselen bir grafik gibi dizilir (patronun "işler nasıl gidiyor"
+/// sorusu), ortada işletmeyi gözeten GÖZ boşluğu, en yüksek tepede gök
+/// mavisi mücevher. Zemin mor→mavi marka geçişi. POS (QR) ve personel
+/// işaretlerinden ayrışır. 64×64 koordinat düzleminde çizer.
+///
+/// Açılış animasyonu payları (0..1): [kare] taç parçaları aşağıdan gelip
+/// birleşir · [rozet] mücevher yerine oturur · [cubuk] taban şeridi uzar.
 class PatronMarkCizer extends CustomPainter {
-  const PatronMarkCizer({this.zeminVar = true, this.cubuk = 1, this.kare = 1, this.rozet = 1});
+  const PatronMarkCizer({this.zeminVar = true, this.cubuk = 1, this.kare = 1, this.rozet = 1, this.koseli = true});
 
   /// false: yalnız beyaz şekiller (uyarlanabilir simgenin ön planı).
   final bool zeminVar;
 
-  /// 0..1 animasyon payları (açılış ekranı kullanır).
+  /// false: zemin tam kare (iOS simgesi; köşeyi sistem keser).
+  final bool koseli;
   final double kare;
   final double rozet;
   final double cubuk;
 
-  static void ciz(Canvas c, {bool zeminVar = true, double kare = 1, double rozet = 1, double cubuk = 1}) {
-    if (zeminVar) {
-      c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 64, 64), const Radius.circular(12)),
-          Paint()..shader = Marka.grad.createShader(const Rect.fromLTWH(0, 0, 64, 64)));
+  // Taç gövdesi üç parça (vadilerden bölünür) — birleşince tek şekil.
+  static const _sol = [Offset(14, 43), Offset(14, 28), Offset(25, 35.5), Offset(25, 43)];
+  static const _orta = [Offset(25, 43), Offset(25, 35.5), Offset(32, 20), Offset(39, 31), Offset(39, 43)];
+  static const _sag = [Offset(39, 43), Offset(39, 31), Offset(48.5, 15.5), Offset(48.5, 43)];
+  static const _tum = [Offset(14, 43), Offset(14, 28), Offset(25, 35.5), Offset(32, 20), Offset(39, 31), Offset(48.5, 15.5), Offset(48.5, 43)];
+
+  static Path _yol(List<Offset> n) {
+    final p = Path()..moveTo(n.first.dx, n.first.dy);
+    for (final o in n.skip(1)) {
+      p.lineTo(o.dx, o.dy);
     }
-    final kalem = Paint()
+    return p..close();
+  }
+
+  static void ciz(Canvas c, {bool zeminVar = true, bool koseli = true, double kare = 1, double rozet = 1, double cubuk = 1}) {
+    const alan = Rect.fromLTWH(0, 0, 64, 64);
+    if (zeminVar) {
+      final rr = RRect.fromRectAndRadius(alan, Radius.circular(koseli ? 14 : 0));
+      c.drawRRect(
+          rr,
+          Paint()
+            ..shader = const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Marka.morAcik, Marka.mor, Marka.mavi])
+                .createShader(alan));
+      // Üstte ince parlaklık + sağ altta gök ışığı (derinlik; bulanıklık yok)
+      c.drawRRect(
+          rr,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.center,
+              colors: [Colors.white.withValues(alpha: .16), Colors.white.withValues(alpha: 0)],
+            ).createShader(alan));
+      c.drawRRect(
+          rr,
+          Paint()
+            ..shader = RadialGradient(
+              center: const Alignment(.9, .9),
+              radius: .9,
+              colors: [Marka.gok.withValues(alpha: .35), Marka.gok.withValues(alpha: 0)],
+            ).createShader(alan));
+    }
+    // Şekiller zeminin optik ortasına (ağırlık sağdaki mücevherde) hafif küçültülerek oturur.
+    c.save();
+    c.translate(32, 32.5);
+    c.scale(.86);
+    c.translate(-33.4, -30.2);
+    final beyaz = Paint()..color = Colors.white;
+    final yumusat = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.6
+      ..strokeWidth = 3
       ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round
       ..color = Colors.white;
+
+    // ── Taç: üç parça aşağıdan sırayla yükselip birleşir
     if (kare > 0) {
-      for (final o in const [Offset(14, 14), Offset(35, 14), Offset(14, 35)]) {
-        final yol = Path()..addRRect(RRect.fromRectAndRadius(o & const Size(12, 12), const Radius.circular(3)));
-        if (kare >= 1) {
-          c.drawPath(yol, kalem);
-        } else {
-          for (final m in yol.computeMetrics()) {
-            c.drawPath(m.extractPath(0, m.length * kare), kalem);
-          }
+      if (kare >= 1) {
+        final g = _yol(_tum);
+        c.drawPath(g, beyaz);
+        c.drawPath(g, yumusat);
+      } else {
+        for (final (i, parca) in [_sol, _orta, _sag].indexed) {
+          final p = Curves.easeOutBack.transform(((kare - i * .18) / .64).clamp(0.0, 1.0));
+          if (p <= 0) continue;
+          c.save();
+          c.translate(0, 22 * (1 - p));
+          final y = _yol(parca);
+          final boya = Paint()..color = Colors.white.withValues(alpha: p.clamp(0.0, 1.0));
+          c.drawPath(y, boya);
+          c.drawPath(
+              y,
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 3
+                ..strokeJoin = StrokeJoin.round
+                ..color = boya.color);
+          c.restore();
         }
       }
+      // Göz: ortada marka renginde badem + gök bebek (işletmeyi gözeten patron)
+      final g = ((kare - .55) / .45).clamp(0.0, 1.0);
+      if (g > 0) {
+        c.save();
+        c.translate(32, 36);
+        c.scale(1, g);
+        final badem = Path()
+          ..moveTo(-6.5, 0)
+          ..quadraticBezierTo(0, -6.2, 6.5, 0)
+          ..quadraticBezierTo(0, 6.2, -6.5, 0)
+          ..close();
+        c.drawPath(badem, Paint()..color = zeminVar ? Marka.mor : Colors.transparent);
+        if (!zeminVar) {
+          // ön plan katmanında göz "delik" olarak açılır
+          c.drawPath(badem, Paint()..blendMode = BlendMode.clear);
+        }
+        c.drawCircle(Offset.zero, 2.4, Paint()..color = zeminVar ? Marka.gok : Colors.white);
+        c.restore();
+      }
+      // Sol ve orta tepede küçük inciler
+      final inci = ((kare - .7) / .3).clamp(0.0, 1.0);
+      if (inci > 0) {
+        c.drawCircle(const Offset(14, 28), 2.9 * inci, beyaz);
+        c.drawCircle(const Offset(32, 20), 3.1 * inci, beyaz);
+      }
     }
+
+    // ── Taban şeridi: ortadan iki yana uzar
+    if (cubuk > 0) {
+      final w = 36.0 * Curves.easeOutCubic.transform(cubuk.clamp(0.0, 1.0));
+      c.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: const Offset(31.25, 49.5), width: w, height: 5.6), const Radius.circular(2.8)), beyaz);
+    }
+
+    // ── En yüksek tepede gök mavisi mücevher
     if (rozet > 0) {
       c.save();
-      c.translate(45, 45);
+      c.translate(48.5, 15.5);
       c.scale(rozet);
-      c.drawCircle(Offset.zero, 11, Paint()..color = Marka.gok);
-      c.drawCircle(Offset.zero, 11, Paint()..style = PaintingStyle.stroke..strokeWidth = 3..color = Colors.white);
-      final ck = Paint()
-        ..strokeWidth = 2.6
-        ..strokeCap = StrokeCap.round
-        ..color = Colors.white;
-      // M40 49v-3 · M45 49v-7 · M50 49v-5  (rozet merkezine göre)
-      const boylar = [3.0, 7.0, 5.0];
-      for (var i = 0; i < 3; i++) {
-        final p = ((cubuk - i * .15) / .7).clamp(0.0, 1.0);
-        if (p <= 0) continue;
-        final x = -5.0 + 5 * i;
-        c.drawLine(Offset(x, 4), Offset(x, 4 - boylar[i] * Curves.easeOutBack.transform(p)), ck);
-      }
+      c.drawCircle(Offset.zero, 5.2, Paint()..color = Marka.gok);
+      c.drawCircle(Offset.zero, 5.2, Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..color = Colors.white);
+      c.drawCircle(const Offset(-1.5, -1.5), 1.3, Paint()..color = Colors.white.withValues(alpha: .85));
       c.restore();
     }
+    c.restore();
   }
 
   @override
   void paint(Canvas c, Size s) {
     c.save();
     c.scale(s.width / 64, s.height / 64);
-    ciz(c, zeminVar: zeminVar, kare: kare, rozet: rozet, cubuk: cubuk);
+    if (!zeminVar) c.saveLayer(const Rect.fromLTWH(0, 0, 64, 64), Paint());
+    ciz(c, zeminVar: zeminVar, koseli: koseli, kare: kare, rozet: rozet, cubuk: cubuk);
+    if (!zeminVar) c.restore();
     c.restore();
   }
 
   @override
-  bool shouldRepaint(PatronMarkCizer o) => o.kare != kare || o.rozet != rozet || o.cubuk != cubuk || o.zeminVar != zeminVar;
+  bool shouldRepaint(PatronMarkCizer o) => o.kare != kare || o.rozet != rozet || o.cubuk != cubuk || o.zeminVar != zeminVar || o.koseli != koseli;
 }
 
 class PaMark extends StatelessWidget {
@@ -239,7 +333,7 @@ class SatirGrubu extends StatelessWidget {
 /// Sayıyı önceki değerinden yenisine sayarak yazar. "Animasyonları azalt"
 /// açıksa doğrudan son değeri yazar. Ekran okuyucu son değeri okur.
 class SayacMetin extends StatefulWidget {
-  const SayacMetin({super.key, required this.deger, required this.yaz, this.stil, this.sure = const Duration(milliseconds: 900)});
+  const SayacMetin({super.key, required this.deger, required this.yaz, this.stil, this.sure = const Duration(milliseconds: 250)});
   final num deger;
   final String Function(num) yaz;
   final TextStyle? stil;
@@ -300,14 +394,19 @@ class DegisimRozeti extends StatelessWidget {
         : iyi
             ? (koyuZemin ? Marka.zumrutAcik : r.arti)
             : (koyuZemin ? Marka.gulAcik : r.eksi);
-    final metin = '${y > 0 ? '▲' : y < 0 ? '▼' : '▬'} %${y.abs().toStringAsFixed(y.abs() >= 10 ? 0 : 1).replaceAll('.', ',')}';
+    final metin = '%${y.abs().toStringAsFixed(y.abs() >= 10 ? 0 : 1).replaceAll('.', ',')}';
+    final ok = y > 0 ? Icons.arrow_upward_rounded : y < 0 ? Icons.arrow_downward_rounded : Icons.remove_rounded;
     return Semantics(
       label: notr ? 'Değişim yok' : (y > 0 ? 'Yüzde ${y.abs()} artış' : 'Yüzde ${y.abs()} düşüş'),
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(color: renk.withValues(alpha: .14), borderRadius: BorderRadius.circular(6)),
-        child: Text(metin, style: TextStyle(color: renk, fontWeight: FontWeight.w700, fontSize: 11.5)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(ok, size: 12, color: renk),
+          const SizedBox(width: 2),
+          Text(metin, style: TextStyle(color: renk, fontWeight: FontWeight.w700, fontSize: 11.5)),
+        ]),
       ),
     );
   }
@@ -424,7 +523,7 @@ class HataDurum extends StatelessWidget {
         const SizedBox(height: 10),
         Text(mesaj, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600, color: r.metin)),
         const SizedBox(height: 14),
-        OutlinedButton.icon(onPressed: yenile, icon: const Icon(Icons.refresh_rounded), label: const Text('Tekrar dene')),
+        YumusakDugme(onTap: yenile, ikon: Icons.refresh_rounded, yazi: 'Tekrar dene'),
       ]),
     );
   }
@@ -484,8 +583,16 @@ class PaSayfa extends StatelessWidget {
         ),
       ],
     );
-    return Scaffold(
-      body: yenile == null ? liste : RefreshIndicator(onRefresh: yenile!, color: r.birincil, child: liste),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: context.durumCubugu(),
+      child: Scaffold(
+        body: Stack(children: [
+          yenile == null ? liste : RefreshIndicator(onRefresh: yenile!, color: r.birincil, edgeOffset: ust, child: liste),
+          // Durum çubuğu şeridi: içerik kayarken saat/şarj simgelerinin
+          // altına yazı girmesin (opak zemin, bulanıklık yok).
+          Positioned(top: 0, left: 0, right: 0, height: ust, child: ColoredBox(color: r.zemin)),
+        ]),
+      ),
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:flutter/material.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -9,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app/hareket.dart';
 import '../ortak/ortak.dart';
 import 'api.dart';
+import 'demo_veri.dart';
 import 'durum.dart';
 import 'tema.dart';
 
@@ -57,6 +60,7 @@ class Guncelleme {
 
   /// Yeni sürüm varsa true. [zorla] = 30 dk sınırını yok say (Daha fazla'daki düğme).
   static Future<bool> bak({bool zorla = false}) async {
+    if (kIsWeb || demoKipi) return false;
     if (!zorla && _sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 30)) {
       return bulunan.value != null;
     }

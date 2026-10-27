@@ -1,33 +1,35 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app/hareket.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
+import '../core/canli.dart';
 import '../core/durum.dart';
 import '../core/tema.dart';
+import '../ortak/dugme.dart';
 import '../ortak/ortak.dart';
+import '../ortak/ust_serit.dart';
+import 'gorevler.dart';
+import 'kabuk.dart';
+import 'mesai.dart';
+import 'vardiya.dart';
 
-/// EKİP: şu an mesaide olanlar + bugün başlayacaklar (overview), bugünün
-/// vardiya planı (/api/v1/shifts/schedule) ve görevler (/api/v1/tasks).
-/// Bölümler birbirinden bağımsız yüklenir; yetki/eklenti yoksa o bölüm
-/// açıklamayla gizlenir.
+/// EKİP merkezi: canlı sayaçlar, hızlı bağlantılar (vardiya, mesai,
+/// görevler, talepler), şu an mesaide olanlar (vardiya ilerlemesiyle),
+/// bugünün vardiya zaman çizelgesi ve açık görevler.
+/// Uçlar: overview (Canli.ozet), /api/v1/shifts/schedule (bugün),
+/// /api/v1/tasks (Canli.gorevler), talepler (Canli.bekleyen*).
 class EkipEkrani extends StatefulWidget {
   const EkipEkrani({super.key});
   @override
   State<EkipEkrani> createState() => _EkipEkraniState();
 }
 
-class _Bolum<T> {
-  T? veri;
-  ApiHata? hata;
-  bool get yuklendi => veri != null || hata != null;
-}
-
 class _EkipEkraniState extends State<EkipEkrani> {
-  final _mesai = _Bolum<Map<String, dynamic>>();
-  final _vardiya = _Bolum<List<Map<String, dynamic>>>();
-  final _gorev = _Bolum<List<Map<String, dynamic>>>();
-  int _gorevSekme = 0; // 0 açık · 1 tamamlanan
+  List<Vardiya>? _bugun;
+  ApiHata? _vardiyaHata;
 
   @override
   void initState() {
@@ -36,259 +38,363 @@ class _EkipEkraniState extends State<EkipEkrani> {
   }
 
   Future<void> _yukle() async {
-    final gun = Bicim.iso(Uyg.isGunu);
     final n = DateTime.now();
-    final takvim = Bicim.iso(DateTime(n.year, n.month, n.day));
+    final g = DateTime(n.year, n.month, n.day);
     await Future.wait([
-      _al(_mesai, () async => ((await Uyg.api.get('/api/v1/boss/overview', sorgu: const {'period': 'day'})) as Map).m('data')),
-      _al(_vardiya, () async {
-        final r = await Uyg.api.get('/api/v1/shifts/schedule', sorgu: {'from': gun.compareTo(takvim) < 0 ? gun : takvim, 'to': takvim});
-        return (r as Map).l('shifts');
-      }),
-      _al(_gorev, () async => ((await Uyg.api.get('/api/v1/tasks')) as Map).l('tasks')),
+      Canli.tazele(zorla: true),
+      () async {
+        try {
+          final r = await Uyg.api.get('/api/v1/shifts/schedule', sorgu: {'from': gunIso(g.subtract(const Duration(days: 1))), 'to': gunIso(g.add(const Duration(days: 1)))});
+          final l = [for (final s in (r is Map ? r.l('shifts') : const <Map<String, dynamic>>[])) if (DateTime.tryParse(s.s('starts_at')) != null) Vardiya(s)];
+          final son = g.add(const Duration(days: 1));
+          if (mounted) {
+            setState(() {
+              _bugun = l.where((v) => v.bas.isBefore(son) && v.son.isAfter(g)).toList()..sort((a, b) => a.bas.compareTo(b.bas));
+              _vardiyaHata = null;
+            });
+          }
+        } on ApiHata catch (e) {
+          if (mounted) setState(() => _vardiyaHata = e);
+        }
+      }(),
     ]);
   }
 
-  Future<void> _al<T>(_Bolum<T> b, Future<T> Function() f) async {
-    try {
-      final v = await f();
-      if (!mounted) return;
-      setState(() {
-        b.veri = v;
-        b.hata = null;
-      });
-    } on ApiHata catch (e) {
-      if (!mounted) return;
-      setState(() => b.hata = e);
-    }
-  }
+  void _ac(Widget s) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => s)).then((_) => _yukle());
 
   @override
   Widget build(BuildContext context) {
-    return PaSayfa(
-      baslik: 'Ekip',
-      alt: 'Mesai, vardiya ve görevler',
-      yenile: _yukle,
-      children: [
-        Belirme(sira: 0, child: _mesaiKarti()),
-        const SizedBox(height: 14),
-        Belirme(sira: 1, child: _vardiyaKarti()),
-        const SizedBox(height: 14),
-        Belirme(sira: 2, child: _gorevKarti()),
-      ],
+    return AnimatedBuilder(
+      animation: Listenable.merge([Canli.ozet, Canli.gorevler, Canli.bekleyenIzin, Canli.bekleyenTakas]),
+      builder: (context, _) {
+        final v = Canli.ozet.value;
+        final ms = v?.l('on_shift') ?? const <Map<String, dynamic>>[];
+        final bekleyen = Canli.bekleyenIzin.value + Canli.bekleyenTakas.value;
+        final gorev = Canli.gorevler.value;
+        final acikGorev = (gorev ?? const []).where((t) => t.s('status') != 'done').length;
+        var sira = 0;
+        Widget b(Widget w) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Belirme(sira: sira++, child: w));
+        return PaSayfa(
+          baslik: 'Ekip',
+          alt: '${ms.length} kişi mesaide · ${_bugun?.length ?? '–'} vardiya bugün',
+          yenile: _yukle,
+          altBosluk: 90,
+          sag: UstEylemler(profil: () => Kabuk.sekme.value = 3),
+          children: [
+            b(_sayaclar(ms.length, _bugun?.length, bekleyen, Canli.gecikenGorev)),
+            b(_baglantilar(bekleyen, acikGorev)),
+            b(_mesaideKarti(v, ms)),
+            b(_zamanCizelgesi()),
+            b(_gorevKarti(gorev)),
+          ],
+        );
+      },
     );
   }
 
-  Widget _bekle(_Bolum b, String baslik, IconData ikon) => PaKart(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          BolumBasligi(baslik, ikon: ikon),
-          if (b.hata != null)
-            Text(_hataMetni(b.hata!), style: TextStyle(color: context.pa.silik))
-          else
-            const Iskelet(yukseklik: 60),
-        ]),
-      );
-
-  String _hataMetni(ApiHata h) => h.yetkiYok
-      ? 'Bu bölümü görme yetkiniz yok.'
-      : h.kod == 404
-          ? 'Bu özellik işletmenizde açık değil.'
-          : h.mesaj;
-
-  Widget _kisi(String ad, String? alt, {Widget? sag, Color? nokta}) {
+  Widget _sayaclar(int mesaide, int? vardiya, int bekleyen, int geciken) {
     final r = context.pa;
-    final harf = ad.trim().isEmpty ? '•' : ad.trim().split(RegExp(r'\s+')).take(2).map((e) => e.characters.first.toUpperCase()).join();
-    return Semantics(
-      container: true,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(children: [
-          Stack(clipBehavior: Clip.none, children: [
-            Container(
-              width: 38,
-              height: 38,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(gradient: Marka.grad, borderRadius: Marka.yaricap),
-              child: Text(harf, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-            ),
-            if (nokta != null)
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Container(width: 12, height: 12, decoration: BoxDecoration(color: nokta, shape: BoxShape.circle, border: Border.all(color: r.kart, width: 2))),
+    Widget kutu(String ad, int? n, IconData ikon, Color c, {VoidCallback? onTap, String? alt}) => Expanded(
+          child: Basilir(
+            onTap: onTap,
+            etiket: '$ad: ${n ?? 'yükleniyor'}',
+            child: Container(
+              height: 92,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: r.kart,
+                borderRadius: Marka.yaricap,
+                border: Border.all(color: r.kenar),
+                gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [c.withValues(alpha: r.koyu ? .2 : .08), r.kart]),
               ),
-          ]),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(ad, style: TextStyle(color: r.metin, fontWeight: FontWeight.w600, fontSize: 14)),
-              if (alt != null && alt.isNotEmpty) Text(alt, style: TextStyle(color: r.silik, fontSize: 12.5)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Icon(ikon, size: 18, color: c),
+                n == null ? const Iskelet(yukseklik: 22, genislik: 30) : SayacMetin(deger: n, yaz: (x) => Bicim.sayi(x), stil: gosterim(22, renk: r.metin)),
+                Text(alt ?? ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: r.silik, fontSize: 11)),
+              ]),
+            ),
+          ),
+        );
+    return Row(children: [
+      kutu('Mesaide', Canli.ozet.value == null ? null : mesaide, Icons.login_rounded, r.arti),
+      const SizedBox(width: 8),
+      kutu('Vardiya', vardiya, Icons.event_note_rounded, Marka.mavi, onTap: () => _ac(const VardiyaEkrani())),
+      const SizedBox(width: 8),
+      kutu('Talep', bekleyen, Icons.inbox_rounded, bekleyen > 0 ? Marka.gul : r.silik, onTap: () => _ac(const MesaiEkrani(sekme: 1)), alt: 'Talep'),
+      const SizedBox(width: 8),
+      kutu('Geciken', geciken, Icons.alarm_rounded, geciken > 0 ? r.eksi : r.silik, onTap: () => _ac(const GorevlerEkrani(suzgec: GorevSuzgec.geciken)), alt: 'Geciken'),
+    ]);
+  }
+
+  Widget _baglantilar(int bekleyen, int acikGorev) {
+    final r = context.pa;
+    Widget dugme(IconData ikon, String ad, String alt, Color c, VoidCallback onTap, {int rozet = 0}) => Basilir(
+          onTap: onTap,
+          etiket: '$ad. $alt',
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: r.kart, borderRadius: Marka.yaricap, border: Border.all(color: r.kenar)),
+            child: Row(children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(gradient: LinearGradient(colors: [c, Color.lerp(c, Marka.mavi, .5)!]), borderRadius: Marka.yaricap),
+                child: Icon(ikon, color: Colors.white, size: 21),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: r.metin, fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  Text(alt, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: r.silik, fontSize: 11.5)),
+                ]),
+              ),
+              Rozet(rozet),
             ]),
           ),
-          ?sag,
-        ]),
-      ),
-    );
+        );
+    return LayoutBuilder(builder: (_, k) {
+      final w = (k.maxWidth - 10) / 2;
+      return Wrap(spacing: 10, runSpacing: 10, children: [
+        SizedBox(width: w, child: dugme(Icons.calendar_view_week_rounded, 'Vardiya planı', 'Haftalık takvim', Marka.mor, () => _ac(const VardiyaEkrani()))),
+        SizedBox(width: w, child: dugme(Icons.fact_check_rounded, 'Mesai', 'Giriş, geç, mola', Marka.zumrut, () => _ac(const MesaiEkrani()))),
+        SizedBox(width: w, child: dugme(Icons.checklist_rounded, 'Görevler', '$acikGorev açık görev', Marka.mavi, () => _ac(const GorevlerEkrani()))),
+        SizedBox(width: w, child: dugme(Icons.inbox_rounded, 'Talepler', 'İzin, değişim', Marka.kehribar, () => _ac(const MesaiEkrani(sekme: 1)), rozet: bekleyen)),
+      ]);
+    });
   }
 
-  Widget _mesaiKarti() {
-    final v = _mesai.veri;
-    if (v == null) return _bekle(_mesai, 'Şu an mesaide', Icons.badge_rounded);
+  Widget _mesaideKarti(Map<String, dynamic>? v, List<Map<String, dynamic>> ms) {
     final r = context.pa;
-    final ms = v.l('on_shift');
+    if (v == null) return const PaKart(child: Iskelet(yukseklik: 120));
     final sira = v.l('upcoming_today');
+    final simdi = DateTime.now();
     return PaKart(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        BolumBasligi('Şu an mesaide', ikon: Icons.badge_rounded, sag: Text('${ms.length} kişi', style: TextStyle(color: r.silik, fontWeight: FontWeight.w700))),
-        if (ms.isEmpty) Text('Şu an mesaide kimse yok.', style: TextStyle(color: r.silik)),
-        for (final p in ms)
-          _kisi(
-            p.s('name', '—'),
-            [
-              p.s('position'),
-              if (DateTime.tryParse(p.s('since')) != null) 'Giriş ${Bicim.saat(DateTime.parse(p.s('since')))}',
-            ].where((e) => e.isNotEmpty).join(' · '),
-            nokta: r.arti,
-            sag: Text(Bicim.dakika(p.i('worked_minutes')), style: TextStyle(color: r.metin, fontWeight: FontWeight.w700)),
+        BolumBasligi('Şu an mesaide', ikon: Icons.badge_rounded, alt: ms.isEmpty ? 'İçeride kimse yok' : 'Vardiya ilerlemesiyle',
+            sag: Text('${ms.length} kişi', style: TextStyle(color: r.arti, fontWeight: FontWeight.w800))),
+        if (ms.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text('Personel QR ya da mesai ekranından giriş yapınca burada görünür.', style: TextStyle(color: r.silik, fontSize: 13)),
           ),
+        for (final p in ms)
+          Builder(builder: (_) {
+            final v = _bugun?.where((x) => x.ad == p.s('name')).firstOrNull;
+            final oran = v == null ? null : (simdi.difference(v.bas).inMinutes / math.max(1, v.son.difference(v.bas).inMinutes)).clamp(0.0, 1.0);
+            final gir = DateTime.tryParse(p.s('since'));
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Avatar(p.s('name', '—'), boyut: 38, nokta: r.arti),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text(p.s('name', '—'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: r.metin, fontWeight: FontWeight.w700, fontSize: 14))),
+                      Text(Bicim.dakika(p.i('worked_minutes')), style: TextStyle(color: r.metin, fontWeight: FontWeight.w700, fontSize: 13)),
+                    ]),
+                    Text(
+                      [p.s('position'), if (gir != null) 'Giriş ${Bicim.saat(gir)}', if (v != null) 'Çıkış ${Bicim.saat(v.son)}'].where((e) => e.isNotEmpty).join(' · '),
+                      style: TextStyle(color: r.silik, fontSize: 12),
+                    ),
+                    if (oran != null) ...[
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: Stack(children: [
+                          Container(height: 4, color: r.ic),
+                          FractionallySizedBox(widthFactor: oran, child: Container(height: 4, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Marka.zumrutAcik, Marka.gok])))),
+                        ]),
+                      ),
+                    ],
+                  ]),
+                ),
+              ]),
+            );
+          }),
         if (sira.isNotEmpty) ...[
           Divider(color: r.kenar, height: 22),
-          Text('Bugün başlayacaklar', style: TextStyle(color: r.silik, fontWeight: FontWeight.w600, fontSize: 12.5)),
-          for (final p in sira)
-            _kisi(p.s('name', '—'), p.s('position'),
-                sag: Text(DateTime.tryParse(p.s('start')) == null ? '' : Bicim.saat(DateTime.parse(p.s('start'))),
-                    style: TextStyle(color: r.birincil, fontWeight: FontWeight.w700))),
+          Text('Bugün gelecekler', style: TextStyle(color: r.silik, fontWeight: FontWeight.w600, fontSize: 12.5)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final p in sira)
+              Container(
+                padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
+                decoration: BoxDecoration(color: r.ic, borderRadius: Marka.yaricap),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Avatar(p.s('name'), boyut: 26),
+                  const SizedBox(width: 6),
+                  Text(p.s('name').split(' ').first, style: TextStyle(color: r.metin, fontWeight: FontWeight.w600, fontSize: 12.5)),
+                  const SizedBox(width: 6),
+                  Text(DateTime.tryParse(p.s('start')) == null ? '' : Bicim.saat(DateTime.parse(p.s('start'))),
+                      style: TextStyle(color: r.birincil, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                ]),
+              ),
+          ]),
         ],
       ]),
     );
   }
 
-  Widget _vardiyaKarti() {
-    final v = _vardiya.veri;
-    if (v == null) return _bekle(_vardiya, 'Bugünün vardiyaları', Icons.calendar_month_rounded);
+  /// Bugünün vardiyaları: yatay zaman çizelgesi (kişi başı çubuk + "şimdi").
+  Widget _zamanCizelgesi() {
     final r = context.pa;
-    final simdi = DateTime.now();
-    final gunBas = DateTime(simdi.year, simdi.month, simdi.day);
-    final gunSon = gunBas.add(const Duration(days: 1));
-    // Bugünle kesişen vardiyalar (dünden sarkan gece vardiyası dahil).
-    final bugun = v.where((s) {
-      final a = DateTime.tryParse(s.s('starts_at'))?.toLocal();
-      if (a == null) return false;
-      final b = DateTime.tryParse(s.s('ends_at'))?.toLocal() ?? a;
-      return a.isBefore(gunSon) && !b.isBefore(gunBas);
-    }).toList()
-      ..sort((a, b) => a.s('starts_at').compareTo(b.s('starts_at')));
+    final l = _bugun;
+    if (l == null) {
+      if (_vardiyaHata != null) {
+        return PaKart(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const BolumBasligi('Bugünün vardiyaları', ikon: Icons.timeline_rounded),
+            Text(_vardiyaHata!.kod == 404 ? 'Vardiya / Mesai eklentisi işletmenizde açık değil.' : _vardiyaHata!.yetkiYok ? 'Vardiyaları görme yetkiniz yok.' : _vardiyaHata!.mesaj,
+                style: TextStyle(color: r.silik)),
+          ]),
+        );
+      }
+      return const PaKart(child: Iskelet(yukseklik: 140));
+    }
+    final n = DateTime.now();
+    final g = DateTime(n.year, n.month, n.day);
+    var basSaat = 24, sonSaat = 0;
+    for (final v in l) {
+      basSaat = math.min(basSaat, v.bas.isBefore(g) ? 0 : v.bas.hour);
+      sonSaat = math.max(sonSaat, v.son.day != g.day ? 24 : v.son.hour + (v.son.minute > 0 ? 1 : 0));
+    }
+    if (l.isEmpty) {
+      basSaat = 8;
+      sonSaat = 24;
+    }
+    basSaat = math.min(basSaat, n.hour);
+    sonSaat = math.max(sonSaat, n.hour + 1).clamp(basSaat + 4, 24);
+    final aralik = (sonSaat - basSaat) * 60.0;
+    double oran(DateTime t) => ((t.isBefore(g) ? 0 : t.difference(g).inMinutes) - basSaat * 60).clamp(0, aralik) / aralik;
     return PaKart(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        BolumBasligi('Bugünün vardiyaları', ikon: Icons.calendar_month_rounded, alt: Bicim.gunAy(simdi)),
-        if (bugun.isEmpty) Text('Bugün için planlı vardiya yok.', style: TextStyle(color: r.silik)),
-        for (final s in bugun)
-          Builder(builder: (_) {
-            final a = DateTime.parse(s.s('starts_at')).toLocal();
-            final b = DateTime.tryParse(s.s('ends_at'))?.toLocal();
-            final suruyor = a.isBefore(simdi) && (b?.isAfter(simdi) ?? false);
-            final bitti = b != null && b.isBefore(simdi);
-            return _kisi(
-              s.m('user').s('name', '—'),
-              [s.s('position', s.m('user').s('position')), if (s.s('note').isNotEmpty) s.s('note')].where((e) => e.isNotEmpty).join(' · '),
-              nokta: suruyor ? r.arti : bitti ? r.silik : r.birincil,
-              sag: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('${Bicim.saat(a)}–${b == null ? '?' : Bicim.saat(b)}', style: TextStyle(color: r.metin, fontWeight: FontWeight.w700, fontSize: 13)),
-                Text(suruyor ? 'Sürüyor' : bitti ? 'Bitti' : 'Planlı', style: TextStyle(color: suruyor ? r.arti : r.silik, fontSize: 11.5)),
+        BolumBasligi('Bugünün vardiyaları', ikon: Icons.timeline_rounded, alt: l.isEmpty ? 'Planlı vardiya yok' : '${l.length} vardiya · çubuğa dokunun',
+            sag: TextButton(onPressed: () => _ac(const VardiyaEkrani()), child: const Text('Plan'))),
+        if (l.isEmpty)
+          Column(children: [
+            Text('Bugün için vardiya planlanmamış.', style: TextStyle(color: r.silik)),
+            const SizedBox(height: 8),
+            YumusakDugme(onTap: () => vardiyaFormuAc(context).then((ok) => ok == true ? _yukle() : null), ikon: Icons.add_rounded, yazi: 'Vardiya planla'),
+          ])
+        else
+          LayoutBuilder(builder: (_, k) {
+            const adW = 70.0;
+            final w = k.maxWidth - adW;
+            final simdiX = adW + w * oran(n);
+            final adim = (sonSaat - basSaat) > 12 ? 4 : 2;
+            return Stack(children: [
+              Column(children: [
+                for (final v in l)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(children: [
+                      SizedBox(width: adW, child: Text(v.ad.split(' ').first, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: r.metin, fontSize: 12.5, fontWeight: FontWeight.w600))),
+                      SizedBox(
+                        width: w,
+                        height: 26,
+                        child: Stack(children: [
+                          Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(color: r.ic, borderRadius: BorderRadius.circular(4)))),
+                          Positioned(
+                            left: w * oran(v.bas),
+                            width: math.max(18, w * (oran(v.son) - oran(v.bas))),
+                            top: 0,
+                            bottom: 0,
+                            child: Tooltip(
+                              message: '${v.ad} · ${Bicim.saat(v.bas)}–${Bicim.saat(v.son)}',
+                              child: Container(
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.symmetric(horizontal: 5),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(colors: [vardiyaRengi(v.bas), Color.lerp(vardiyaRengi(v.bas), Marka.mavi, .4)!]),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('${Bicim.saat(v.bas)}–${Bicim.saat(v.son)}',
+                                    maxLines: 1, overflow: TextOverflow.clip, softWrap: false, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const SizedBox(width: adW),
+                  SizedBox(
+                    width: w,
+                    height: 14,
+                    child: Stack(children: [
+                      for (var h = basSaat; h <= sonSaat; h += adim)
+                        Positioned(
+                          left: (w * (h - basSaat) / (sonSaat - basSaat) - 12).clamp(0.0, w - 24),
+                          child: SizedBox(width: 24, child: Text((h % 24).toString().padLeft(2, '0'), textAlign: TextAlign.center, style: TextStyle(color: r.silik, fontSize: 10))),
+                        ),
+                    ]),
+                  ),
+                ]),
               ]),
-            );
+              // Şimdi çizgisi
+              Positioned(
+                left: simdiX - 1,
+                top: 0,
+                bottom: 16,
+                child: IgnorePointer(child: Container(width: 2, decoration: BoxDecoration(color: r.eksi, borderRadius: BorderRadius.circular(1)))),
+              ),
+            ]);
           }),
       ]),
     );
   }
 
-  Widget _gorevKarti() {
-    final v = _gorev.veri;
-    if (v == null) return _bekle(_gorev, 'Görevler', Icons.checklist_rounded);
+  Widget _gorevKarti(List<Map<String, dynamic>>? gorev) {
     final r = context.pa;
-    final acik = v.where((t) => t.s('status') != 'done').toList();
-    final biten = v.where((t) => t.s('status') == 'done').toList();
-    final liste = _gorevSekme == 0 ? acik : biten;
+    if (gorev == null) {
+      return PaKart(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const BolumBasligi('Açık görevler', ikon: Icons.checklist_rounded),
+          if (Canli.gorevYetki.value == Yetki.yok)
+            Text('Görevleri görme yetkiniz yok.', style: TextStyle(color: r.silik))
+          else if (Canli.gorevYetki.value == Yetki.kapali)
+            Text('Görev özelliği işletmenizde açık değil.', style: TextStyle(color: r.silik))
+          else
+            const Iskelet(yukseklik: 60),
+        ]),
+      );
+    }
+    final acik = gorev.where((t) => t.s('status') != 'done').toList();
+    final biten = gorev.length - acik.length;
+    final oran = gorev.isEmpty ? 0.0 : biten / gorev.length;
     return PaKart(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const BolumBasligi('Görevler', ikon: Icons.checklist_rounded),
-        SegmentedButton<int>(
-          showSelectedIcon: false,
-          style: SegmentedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: Marka.yaricap), minimumSize: const Size(44, 44)),
-          segments: [
-            ButtonSegment(value: 0, label: Text('Açık (${acik.length})')),
-            ButtonSegment(value: 1, label: Text('Tamamlanan (${biten.length})')),
-          ],
-          selected: {_gorevSekme},
-          onSelectionChanged: (s) => setState(() => _gorevSekme = s.first),
-        ),
-        const SizedBox(height: 8),
-        AnimatedSwitcher(
-          duration: Hareket.kapali(context) ? Duration.zero : Hareket.orta,
-          transitionBuilder: asamaGecisi,
-          child: Column(
-            key: ValueKey(_gorevSekme),
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (liste.isEmpty) BosDurum(baslik: _gorevSekme == 0 ? 'Açık görev yok' : 'Tamamlanan görev yok', ikon: Icons.task_alt_rounded),
-              for (final t in liste.take(40)) _gorevSatiri(t, r),
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _gorevSatiri(Map<String, dynamic> t, PaRenk r) {
-    final due = DateTime.tryParse(t.s('due_at'))?.toLocal();
-    final gecti = due != null && t.s('status') != 'done' && due.isBefore(DateTime.now());
-    final (oncelik, oRenk) = switch (t.s('priority')) {
-      'high' => ('Yüksek', r.eksi),
-      'low' => ('Düşük', r.silik),
-      _ => ('Normal', r.birincil),
-    };
-    final durum = switch (t.s('status')) {
-      'in_progress' => 'Devam ediyor',
-      'done' => 'Tamamlandı',
-      _ => 'Açık',
-    };
-    return Semantics(
-      container: true,
-      label: '${t.s('title')}, $durum, öncelik $oncelik${due != null ? ', son tarih ${Bicim.tarihSaat(due)}' : ''}',
-      excludeSemantics: true,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              t.s('status') == 'done'
-                  ? Icons.check_circle_rounded
-                  : t.s('status') == 'in_progress'
-                      ? Icons.timelapse_rounded
-                      : Icons.radio_button_unchecked_rounded,
-              size: 20,
-              color: t.s('status') == 'done' ? r.arti : oRenk,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t.s('title'), style: TextStyle(color: r.metin, fontWeight: FontWeight.w600, fontSize: 14)),
-              if (t.s('description').isNotEmpty)
-                Text(t.s('description'), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: r.soluk, fontSize: 12.5)),
-              const SizedBox(height: 2),
-              Text(
-                [t.m('assigned_to').s('name', 'Atanmamış'), durum, if (t.s('priority') == 'high') 'Öncelik yüksek'].join(' · '),
-                style: TextStyle(color: r.silik, fontSize: 12),
+        BolumBasligi('Açık görevler', ikon: Icons.checklist_rounded, alt: '$biten/${gorev.length} tamamlandı',
+            sag: TextButton(onPressed: () => _ac(const GorevlerEkrani()), child: const Text('Tümü'))),
+        if (gorev.isNotEmpty) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: Stack(children: [
+              Container(height: 6, color: r.ic),
+              AnimatedFractionallySizedBox(
+                duration: Hareket.kapali(context) ? Duration.zero : Hareket.orta,
+                widthFactor: oran,
+                child: Container(height: 6, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Marka.zumrutAcik, Marka.mavi]))),
               ),
             ]),
           ),
-          if (due != null)
-            Text(gecti ? 'Gecikti\n${Bicim.tarihSaat(due)}' : Bicim.tarihSaat(due),
-                textAlign: TextAlign.right, style: TextStyle(color: gecti ? r.eksi : r.silik, fontSize: 12, fontWeight: FontWeight.w600)),
-        ]),
-      ),
+          const SizedBox(height: 10),
+        ],
+        if (acik.isEmpty)
+          Column(children: [
+            Text(gorev.isEmpty ? 'Henüz görev yok. Ekibe iş atayın.' : 'Tüm görevler tamamlandı.', style: TextStyle(color: r.silik)),
+            if (Canli.gorevYetki.value != Yetki.yok) ...[
+              const SizedBox(height: 8),
+              YumusakDugme(onTap: () => _ac(const GorevFormu()), ikon: Icons.add_task_rounded, yazi: 'Görev oluştur'),
+            ],
+          ])
+        else
+          for (final t in acik.take(4))
+            Padding(padding: const EdgeInsets.only(bottom: 8), child: GorevKarti(t: t, onTap: () => _ac(const GorevlerEkrani()))),
+      ]),
     );
   }
 }

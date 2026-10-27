@@ -61,8 +61,7 @@ class Api {
     return _kur(tabanUrl, kullaniciAjani, jar);
   }
 
-  /// Test: istekler gerçek ağa değil verilen bağdaştırıcıya gider.
-  @visibleForTesting
+  /// Test ve DEMO kipi: istekler gerçek ağa değil verilen bağdaştırıcıya gider.
   static Api bellekte(HttpClientAdapter bagdastirici, {String tabanUrl = varsayilanTaban}) =>
       _kur(tabanUrl, 'BamBumPOS-Patron-Test', CookieJar()).._dio.httpClientAdapter = bagdastirici;
 
@@ -119,6 +118,10 @@ class Api {
       _istek('GET', yol, sorgu: sorgu, zamanAsimi: zamanAsimi);
 
   Future<dynamic> post(String yol, [Object? govde]) => _istek('POST', yol, govde: govde ?? const {});
+
+  Future<dynamic> put(String yol, [Object? govde]) => _istek('PUT', yol, govde: govde ?? const {});
+
+  Future<dynamic> sil(String yol, {Map<String, dynamic>? sorgu}) => _istek('DELETE', yol, sorgu: sorgu);
 
   Future<dynamic> _istek(String yontem, String yol, {Map<String, dynamic>? sorgu, Object? govde, Duration? zamanAsimi}) async {
     var r = await _gonder(yontem, yol, sorgu: sorgu, govde: govde, zamanAsimi: zamanAsimi);

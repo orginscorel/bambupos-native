@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Patron açılışı: gece laciverti zemin (#0E0B33) — beyaz parlama olmasın -->
+<!-- Patron açılışı: gece laciverti zemin (#0E0B33) + ortada 96 dp Patron işareti.
+     Flutter açılış ekranı ilk karede AYNI yerde aynı boyda işaret çizer, sonra
+     koreografi başlar → geçiş kesintisiz görünür. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/acilis_zemin" />
+    <item android:width="96dp" android:height="96dp" android:gravity="center">
+        <bitmap android:gravity="fill" android:src="@drawable/launch_logo" />
+    </item>
 </layer-list>

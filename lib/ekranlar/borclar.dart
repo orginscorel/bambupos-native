@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app/hareket.dart';
@@ -79,22 +81,32 @@ class _BorclarEkraniState extends State<BorclarEkrani> {
         else ...[
           Belirme(
             sira: 0,
-            child: Row(children: [
-              Expanded(child: _Kutu('Toplam', Bicim.para(v.i('total_minor'), tam: true))),
-              const SizedBox(width: 10),
-              Expanded(child: _Kutu('Kayıt', Bicim.sayi(v.i('count')))),
-              const SizedBox(width: 10),
-              Expanded(child: _Kutu('Kişi', Bicim.sayi(v.i('kisi')))),
-            ]),
+            child: Row(
+              children: [
+                Expanded(child: _Kutu('Toplam', Bicim.para(v.i('total_minor'), tam: true))),
+                const SizedBox(width: 10),
+                Expanded(child: _Kutu('Kayıt', Bicim.sayi(v.i('count')))),
+                const SizedBox(width: 10),
+                Expanded(child: _Kutu('Kişi', Bicim.sayi(v.i('kisi')))),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
           if (satir.isEmpty)
-            const PaKart(child: BosDurum(baslik: 'Bu dönemde borca yazılan yok', ikon: Icons.check_circle_outline_rounded))
+            const PaKart(
+              child: BosDurum(baslik: 'Bu dönemde borca yazılan yok', ikon: Icons.check_circle_outline_rounded),
+            )
           else ...[
             SegmentedButton<bool>(
               showSelectedIcon: false,
-              style: SegmentedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: Marka.yaricap), minimumSize: const Size(44, 44)),
-              segments: const [ButtonSegment(value: false, label: Text('Kayıtlar')), ButtonSegment(value: true, label: Text('Kişiye göre'))],
+              style: SegmentedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: Marka.yaricap),
+                minimumSize: const Size(44, 44),
+              ),
+              segments: const [
+                ButtonSegment(value: false, label: Text('Kayıtlar')),
+                ButtonSegment(value: true, label: Text('Kişiye göre')),
+              ],
               selected: {_kisiye},
               onSelectionChanged: (s) => setState(() => _kisiye = s.first),
             ),
@@ -105,48 +117,67 @@ class _BorclarEkraniState extends State<BorclarEkrani> {
               child: _kisiye
                   ? PaKart(
                       key: const ValueKey('k'),
-                      child: Column(children: [
-                        for (var i = 0; i < kisiler.length; i++)
-                          CubukSatir(
-                            sira: i + 1,
-                            ad: kisiler[i].s('name'),
-                            deger: Bicim.para(kisiler[i].i('amount_minor'), tam: true),
-                            alt: '${kisiler[i].i('count')} kez · bakiye ${Bicim.paraKisa(kisiler[i].i('balance_minor'))}',
-                            oran: kisiler[i].i('amount_minor') / (kisiler.first.i('amount_minor').clamp(1, 1 << 62)),
-                            renk: Marka.kehribar,
-                          ),
-                      ]),
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < kisiler.length; i++)
+                            CubukSatir(
+                              sira: i + 1,
+                              ad: kisiler[i].s('name'),
+                              deger: Bicim.para(kisiler[i].i('amount_minor'), tam: true),
+                              alt: '${kisiler[i].i('count')} kez · bakiye ${Bicim.paraKisa(kisiler[i].i('balance_minor'))}',
+                              oran: kisiler[i].i('amount_minor') / math.max(1, kisiler.first.i('amount_minor')),
+                              renk: Marka.kehribar,
+                            ),
+                        ],
+                      ),
                     )
-                  : Column(key: const ValueKey('s'), children: [
-                      for (var i = 0; i < satir.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Belirme(
-                            sira: i,
-                            child: PaKart(
-                              padding: const EdgeInsets.all(12),
-                              etiket: '${satir[i].s('name')}, ${Bicim.para(satir[i].i('amount_minor'))}',
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                                Row(children: [
-                                  Expanded(child: Text(satir[i].s('name'), style: TextStyle(fontWeight: FontWeight.w700, color: r.metin))),
-                                  Text(Bicim.para(satir[i].i('amount_minor')), style: gosterim(15, renk: r.metin)),
-                                ]),
-                                const SizedBox(height: 4),
-                                Text(
-                                  [
-                                    if (DateTime.tryParse(satir[i].s('created_at')) != null) Bicim.tarihSaat(DateTime.parse(satir[i].s('created_at'))),
-                                    satir[i].s('kaynak'),
-                                    if (satir[i].s('performed_by').isNotEmpty) satir[i].s('performed_by'),
-                                  ].where((e) => e.isNotEmpty).join(' · '),
-                                  style: TextStyle(color: r.silik, fontSize: 12.5),
+                  : Column(
+                      key: const ValueKey('s'),
+                      children: [
+                        for (var i = 0; i < satir.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Belirme(
+                              sira: i,
+                              child: PaKart(
+                                padding: const EdgeInsets.all(12),
+                                etiket: '${satir[i].s('name')}, ${Bicim.para(satir[i].i('amount_minor'))}',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            satir[i].s('name'),
+                                            style: TextStyle(fontWeight: FontWeight.w700, color: r.metin),
+                                          ),
+                                        ),
+                                        Text(Bicim.para(satir[i].i('amount_minor')), style: gosterim(15, renk: r.metin)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      [
+                                        if (DateTime.tryParse(satir[i].s('created_at')) != null)
+                                          Bicim.tarihSaat(DateTime.parse(satir[i].s('created_at'))),
+                                        satir[i].s('kaynak'),
+                                        if (satir[i].s('performed_by').isNotEmpty) satir[i].s('performed_by'),
+                                      ].where((e) => e.isNotEmpty).join(' · '),
+                                      style: TextStyle(color: r.silik, fontSize: 12.5),
+                                    ),
+                                    if (satir[i].s('reason').isNotEmpty) Text(satir[i].s('reason'), style: TextStyle(color: r.soluk, fontSize: 12.5)),
+                                    Text(
+                                      'Güncel bakiye ${Bicim.para(satir[i].i('balance_minor'), tam: true)}',
+                                      style: TextStyle(color: r.uyari, fontSize: 12, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
                                 ),
-                                if (satir[i].s('reason').isNotEmpty) Text(satir[i].s('reason'), style: TextStyle(color: r.soluk, fontSize: 12.5)),
-                                Text('Güncel bakiye ${Bicim.para(satir[i].i('balance_minor'), tam: true)}', style: TextStyle(color: r.uyari, fontSize: 12, fontWeight: FontWeight.w600)),
-                              ]),
+                              ),
                             ),
                           ),
-                        ),
-                    ]),
+                      ],
+                    ),
             ),
           ],
         ],
@@ -168,11 +199,22 @@ class _Kutu extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: r.kart, borderRadius: Marka.yaricap, border: Border.all(color: r.kenar)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(ad, style: TextStyle(color: r.silik, fontSize: 12)),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(deger, style: gosterim(17, renk: r.metin))),
-        ]),
+        decoration: BoxDecoration(
+          color: r.kart,
+          borderRadius: Marka.yaricap,
+          border: Border.all(color: r.kenar),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(ad, style: TextStyle(color: r.silik, fontSize: 12)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(deger, style: gosterim(17, renk: r.metin)),
+            ),
+          ],
+        ),
       ),
     );
   }

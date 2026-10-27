@@ -130,6 +130,7 @@ TextStyle gosterim(double boyut, {FontWeight agirlik = FontWeight.w800, Color? r
 ThemeData temaKur(Brightness parlaklik) {
   final r = parlaklik == Brightness.dark ? PaRenk.karanlik : PaRenk.acik;
   final sekil = RoundedRectangleBorder(borderRadius: Marka.yaricap);
+  final dugmeSekli = RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
   final temel = ThemeData(
     useMaterial3: true,
     brightness: parlaklik,
@@ -145,9 +146,11 @@ ThemeData temaKur(Brightness parlaklik) {
     textTheme: temel.textTheme.apply(bodyColor: r.metin, displayColor: r.metin),
     cardTheme: CardThemeData(shape: sekil, color: r.kart, elevation: 0),
     dialogTheme: DialogThemeData(shape: sekil, backgroundColor: r.kart),
-    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(shape: sekil, minimumSize: const Size(44, 48))),
-    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(shape: sekil, minimumSize: const Size(44, 48))),
-    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(shape: sekil, minimumSize: const Size(44, 44))),
+    // Düğme köşeleri personel uygulamasıyla aynı (16 / metin 12) — bkz. ortak/dugme.dart
+    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(shape: dugmeSekli, minimumSize: const Size(44, 50))),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(shape: dugmeSekli, minimumSize: const Size(44, 50))),
+    textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), minimumSize: const Size(44, 44))),
     chipTheme: temel.chipTheme.copyWith(shape: sekil),
     bottomSheetTheme: const BottomSheetThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Marka.kose))),
@@ -173,6 +176,25 @@ const durumCubuguAcikSimge = SystemUiOverlayStyle(
   statusBarColor: Colors.transparent,
   statusBarIconBrightness: Brightness.light,
   statusBarBrightness: Brightness.dark,
-  systemNavigationBarColor: Marka.gece,
+  systemNavigationBarColor: Colors.transparent,
   systemNavigationBarIconBrightness: Brightness.light,
+  systemNavigationBarContrastEnforced: false,
 );
+
+/// Ekranın üst zeminine göre durum çubuğu (saat/şarj/sinyal) ve Android
+/// gezinme çubuğu simge renkleri. [koyuUst] = üstte lacivert kapak var.
+/// iOS `statusBarBrightness` TERS anlamlıdır (zeminin parlaklığı).
+SystemUiOverlayStyle durumStili({required bool koyuUst, required bool koyuTema}) => SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: koyuUst ? Brightness.light : Brightness.dark,
+      statusBarBrightness: koyuUst ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: koyuTema ? Brightness.light : Brightness.dark,
+      systemNavigationBarContrastEnforced: false,
+    );
+
+extension DurumStiliX on BuildContext {
+  /// Açık temada koyu simge, koyu temada açık simge (üstte kapak yoksa).
+  SystemUiOverlayStyle durumCubugu({bool koyuUst = false}) => durumStili(koyuUst: koyuUst || pa.koyu, koyuTema: pa.koyu);
+}

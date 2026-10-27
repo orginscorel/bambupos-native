@@ -40,9 +40,13 @@ String hucreYaz(String k, Object? v) {
 }
 
 class RaporEkrani extends StatefulWidget {
-  const RaporEkrani({super.key, required this.tanim, required this.donem});
+  const RaporEkrani({super.key, required this.tanim, required this.donem, this.gomulu = false});
   final RaporTanim tanim;
   final Donem donem;
+
+  /// Raporlar sekmesinin içinde (web paneldeki gibi başlık satırının altında)
+  /// çizilir: kendi sayfası, geri düğmesi ve dönem seçicisi yok; dönem üstten gelir.
+  final bool gomulu;
   @override
   State<RaporEkrani> createState() => _RaporEkraniState();
 }
@@ -64,6 +68,17 @@ class _RaporEkraniState extends State<RaporEkrani> {
   void initState() {
     super.initState();
     _yukle();
+  }
+
+  @override
+  void didUpdateWidget(RaporEkrani eski) {
+    super.didUpdateWidget(eski);
+    if (eski.donem != widget.donem || eski.tanim.anahtar != widget.tanim.anahtar) {
+      _donem = widget.donem;
+      _satirlar = null;
+      _ara = '';
+      _yukle();
+    }
   }
 
   Future<void> _yukle() async {
@@ -119,6 +134,29 @@ class _RaporEkraniState extends State<RaporEkrani> {
     final b = Bicim.gunCoz(_filtre?.s('to'));
     final alt = t.kaynak != null ? 'Anlık durum' : (a != null && b != null ? Bicim.aralik(a, b) : _donem.ad);
     final s = _satirlar;
+    final govde = <Widget>[
+      if (s == null && _hata != null)
+        PaKart(child: HataDurum(hata: _hata!, yenile: _yukle))
+      else if (s == null)
+        const Column(children: [Iskelet(yukseklik: 80), SizedBox(height: 12), Iskelet(yukseklik: 180), SizedBox(height: 12), Iskelet(yukseklik: 260)])
+      else if (_kapali)
+        const PaKart(child: BosDurum(baslik: 'Bu bölüm işletmenizde açık değil', ikon: Icons.extension_off_rounded))
+      else if (s.isEmpty)
+        const PaKart(child: BosDurum(baslik: 'Bu dönemde kayıt yok', mesaj: 'Başka bir tarih aralığı seçmeyi deneyin.'))
+      else
+        ..._icerik(context, s),
+    ];
+    if (widget.gomulu) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (t.aciklama != null || t.kaynak != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(t.kaynak != null ? '${t.aciklama ?? ''} · anlık durum, dönemden bağımsız' : t.aciklama!,
+                style: TextStyle(color: context.pa.silik, fontSize: 12.5)),
+          ),
+        ...govde,
+      ]);
+    }
     return PaSayfa(
       baslik: t.baslik,
       alt: alt,
@@ -141,16 +179,7 @@ class _RaporEkraniState extends State<RaporEkrani> {
           ),
           const SizedBox(height: 14),
         ],
-        if (s == null && _hata != null)
-          PaKart(child: HataDurum(hata: _hata!, yenile: _yukle))
-        else if (s == null)
-          const Column(children: [Iskelet(yukseklik: 80), SizedBox(height: 12), Iskelet(yukseklik: 180), SizedBox(height: 12), Iskelet(yukseklik: 260)])
-        else if (_kapali)
-          const PaKart(child: BosDurum(baslik: 'Bu bölüm işletmenizde açık değil', ikon: Icons.extension_off_rounded))
-        else if (s.isEmpty)
-          const PaKart(child: BosDurum(baslik: 'Bu dönemde kayıt yok', mesaj: 'Başka bir tarih aralığı seçmeyi deneyin.'))
-        else
-          ..._icerik(context, s),
+        ...govde,
       ],
     );
   }

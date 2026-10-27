@@ -13,7 +13,9 @@ import 'kabuk.dart';
 /// AÇILIŞ: marka koreografisi + oturum denetimi.
 ///
 ///  0.00–0.30  gece zemininde ışıklar açılır, parçacıklar yükselir
-///  0.05–0.35  işaret yaylanarak büyür; QR bulucu kareleri çizilerek belirir
+///  0.00–0.15  yerel açılış ekranındaki ortalı işaret söner (kesintisiz geçiş)
+///  0.05–0.35  işaret yaylanarak büyür; taç parçaları aşağıdan gelip birleşir,
+///             göz açılır, taban şeridi uzar
 ///  0.35–0.75  altında yedi sütunlu grafik kademeli yükselir
 ///  0.45–0.72  gök mavisi rozet yerine oturur, içindeki çubuklar yükselir
 ///  0.60–0.90  sütun tepelerinden geçen çizgi çizilir, ucunda ışıklı nokta
@@ -93,6 +95,15 @@ class _AcilisEkraniState extends State<AcilisEkrani> with TickerProviderStateMix
               final c = Curves.easeInCubic.transform(_cikis.value);
               return Stack(fit: StackFit.expand, children: [
                 CustomPaint(painter: AcilisZeminCizer(t: t, d: _dongu.value)),
+                // Yerel açılış ekranıyla (Android/iOS) aynı yerde, aynı boyda
+                // işaret: ilk karede birebir örtüşür, sonra söner.
+                if (t < .16)
+                  Center(
+                    child: Opacity(
+                      opacity: 1 - _ara(t, .02, .16),
+                      child: Transform.scale(scale: 1 - .25 * _ara(t, .02, .16), child: const PaMark(boyut: 96)),
+                    ),
+                  ),
                 Opacity(
                   opacity: 1 - c,
                   child: Transform.scale(
@@ -278,14 +289,14 @@ class AcilisSahneCizer extends CustomPainter {
       c.translate(-32, -32);
       PatronMarkCizer.ciz(
         c,
-        kare: Curves.easeInOutCubic.transform(_ara(t, .18, .5)),
+        kare: _ara(t, .08, .52),
         rozet: Curves.elasticOut.transform(_ara(t, .45, .78)),
-        cubuk: _ara(t, .58, .85),
+        cubuk: _ara(t, .4, .62),
       );
       // Çapraz parıltı
       final pr = _ara(t, .78, .98);
       if (pr > 0 && pr < 1) {
-        c.clipRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 64, 64), const Radius.circular(12)));
+        c.clipRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 64, 64), const Radius.circular(14)));
         final x = -40 + 150 * Curves.easeInOutCubic.transform(pr);
         c.drawPath(
             Path()
@@ -350,8 +361,7 @@ class AcilisSahneCizer extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 7
             ..strokeCap = StrokeCap.round
-            ..color = Marka.gok.withValues(alpha: .16)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+            ..color = Marka.gok.withValues(alpha: .16));
       c.drawPath(
           kismi,
           Paint()

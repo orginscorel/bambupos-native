@@ -12,7 +12,7 @@ import 'package:flutter/services.dart';
 abstract final class Hareket {
   static const kisa = Duration(milliseconds: 160);
   static const orta = Duration(milliseconds: 240);
-  static const uzun = Duration(milliseconds: 320);
+  static const uzun = Duration(milliseconds: 250);
 
   /// Material 3 "emphasized" eğrisinin hızlı çıkışlı eşi.
   static const giris = Cubic(0.05, 0.7, 0.1, 1.0);
@@ -128,7 +128,7 @@ class Belirme extends StatefulWidget {
 }
 
 class _BelirmeState extends State<Belirme> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 240));
   Timer? _zaman;
 
   @override

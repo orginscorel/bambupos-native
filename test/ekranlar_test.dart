@@ -1,5 +1,6 @@
 import 'package:bambumpos_patron/core/api.dart';
 import 'package:dio/dio.dart' show HttpClientAdapter;
+import 'package:bambumpos_patron/core/canli.dart';
 import 'package:bambumpos_patron/core/durum.dart';
 import 'package:bambumpos_patron/core/icgoru.dart';
 import 'package:bambumpos_patron/ekranlar/acilis.dart';
@@ -15,6 +16,7 @@ import 'sahte_api.dart';
 
 Future<void> _kur(HttpClientAdapter adapter) async {
   SharedPreferences.setMockInitialValues({});
+  Canli.sifirla();
   await Uyg.kur(p: await SharedPreferences.getInstance(), hazirApi: Api.bellekte(adapter));
 }
 
@@ -168,7 +170,9 @@ void main() {
     ));
     await t.pump();
     await t.pump(const Duration(seconds: 2));
-    expect(find.text('Özet'), findsOneWidget);
+    expect(find.textContaining('CİRO · BUGÜN'), findsOneWidget);
+    expect(find.text('Düne göre ilerleme'), findsOneWidget);
+    await t.scrollUntilVisible(find.textContaining('Ciro düne göre'), 300, scrollable: find.byType(Scrollable).last);
     expect(find.textContaining('Ciro düne göre'), findsOneWidget);
     expect(find.textContaining('45 dk+'), findsOneWidget);
     await t.scrollUntilVisible(find.text('Kasa ve tahsilat'), 300, scrollable: find.byType(Scrollable).last);

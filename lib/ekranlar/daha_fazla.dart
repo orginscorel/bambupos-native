@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -10,7 +10,12 @@ import '../core/guncelleme.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'bildirimler.dart';
+import '../core/canli.dart';
+import '../ortak/ust_serit.dart';
 import 'borclar.dart';
+import 'gorevler.dart';
+import 'mesai.dart';
+import 'vardiya.dart';
 import 'kabuk.dart';
 
 /// DAHA FAZLA: borca yazılanlar, bildirimler, hesap, görünüm, sürüm.
@@ -59,6 +64,8 @@ class _DahaFazlaEkraniState extends State<DahaFazlaEkrani> {
     final ad = Uyg.ad;
     return PaSayfa(
       baslik: 'Daha fazla',
+      sag: const ZilDugmesi(),
+      altBosluk: 90,
       children: [
         Belirme(
           sira: 0,
@@ -66,20 +73,57 @@ class _DahaFazlaEkraniState extends State<DahaFazlaEkrani> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(gradient: Marka.geceGrad, borderRadius: Marka.yaricap),
             child: Row(children: [
-              const PaMark(boyut: 48),
+              Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white, border: Border.all(color: Marka.gok, width: 2.5)),
+                child: Text(basHarf(ad.isEmpty ? 'Patron' : ad), style: const TextStyle(color: Marka.mor, fontWeight: FontWeight.w800, fontSize: 18)),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(ad.isEmpty ? 'Patron hesabı' : ad, style: gosterim(19, renk: Colors.white)),
-                  Text('Bu telefon patron uygulaması olarak eşli', style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 12.5)),
+                  ValueListenableBuilder(
+                    valueListenable: Canli.meta,
+                    builder: (_, _, _) => Text(Canli.subeAdi.isEmpty ? 'Bu telefon patron uygulaması olarak eşli' : '${Canli.subeAdi} · patron telefonu',
+                        style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 12.5)),
+                  ),
                 ]),
               ),
+              const PaMark(boyut: 36),
             ]),
           ),
         ),
         const SizedBox(height: 16),
         Belirme(
           sira: 1,
+          child: SatirGrubu([
+            Satir(
+              baslik: 'Vardiya planı',
+              alt: 'Haftalık takvim, şablonla ekle',
+              ikon: Icons.calendar_view_week_rounded,
+              onTap: () => git(context, const VardiyaEkrani()),
+            ),
+            Satir(
+              baslik: 'Mesai ve devam',
+              alt: 'Giriş/çıkış, geç kalan, talepler',
+              ikon: Icons.fact_check_rounded,
+              ikonRenk: r.arti,
+              onTap: () => git(context, const MesaiEkrani()),
+            ),
+            Satir(
+              baslik: 'Görevler',
+              alt: 'Ekibe iş ata, takip et',
+              ikon: Icons.checklist_rounded,
+              ikonRenk: Marka.mavi,
+              onTap: () => git(context, const GorevlerEkrani()),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        Belirme(
+          sira: 2,
           child: SatirGrubu([
             Satir(
               baslik: 'Borca yazılanlar',
@@ -108,7 +152,7 @@ class _DahaFazlaEkraniState extends State<DahaFazlaEkrani> {
         ),
         const SizedBox(height: 16),
         Belirme(
-          sira: 2,
+          sira: 3,
           child: SatirGrubu([
             ValueListenableBuilder<ThemeMode>(
               valueListenable: temaKipi,
@@ -121,7 +165,7 @@ class _DahaFazlaEkraniState extends State<DahaFazlaEkrani> {
             ),
             Satir(
               baslik: 'Uygulama güncellemesi',
-              alt: Platform.isIOS ? 'iPhone\'da App Store / TestFlight üzerinden' : 'Sürüm $_surum',
+              alt: (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ? 'iPhone\'da App Store / TestFlight üzerinden' : 'Sürüm $_surum',
               ikon: Icons.system_update_rounded,
               onTap: guncellemeDenetle,
               sag: const GuncellemeSatiriDurum(),
@@ -130,7 +174,7 @@ class _DahaFazlaEkraniState extends State<DahaFazlaEkrani> {
         ),
         const SizedBox(height: 16),
         Belirme(
-          sira: 3,
+          sira: 4,
           child: PaKart(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(Icons.info_outline_rounded, color: r.silik, size: 20),
