@@ -58,7 +58,8 @@ jobs:
       - name: Sürüm
         id: surum
         shell: bash
-        run: echo "surum=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//' | tr -d '\r')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "surum=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//' | tr -d '\r')" >> "$GITHUB_OUTPUT"
       - run: flutter --version
       - run: flutter pub get
       - run: flutter build windows --release
@@ -157,4 +158,5 @@ jobs:
       - name: Denetim sonucu
         if: steps.ice.outputs.kod != '0'
         shell: pwsh
-        run: throw "Windows 7 içe aktarma denetimi geçmedi — w7-denetim.txt'ye bakın"
+        run: |
+          throw "Windows 7 içe aktarma denetimi geçmedi — w7-denetim.txt'ye bakın"

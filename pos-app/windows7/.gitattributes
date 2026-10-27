@@ -1,0 +1,3 @@
+# pos-win7: Windows betikleri/metinleri CRLF kalsın.
+*.bat text eol=crlf
+*.txt text eol=crlf
