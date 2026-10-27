@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>BamBumPOS, fiş yazıcılarını ve POS cihazlarını bulup bağlanmak için yerel ağı tarar.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

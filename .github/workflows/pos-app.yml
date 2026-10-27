@@ -186,9 +186,15 @@ jobs:
   ios:
     name: iOS (imzasız)
     needs: denetim
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      # App Store Connect yalnız Xcode 26 (iOS 26 SDK) ile derlenmiş paketi kabul eder.
+      - name: Xcode 26 seç
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$X" ] || { echo "Xcode 26 yok"; exit 1; }
+          sudo xcode-select -s "$X/Contents/Developer" && xcodebuild -version
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -207,6 +213,67 @@ jobs:
           name: ios
           path: pos-app/cikti/*
           if-no-files-found: error
+
+  # TestFlight / App Store: imzasız iOS paketini App Store profiliyle imzalar
+  # ve App Store Connect'e yükler. Ana sürümü DURDURMAZ (yayın buna bağlı değil).
+  # Gizliler: IOS_P12_B64, IOS_P12_PASS, ASC_KEY_P8 (personel uygulamasıyla ortak).
+  testflight:
+    name: TestFlight
+    if: startsWith(github.ref, 'refs/tags/pos-v')
+    needs: [denetim, ios]
+    runs-on: macos-15
+    continue-on-error: true
+    env:
+      ASC_KEY_ID: 5Z9AN85989
+      ASC_ISSUER: e0998d8d-1026-4fe2-b8bd-d2f5715dbef8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios
+          path: pos-app/in
+      - name: Anahtarlığı hazırla
+        env:
+          P12: ${{ secrets.IOS_P12_B64 }}
+          PASS: ${{ secrets.IOS_P12_PASS }}
+          K: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          KC=$RUNNER_TEMP/imza.keychain-db; KP=$(uuidgen)
+          echo "$P12" | base64 --decode > $RUNNER_TEMP/d.p12
+          security create-keychain -p "$KP" $KC
+          security set-keychain-settings -lut 1800 $KC
+          security unlock-keychain -p "$KP" $KC
+          security import $RUNNER_TEMP/d.p12 -P "$PASS" -A -t cert -f pkcs12 -k $KC
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" $KC >/dev/null
+          security list-keychains -d user -s $KC $(security list-keychains -d user | tr -d '"')
+          rm -f $RUNNER_TEMP/d.p12
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$K" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+      - name: İmzala
+        run: |
+          set -e
+          cd in && unzip -q *-iOS-imzasiz.ipa && APP=Payload/Runner.app
+          cp ../ios-imza/appstore.mobileprovision $APP/embedded.mobileprovision
+          security cms -D -i $APP/embedded.mobileprovision > prof.plist
+          /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' prof.plist > ent.plist
+          KIMLIK=$(security find-identity -v -p codesigning | grep -o '"iPhone Distribution[^"]*\|"Apple Distribution[^"]*\|"iOS Distribution[^"]*' | head -1 | tr -d '"')
+          find $APP/Frameworks -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) 2>/dev/null | while read f; do
+            codesign -f -s "$KIMLIK" --timestamp=none "$f"; done
+          find $APP/PlugIns -maxdepth 1 -name '*.appex' 2>/dev/null | while read f; do
+            codesign -f -s "$KIMLIK" --timestamp=none "$f"; done
+          codesign -f -s "$KIMLIK" --entitlements ent.plist --timestamp=none $APP
+          codesign -v --deep --strict $APP
+          zip -qry ../BamBumPOS-POS-AppStore.ipa Payload
+          echo "Sürüm: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' $APP/Info.plist) ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' $APP/Info.plist))"
+      - name: TestFlight'a yükle
+        run: |
+          xcrun altool --validate-app -f BamBumPOS-POS-AppStore.ipa -t ios --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER
+          xcrun altool --upload-app -f BamBumPOS-POS-AppStore.ipa -t ios --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER
+      - name: Temizle
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/imza.keychain-db 2>/dev/null || true
+          rm -rf ~/.appstoreconnect
 
   yayin:
     name: GitHub Release

@@ -123,6 +123,38 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
     }
   }
 
+  /// Demo anahtarı (mağaza incelemesi): cihazın kodu Demo Kafe'ye tanımlanır,
+  /// ardından olağan "Aktive Et" akışı çalışır.
+  Future<void> _demoAc() async {
+    final alan = TextEditingController();
+    final anahtar = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Demo anahtarı'),
+        content: TextField(
+          controller: alan,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(hintText: 'Size verilen demo anahtarı'),
+          onSubmitted: (v) => Navigator.pop(c, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(c, alan.text), child: const Text('Bağlan')),
+        ],
+      ),
+    );
+    alan.dispose();
+    if (!mounted || anahtar == null || anahtar.trim().isEmpty) return;
+    try {
+      await context.api.post('/api/v1/cihaz-aktivasyon/demo', {'kod': _kod, 'gizli': _gizli, 'anahtar': anahtar.trim()});
+      if (!mounted) return;
+      await _tamamla();
+    } on ApiHata catch (e) {
+      if (mounted) setState(() => _hata = e.mesaj);
+    }
+  }
+
   Future<void> _tamamla() async {
     if (_tamamlaniyor) return;
     setState(() {
@@ -230,6 +262,12 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
                 ),
                 const SizedBox(height: 16),
                 Text('Sunucu: ${context.api.taban.host}', style: TextStyle(color: Renk.soluk, fontSize: 12)),
+                const SizedBox(height: 4),
+                // Mağaza incelemesi / tanıtım: işletmesi olmayan biri Demo Kafe'yi dener.
+                TextButton(
+                  onPressed: _tamamlaniyor || _kod == null ? null : _demoAc,
+                  child: Text('Demo anahtarım var', style: TextStyle(color: Renk.soluk, fontSize: 12.5)),
+                ),
               ]),
             ),
           ),
