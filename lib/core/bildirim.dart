@@ -72,6 +72,7 @@ class BildirimMerkezi {
   /// Oturum açıldıktan sonra: izin iste, yoklamayı başlat, iOS jetonunu kaydet.
   static Future<void> basla() async {
     await izinIste();
+    unawaited(izinDurumu());
     await yokla(ilk: true);
     _zamanlayici?.cancel();
     _zamanlayici = Timer.periodic(const Duration(seconds: 20), (_) => yokla());
@@ -83,20 +84,36 @@ class BildirimMerkezi {
     _zamanlayici = null;
   }
 
+  /// Telefonun GERÇEK bildirim izni (sormadan okunur). null = bilinmiyor.
+  /// Bildirimler sayfası bunu gösterir; eskiden durum her girişte boş
+  /// başlıyordu → "açık mı değil mi" belirsizdi, her seferinde yeniden soruyordu.
+  static final izin = ValueNotifier<bool?>(null);
+
+  static Future<bool?> izinDurumu() async {
+    bool? v;
+    try {
+      if (Platform.isAndroid) {
+        v = await _yerel.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.areNotificationsEnabled();
+      } else if (Platform.isIOS) {
+        v = (await _yerel.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()?.checkPermissions())?.isEnabled;
+      }
+    } catch (_) {
+      v = null;
+    }
+    izin.value = v;
+    return v;
+  }
+
   static Future<bool> izinIste() async {
     if (Platform.isAndroid) {
-      return await _yerel
-              .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-              ?.requestNotificationsPermission() ??
-          false;
+      await _yerel.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+    } else if (Platform.isIOS) {
+      await _yerel
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
     }
-    if (Platform.isIOS) {
-      return await _yerel
-              .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-              ?.requestPermissions(alert: true, badge: true, sound: true) ??
-          false;
-    }
-    return false;
+    // İstek sonucunu değil telefonun son durumunu esas al
+    return await izinDurumu() ?? false;
   }
 
   static Future<void> yokla({bool ilk = false}) async {

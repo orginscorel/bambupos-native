@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/bildirim.dart';
 import '../core/tema.dart';
@@ -14,9 +17,8 @@ class BildirimlerEkrani extends StatefulWidget {
   State<BildirimlerEkrani> createState() => _BildirimlerEkraniState();
 }
 
-class _BildirimlerEkraniState extends State<BildirimlerEkrani> {
+class _BildirimlerEkraniState extends State<BildirimlerEkrani> with WidgetsBindingObserver {
   bool _yukleniyor = true;
-  bool? _izin;
 
   static final _gun = DateFormat('d MMMM EEEE', 'tr_TR');
   static final _saat = DateFormat('HH:mm', 'tr_TR');
@@ -24,7 +26,21 @@ class _BildirimlerEkraniState extends State<BildirimlerEkrani> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    BildirimMerkezi.izinDurumu();
     _yenile();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Telefon ayarlarından dönünce izni yeniden oku
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) BildirimMerkezi.izinDurumu();
   }
 
   Future<void> _yenile() async {
@@ -33,14 +49,23 @@ class _BildirimlerEkraniState extends State<BildirimlerEkrani> {
   }
 
   Future<void> _izinIste() async {
+    if (BildirimMerkezi.izin.value == true) {
+      bildir('Bildirimler zaten açık', mesaj: 'Kapatmak istersen telefon ayarlarından değiştirebilirsin.');
+      return;
+    }
     final ok = await BildirimMerkezi.izinIste();
     if (!mounted) return;
-    setState(() => _izin = ok);
     if (ok) {
       bildir('Anlık bildirimler açık', mesaj: 'Görev, vardiya ve mesai bildirimleri bu telefona gelecek.');
-    } else {
-      bildir('İzin verilmedi', mesaj: 'Telefon ayarlarından BamBumPOS Personel için bildirimlere izin ver.', tur: BildirimTur.uyari);
+      return;
     }
+    // Daha önce reddedildiyse telefon yeniden sormaz → iPhone'da ayarlar sayfasını aç
+    if (Platform.isIOS && await launchUrl(Uri.parse('app-settings:'))) return;
+    bildir('İzin verilmedi',
+        mesaj: Platform.isAndroid
+            ? 'Ayarlar › Uygulamalar › BamBumPOS Personel › Bildirimler bölümünden aç.'
+            : 'Ayarlar › BamBumPOS Personel › Bildirimler bölümünden aç.',
+        tur: BildirimTur.uyari);
   }
 
   Future<void> _ac(Map<String, dynamic> n) async {
@@ -99,21 +124,41 @@ class _BildirimlerEkraniState extends State<BildirimlerEkrani> {
           altBaslik: okunmamis > 0 ? '$okunmamis okunmamış' : 'Hepsi okundu',
           yenile: _yenile,
           govde: Kaydir(altBosluk: 40, children: [
-            SatirGrubu([
-              Satir(
-                ikon: Icons.notifications_active_rounded,
-                grad: true,
-                baslik: 'Anlık bildirimler',
-                alt: _izin == true
-                    ? 'Bu telefonda açık'
-                    : _izin == false
-                        ? 'İzin verilmedi · ayarlardan aç'
-                        : 'Uygulama arka plandayken de gelsin',
-                onTap: _izinIste,
-                sag: Icon(_izin == true ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
-                    color: _izin == true ? Marka.zumrut : r.silik),
-              ),
-            ]),
+            ValueListenableBuilder<bool?>(
+              valueListenable: BildirimMerkezi.izin,
+              builder: (_, izin, _) => SatirGrubu([
+                Satir(
+                  ikon: izin == false ? Icons.notifications_off_rounded : Icons.notifications_active_rounded,
+                  grad: izin != false,
+                  ikonZemin: izin == false ? const Color(0xFFFEE2E2) : null,
+                  ikonRenk: izin == false ? const Color(0xFFDC2626) : null,
+                  baslik: 'Anlık bildirimler',
+                  alt: izin == true
+                      ? 'Bu telefonda açık'
+                      : izin == false
+                          ? 'Kapalı · açmak için dokun'
+                          : 'Denetleniyor…',
+                  onTap: _izinIste,
+                  sag: izin == true
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(color: Marka.zumrut.withValues(alpha: .14), borderRadius: BorderRadius.circular(8)),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.check_circle_rounded, color: Marka.zumrut, size: 16),
+                            SizedBox(width: 4),
+                            Text('Açık', style: TextStyle(color: Marka.zumrut, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                          ]),
+                        )
+                      : izin == false
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(gradient: Marka.grad, borderRadius: BorderRadius.circular(8)),
+                              child: const Text('Aç', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                            )
+                          : const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              ]),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 22, 4, 4),
               child: Row(children: [
