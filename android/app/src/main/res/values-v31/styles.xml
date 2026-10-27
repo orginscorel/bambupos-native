@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ sistem açılış ekranı: lacivert zemin + uygulama simgesi -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/acilis_zemin</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/acilis_zemin</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">@color/acilis_zemin</item>
+        <item name="android:navigationBarColor">@color/acilis_zemin</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@color/acilis_zemin</item>
+    </style>
+</resources>
