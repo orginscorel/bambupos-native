@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -33,10 +32,10 @@ abstract final class Hareket {
 class PosSayfaGecisi extends PageTransitionsBuilder {
   const PosSayfaGecisi();
 
-  @override
+  // pos-win7: Flutter 3.19'da PageTransitionsBuilder süre belirleyemez
+  // (sayfa geçişi rotanın varsayılan süresiyle oynar); değerler duruyor.
   Duration get transitionDuration => Hareket.uzun;
 
-  @override
   Duration get reverseTransitionDuration => Hareket.orta;
 
   @override

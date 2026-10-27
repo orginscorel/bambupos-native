@@ -95,6 +95,10 @@ def adi(i):
 
 
 def main():
+    try:  # Windows konsolu cp1252: Türkçe çıktı patlamasın.
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
     dizin = sys.argv[1]
     rapor_yolu = sys.argv[2] if len(sys.argv) > 2 else None
     paket = {}
