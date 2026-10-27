@@ -132,7 +132,7 @@ Future<void> _bekle(WidgetTester t) async {
 }
 
 /// Kasa örnek adisyonu: 4× çay, 2× tost, tek kahve, ödenmiş su, ikram.
-Map<String, String> _kasaVerisi() {
+Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = false}) {
   final o = ((jsonDecode(_veri('adisyon')) as Map)['order'] as Map).cast<String, dynamic>();
   final kalemler = (o['items'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
   Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {bool odendi = false}) => {
@@ -165,6 +165,12 @@ Map<String, String> _kasaVerisi() {
     ..['items_count'] = 5
     ..['vat_total_minor'] = 3727
     ..['created_at'] = DateTime.now().subtract(const Duration(minutes: 47)).toUtc().toIso8601String();
+  if (indirimli) {
+    o
+      ..['discount_minor'] = 4100
+      ..['discount_reason'] = 'Öğrenci'
+      ..['discount_percent'] = 10;
+  }
   final ozet = Map<String, dynamic>.from(o)..remove('items')..remove('events');
   final diger = Map<String, dynamic>.from(ozet)
     ..['id'] = 301
@@ -181,7 +187,16 @@ Map<String, String> _kasaVerisi() {
         {'id': 71, 'kind': 'payment', 'status': 'succeeded', 'status_label': 'Başarılı', 'status_variant': 'success', 'method': 'cash', 'method_label': 'Nakit', 'method_icon': 'cart', 'amount_minor': 2000, 'tip_minor': 0, 'refunded_total_minor': 0, 'provider': 'cash', 'cashier': 'Ayşe Yıldız', 'created_at': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String()},
       ],
     }),
-    '/api/v1/payments/terminal-status': jsonEncode({'simulated': true, 'online': false, 'provider_label': 'Simülasyon'}),
+    '/api/v1/payments/terminal-status': jsonEncode({
+      'simulated': true,
+      'online': false,
+      'provider_label': 'Simülasyon',
+      if (posCihazlari)
+        'manuel_cihazlar': [
+          {'id': 7, 'ad': 'Garanti POS', 'banka': 'Garanti BBVA', 'terminal_no': '10293847'},
+          {'id': 9, 'ad': 'Ziraat POS', 'banka': 'Ziraat Bankası', 'terminal_no': '5521'},
+        ],
+    }),
     '/api/v1/discount-presets': jsonEncode({
       'presets': [
         {'id': 1, 'name': 'Öğrenci', 'value_label': '%10', 'note': 'Öğrenci kartı ile'},
@@ -197,7 +212,11 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // KOYU=1 → koyu tema görüntüleri.
   koyuTema.value = Platform.environment['KOYU'] == '1';
-  if (_dizin != null) setUpAll(_fontlar);
+  if (_dizin != null) {
+    setUpAll(_fontlar);
+    // Ürün görselleri gerçek adreslerinden insin (yalnız görüntü üretiminde).
+    setUpAll(() => HttpOverrides.global = null);
+  }
   // Görsel önbelleği (cached_network_image) geçici klasör ister.
   setUp(() {
     final gecici = Directory.systemTemp.createTempSync('bbpos-onbellek').path;
@@ -262,6 +281,27 @@ void main() {
     }, skip: _dizin == null);
   }
 
+  // Kasa: indirim uygulanmış adisyon (düğmede tutar + kaldırılabilir satır).
+  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon)]) {
+    testWidgets('kasa indirimli $ad', (t) async {
+      await _boyut(t, boyut);
+      final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
+      final d = await _durum(oturumDegis: {
+        'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'orders.discount', 'orders.update', 'orders.comp', 'orders.view'],
+      }, ek: _kasaVerisi(indirimli: true));
+      await t.runAsync(d.oturumuYenile);
+      await t.pumpWidget(_uygulama(d, const Scaffold(body: SafeArea(child: KasaEkrani()))));
+      await _bekle(t);
+      await t.tap(find.text('Bahçe 2').first);
+      await _bekle(t);
+      await _yaz(t, 'kasa-$ad-7-indirimli');
+      await t.pumpWidget(const SizedBox());
+      d.ajan?.dispose();
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await t.pump(const Duration(seconds: 30));
+    }, skip: _dizin == null);
+  }
+
   // Kasa: tahsilat ekranı, 4× çay açılıp 2'si seçili, indirim penceresi
   // (Hazır sekmesi; manuel iskonto eklentisi açık / kapalı).
   for (final (ad, boyut, koyu) in [
@@ -279,7 +319,7 @@ void main() {
         final d = await _durum(oturumDegis: {
           'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'payments.refund', 'orders.discount', 'orders.update', 'orders.comp', 'orders.view'],
           'eklentiler': {...(ham['eklentiler'] as Map), 'manuel_iskonto': manuel},
-        }, ek: _kasaVerisi());
+        }, ek: _kasaVerisi(posCihazlari: manuel));
         await t.runAsync(d.oturumuYenile);
         await t.pumpWidget(_uygulama(d, const Scaffold(body: SafeArea(child: KasaEkrani()))));
         await _bekle(t);
@@ -302,6 +342,39 @@ void main() {
             await _bekle(t);
           }
           if (manuel) await _yaz(t, '$on-2-cay-iki');
+        }
+        // Ürün ekle penceresi (görselli liste).
+        final ekle = find.byKey(const ValueKey('kasa-urun-ekle'));
+        if (manuel && ekle.evaluate().isNotEmpty) {
+          await t.ensureVisible(ekle);
+          await _bekle(t);
+          await t.tap(ekle);
+          for (var i = 0; i < 30 && find.byKey(const ValueKey('urun-ara')).evaluate().isEmpty; i++) {
+            await _bekle(t);
+          }
+          await t.tap(find.text('Tümü').last);
+          for (var i = 0; i < 6; i++) {
+            await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 400)));
+            await t.pump(const Duration(milliseconds: 200));
+          }
+          await _yaz(t, '$on-5-urun-ekle');
+          await t.tap(find.byTooltip('Kapat').last);
+          await _bekle(t);
+        }
+        // Kart: manuel POS cihazı (konsoldan) ya da eski simülasyon kutusu.
+        final kart = find.text('Kredi kartı');
+        if (!koyu && kart.evaluate().isNotEmpty) {
+          await t.ensureVisible(kart.last);
+          await _bekle(t);
+          await t.tap(kart.last, warnIfMissed: false);
+          await _bekle(t);
+          final kutu = find.byKey(const ValueKey('kasa-manuel-pos'));
+          final hedefKutu = kutu.evaluate().isNotEmpty ? kutu : find.textContaining('Kart POS:');
+          if (hedefKutu.evaluate().isNotEmpty) {
+            await t.ensureVisible(hedefKutu.first);
+            await _bekle(t);
+          }
+          await _yaz(t, '$on-6-kart');
         }
         // İndirim penceresi.
         final iskonto = find.byKey(const ValueKey('kasa-iskonto'));

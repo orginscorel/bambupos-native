@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -773,38 +776,225 @@ Future<bool> fisOnizle(BuildContext context, {required String baslik, required J
 
 /* ───────── Ürün ekle (OrderAddItemDialog) ───────── */
 
-Future<Urun?> urunSecPenceresi(BuildContext context, Katalog katalog) {
-  var arama = '';
-  return kasaPenceresi<Urun>(
-    context,
-    baslik: 'Adisyona ürün ekle',
-    genislik: 480,
-    icerik: (ctx, yenile) {
-      final n = aramaAnahtari(arama);
-      final liste = arama.isEmpty
-          ? ([...katalog.urunler]..sort((a, b) => b.kullanim.compareTo(a.kullanim))).take(40).toList()
-          : katalog.urunler.where((u) => u.arama.contains(n)).take(60).toList();
-      return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        TextField(
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Ürün ara…', prefixIcon: Icon(Icons.search_rounded, size: 18)),
-          onChanged: (v) => yenile(() => arama = v.trim()),
-        ),
-        const SizedBox(height: 8),
-        if (arama.isEmpty) Text('Son 30 günde en çok adisyona eklenen ürünler', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
-        if (liste.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Ürün bulunamadı', textAlign: TextAlign.center)),
-        for (final u in liste)
-          ListTile(
-            dense: true,
-            enabled: u.mevcut,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            title: Text(u.ad, style: const TextStyle(fontWeight: FontWeight.w600)),
-            trailing: Text(u.mevcut ? u.fiyatEtiketi('table') : 'tükendi',
-                style: TextStyle(fontWeight: FontWeight.w700, color: u.mevcut ? Renk.marka : Renk.hata)),
-            onTap: () => Navigator.pop(ctx, u),
+/// Adisyona ürün ekleme penceresi: arama + kategori sekmeleri + görselli,
+/// yalnız görünen satırları kuran liste. Katalog bellekteki depodan gelir
+/// (bir kez yüklenir); arama 200 ms gecikmeyle süzülür, süzülmüş liste
+/// sekme/arama değişmedikçe yeniden hesaplanmaz.
+Future<Urun?> urunSecPenceresi(BuildContext context, Katalog katalog, {String kanal = 'table'}) =>
+    pencereAc<Urun>(context: context, builder: (_) => _UrunSecPenceresi(katalog: katalog, kanal: kanal));
+
+class _UrunSecPenceresi extends StatefulWidget {
+  const _UrunSecPenceresi({required this.katalog, required this.kanal});
+  final Katalog katalog;
+  final String kanal;
+
+  @override
+  State<_UrunSecPenceresi> createState() => _UrunSecPenceresiState();
+}
+
+class _UrunSecPenceresiState extends State<_UrunSecPenceresi> {
+  static const _sik = -1;
+  static const _tum = 0;
+  late int _kategori = widget.katalog.sikKullanilan.isNotEmpty ? _sik : _tum;
+  String _arama = '';
+  Timer? _gecikme;
+  late List<Urun> _liste = _suz();
+
+  @override
+  void dispose() {
+    _gecikme?.cancel();
+    super.dispose();
+  }
+
+  List<Urun> _suz() {
+    final k = widget.katalog;
+    if (_arama.isNotEmpty) {
+      final n = aramaAnahtari(_arama);
+      return k.urunler.where((u) => u.arama.contains(n)).toList();
+    }
+    return switch (_kategori) {
+      _sik => k.sikKullanilan,
+      _tum => k.urunler,
+      _ => k.kategoriUrunleri(_kategori),
+    };
+  }
+
+  void _aramaDegisti(String v) {
+    _gecikme?.cancel();
+    _gecikme = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() {
+        _arama = v.trim();
+        _liste = _suz();
+      });
+    });
+  }
+
+  void _kategoriSec(int id) => setState(() {
+        _kategori = id;
+        _liste = _suz();
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final ekran = MediaQuery.sizeOf(context);
+    final dar = ekran.width < 600;
+    final k = widget.katalog;
+    final sekmeler = <(int, String)>[
+      if (k.sikKullanilan.isNotEmpty) (_sik, 'Sık eklenenler'),
+      (_tum, 'Tümü'),
+      for (final c in k.doluKategoriler) (c.id, c.ad),
+    ];
+
+    Widget sekme(int id, String ad) {
+      final secili = _arama.isEmpty && _kategori == id;
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Material(
+          color: secili ? Renk.markaAcik : Renk.yuzey,
+          shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? Renk.marka : Renk.cizgi)),
+          child: InkWell(
+            customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+            onTap: () => _kategoriSec(id),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                child: Text(ad, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: secili ? Renk.marka : Renk.ikinci)),
+              ),
+            ),
           ),
-      ]);
-    },
-    dugmeler: (ctx, yenile) => [OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Kapat'))],
-  );
+        ),
+      );
+    }
+
+    final govde = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+        child: Row(children: [
+          Icon(Icons.add_shopping_cart_outlined, size: 20, color: Renk.marka),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Adisyona ürün ekle', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
+          IconButton(tooltip: 'Kapat', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, size: 20)),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: TextField(
+          key: const ValueKey('urun-ara'),
+          autofocus: !dar,
+          textInputAction: TextInputAction.search,
+          decoration: const InputDecoration(hintText: 'Ürün ara…', prefixIcon: Icon(Icons.search_rounded, size: 18), isDense: true),
+          onChanged: _aramaDegisti,
+        ),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: 34,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          children: [for (final (id, ad) in sekmeler) sekme(id, ad)],
+        ),
+      ),
+      const SizedBox(height: 8),
+      Divider(height: 1, color: Renk.cizgi),
+      Expanded(
+        child: _liste.isEmpty
+            ? Center(child: Text('Ürün bulunamadı', style: TextStyle(color: Renk.ikinci)))
+            : ListView.builder(
+                key: ValueKey('urun-liste-$_kategori-$_arama'),
+                itemCount: _liste.length,
+                itemExtent: 68,
+                itemBuilder: (_, i) => RepaintBoundary(
+                  child: _UrunSatiri(urun: _liste[i], kanal: widget.kanal, bas: () => Navigator.pop(context, _liste[i])),
+                ),
+              ),
+      ),
+    ]);
+
+    return Dialog(
+      insetPadding: dar ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+      shape: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: dar ? ekran.width : 560,
+        height: (ekran.height * (dar ? .9 : .82)).clamp(360.0, 760.0),
+        child: govde,
+      ),
+    );
+  }
+}
+
+class _UrunSatiri extends StatelessWidget {
+  const _UrunSatiri({required this.urun, required this.kanal, required this.bas});
+  final Urun urun;
+  final String kanal;
+  final VoidCallback bas;
+
+  static const _boy = 48.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = urun;
+    final g = u.gorsel;
+    final px = (_boy * MediaQuery.devicePixelRatioOf(context)).round();
+    final yer = Container(
+      width: _boy,
+      height: _boy,
+      color: Renk.ic,
+      alignment: Alignment.center,
+      child: Icon(Icons.restaurant_menu_rounded, size: 20, color: Renk.soluk),
+    );
+    return InkWell(
+      onTap: u.mevcut ? bas : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi))),
+        child: Row(children: [
+          ClipRRect(
+            borderRadius: koseYuvarlak,
+            child: g == null
+                ? yer
+                : CachedNetworkImage(
+                    imageUrl: g,
+                    width: _boy,
+                    height: _boy,
+                    fit: BoxFit.cover,
+                    memCacheWidth: px,
+                    memCacheHeight: px,
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    placeholder: (_, _) => yer,
+                    errorWidget: (_, _, _) => yer,
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                u.ad,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, height: 1.25, color: u.mevcut ? Renk.yazi : Renk.soluk),
+              ),
+              if (u.secimGerekir)
+                Text(u.varyantlar.length > 1 ? 'Seçenekli · boy seçimi' : 'Seçenekli', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            u.mevcut ? u.fiyatEtiketi(kanal) : 'Tükendi',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: u.mevcut ? Renk.yazi : Renk.hata,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Icons.add_circle_outline_rounded, size: 20, color: u.mevcut ? Renk.marka : Renk.soluk),
+        ]),
+      ),
+    );
+  }
 }

@@ -213,6 +213,10 @@ class Kalem {
   bool get aktif => ham['is_active'] == true;
   bool get ikram => ham['is_comp'] == true;
   bool get odendi => ham['is_settled'] == true;
+
+  /// Ödenmemiş adet: sunucu `unpaid_qty` verirse o, yoksa ödenmemiş satırın
+  /// tamamı (kısmi ödemede sunucu satırı böler).
+  int get odenmemisAdet => odendi ? 0 : (ham['unpaid_qty'] == null ? adet : tamSayi(ham['unpaid_qty']).clamp(0, adet));
   int get tutar => tamSayi(ham['line_total_minor']);
   String? get not => _metin(ham['note']);
   String? get istasyon => _metin(ham['station_label']);

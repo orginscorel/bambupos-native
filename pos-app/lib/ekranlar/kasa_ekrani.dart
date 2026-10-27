@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,12 +31,27 @@ class KasaEkrani extends StatefulWidget {
 /// sekmesi o şahısla açılır (değer okununca null yapılır).
 final kasaBorcIstegi = ValueNotifier<int?>(null);
 
+/// Son seçilen manuel kart POS cihazı (uygulama oturumu boyunca hatırlanır).
+int? _secilenPosCihazi;
+
 /// Kart durumu (§1.3 kartDurum).
 enum _KartDurum { acik, kismi, odendi, hesap }
 
-class _KasaEkraniState extends State<KasaEkrani> {
+class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   late final Api _api;
   Timer? _tur;
+
+  /// CANLI ADİSYON (1.2.19): açık adisyonun kalemleri ve ödemeleri 3 sn'de bir
+  /// ETag'le sorulur; değişmediyse (304 / aynı gövde) hiçbir şey çizilmez.
+  Timer? _canli;
+  bool _canliCalisiyor = false;
+  String? _detayEtag;
+  String? _detayImza;
+  String? _odemeEtag;
+
+  /// Canlı güncellemeyle yeni gelen satırlar kısa süre hafif vurgulanır.
+  Set<int> _yeniKalemler = const {};
+  Timer? _yeniSayaci;
   int _modal = 0;
   final _odak = FocusNode(debugLabel: 'kasa');
 
@@ -118,6 +134,8 @@ class _KasaEkraniState extends State<KasaEkrani> {
     _kasalariYukle();
     _yazicilariYukle();
     _tur = Timer.periodic(const Duration(seconds: 5), (_) => _kasaTuru());
+    _canli = Timer.periodic(const Duration(seconds: 3), (_) => _canliTazele());
+    WidgetsBinding.instance.addObserver(this);
     _secim.addListener(_secimDegisti);
     kasaBorcIstegi.addListener(_borcIstegi);
     _borcIstegi();
@@ -136,6 +154,9 @@ class _KasaEkraniState extends State<KasaEkrani> {
   @override
   void dispose() {
     _tur?.cancel();
+    _canli?.cancel();
+    _yeniSayaci?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     kasaBorcIstegi.removeListener(_borcIstegi);
     _kilitSayaci?.cancel();
     _odak.dispose();
@@ -152,7 +173,25 @@ class _KasaEkraniState extends State<KasaEkrani> {
     if (!mounted || _modal > 0 || _duzelt || !context.yoklamaUygun) return;
     _yukle(sessiz: true);
     _posDurumu(sessiz: true);
-    if (_secili != null) _seciliyiTazele();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    // Öne gelince beklemeden tazele (arka planda yoklama yapılmaz).
+    if (s == AppLifecycleState.resumed) _canliTazele();
+  }
+
+  /// Açık adisyonu başka cihazlardaki değişikliklerle eşitler (garson 1 çay
+  /// daha ekledi → kasada çıkıp girmeden görünür). Pencere açıkken, işlem
+  /// sürerken ya da uygulama arka plandayken atlanır.
+  Future<void> _canliTazele() async {
+    if (!mounted || _secili == null || _canliCalisiyor || _modal > 0 || _mesgul || _odeniyor || !context.yoklamaUygun) return;
+    _canliCalisiyor = true;
+    try {
+      await Future.wait([_seciliyiTazele(canli: true), _detayiTazele(canli: true)]);
+    } finally {
+      _canliCalisiyor = false;
+    }
   }
 
   Future<void> _yukle({bool sessiz = false}) async {
@@ -249,6 +288,7 @@ class _KasaEkraniState extends State<KasaEkrani> {
       _detay = null;
       _detayYasak = false;
       _odemeler = const [];
+      _detayEtag = _detayImza = _odemeEtag = null;
       _duzelt = false;
       _sagSekme = 'items';
       _secim.temizle();
@@ -260,37 +300,77 @@ class _KasaEkraniState extends State<KasaEkrani> {
     _formuSifirla();
   }
 
-  Future<void> _seciliyiTazele({bool hataGoster = false}) async {
+  Future<void> _seciliyiTazele({bool hataGoster = false, bool canli = false}) async {
     final s = _secili;
     if (s == null) return;
     try {
-      final r = await _api.get('/api/v1/orders/${s.id}/payments');
+      final y = await _api.getEtagli('/api/v1/orders/${s.id}/payments', _odemeEtag);
+      if (y == null) return; // 304: değişmedi
+      final r = y.veri;
       if (!mounted || _secili?.id != s.id || r is! Map) return;
+      final oncekiKalan = _kalan;
       setState(() {
+        _odemeEtag = y.etag;
         if (r['order'] is Map) _secili = AdisyonOzet((r['order'] as Map).cast<String, dynamic>());
         _odemeler = (r['payments'] as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
       });
+      // Kalan değişti ve kasiyer tutara dokunmadıysa tutar kendiliğinden güncellenir.
+      if (canli && _kalan != oncekiKalan) _tutariEsitle();
     } on ApiHata catch (e) {
       if (hataGoster && mounted) context.bildir2('Adisyon yüklenemedi', e.mesaj, hata: true);
     }
   }
 
-  Future<void> _detayiTazele() async {
+  /// Canlı güncelleme sonrası: kasiyer tutarı elle yazmadıysa (taze) tutar
+  /// kalan/seçime göre yeniden kurulur.
+  void _tutariEsitle() {
+    if (!mounted || _secili == null || !_taze || _hedef != 'amount') return;
+    _tutar = _kalan > 0 ? paraGirdisi(_secim.bos ? _kalan : _seciliToplam.clamp(0, _kalan)) : '';
+    _odemeTetik.tetikle();
+  }
+
+  Future<void> _detayiTazele({bool canli = false}) async {
     final s = _secili;
     if (s == null) return;
     if (!(_kalemDuzenler || _ikramEder || _can('orders.view'))) {
-      setState(() => _detayYasak = true);
+      if (!_detayYasak) setState(() => _detayYasak = true);
       return;
     }
     try {
-      final r = await _api.get('/api/v1/orders/${s.id}');
+      final y = await _api.getEtagli('/api/v1/orders/${s.id}', _detay == null ? null : _detayEtag);
+      if (y == null) return; // 304: değişmedi
+      final r = y.veri;
       if (!mounted || _secili?.id != s.id || r is! Map || r['order'] is! Map) return;
-      final yeni = Adisyon((r['order'] as Map).cast<String, dynamic>());
-      setState(() => _detay = yeni);
-      // Ödenmiş / çıkarılmış / adedi düşmüş satırların seçimi düşer.
-      _secim.ayikla(yeni.aktifKalemler.where(_secilebilir));
+      final ham = (r['order'] as Map).cast<String, dynamic>();
+      _detayEtag = y.etag;
+      // ETag'siz eski sunucu: gövde aynıysa hiçbir şey yeniden çizilmez.
+      final imza = jsonEncode(ham);
+      if (_detay != null && imza == _detayImza) return;
+      _detayImza = imza;
+      final yeni = Adisyon(ham);
+      final eskiIdler = _detay?.kalemler.map((k) => k.id).toSet();
+      setState(() {
+        if (canli && eskiIdler != null) {
+          final gelen = {for (final k in yeni.aktifKalemler) if (!eskiIdler.contains(k.id)) k.id};
+          if (gelen.isNotEmpty) {
+            _yeniKalemler = gelen;
+            _yeniSayaci?.cancel();
+            _yeniSayaci = Timer(const Duration(milliseconds: 2500), () {
+              if (mounted) setState(() => _yeniKalemler = const {});
+            });
+          }
+        }
+        _detay = yeni;
+      });
+      // Ödenmiş / çıkarılmış / adedi düşmüş satırların seçimi düşer
+      // (kalan seçim satırın ödenmemiş adedine kırpılır).
+      final secimDegisti = _secim.ayikla(yeni.aktifKalemler.where(_secilebilir));
       if (_acikKalem.value != null && !yeni.aktifKalemler.any((k) => k.id == _acikKalem.value && _secilebilir(k) && k.adet > 1)) {
         _acikKalem.value = null;
+      }
+      if (canli) {
+        _tutariEsitle();
+        if (secimDegisti && mounted) context.bildir2('Adisyon güncellendi', 'Başka bir cihazdaki değişiklik nedeniyle seçiminiz güncellendi.');
       }
     } on ApiHata catch (e) {
       if (mounted && (e.kod == 401 || e.kod == 403)) setState(() => _detayYasak = true);
@@ -313,6 +393,7 @@ class _KasaEkraniState extends State<KasaEkrani> {
   void _secimeDon() => setState(() {
         _secili = null;
         _detay = null;
+        _detayEtag = _detayImza = _odemeEtag = null;
         _borclu = null;
         _duzelt = false;
         _secim.temizle();
@@ -442,7 +523,24 @@ class _KasaEkraniState extends State<KasaEkrani> {
   bool get _terminalYontemi => kasaYontemleri.any((y) => y.$1 == _yontem && y.$4);
   bool get _posManuel => (_pos?['simulated'] ?? true) == true || (_pos?['online'] ?? false) != true;
 
+  /// Konsolda tanımlı, etkin manuel kart POS cihazları (sunucu
+  /// `terminal-status.manuel_cihazlar`). Alan yoksa / boşsa eski davranış.
+  List<Json> get _manuelCihazlar => ((_pos?['manuel_cihazlar'] as List?) ?? const [])
+      .whereType<Map>()
+      .map((e) => e.cast<String, dynamic>())
+      .where((e) => e['id'] != null)
+      .toList();
+
+  /// Kart okutulacak manuel cihaz (yalnız entegre terminal yokken).
+  Json? get _posCihazi {
+    if (!_posManuel) return null;
+    final l = _manuelCihazlar;
+    if (l.isEmpty) return null;
+    return l.where((c) => tamSayi(c['id']) == _secilenPosCihazi).firstOrNull ?? l.first;
+  }
+
   String get _odemeDugmeMetni {
+    if (_terminalYontemi && _posCihazi != null) return 'Kartla ödendi — onayla';
     if (_terminalYontemi) return _posManuel ? 'Manuel onayla (POS bağlı değil)' : 'Terminale gönder';
     return '${yontemAdi(_yontem)} ödemesini al';
   }
@@ -474,6 +572,8 @@ class _KasaEkraniState extends State<KasaEkrani> {
       };
       // KISMİ ADET (2026-10-27): seçilen her satır {id, qty}; sunucu satırı
       // böler (4× çaydan 2'si ödendi → 2 ödenmiş + 2 açık satır).
+      final cihaz = _terminalYontemi ? _posCihazi : null;
+      if (cihaz != null) govde['pos_cihaz_id'] = tamSayi(cihaz['id']);
       final secilenler = _seciliKalemler;
       if (secilenler.isNotEmpty) govde['items'] = [for (final x in secilenler) {'id': x.kalem.id, 'qty': x.adet}];
       dynamic r;
@@ -536,12 +636,12 @@ class _KasaEkraniState extends State<KasaEkrani> {
   List<Kalem> get _gorunenKalemler => _detay?.aktifKalemler ?? const [];
 
   /// Parası alınabilecek satır: ikram değil, ödenmemiş, adedi var.
-  bool _secilebilir(Kalem k) => !k.ikram && !k.odendi && k.adet > 0;
+  bool _secilebilir(Kalem k) => !k.ikram && !k.odendi && k.odenmemisAdet > 0;
 
   /// Seçili satırlar ve seçilen adetleri (adet ≤ satırın ödenmemiş adedi).
   List<({Kalem kalem, int adet})> get _seciliKalemler => [
     for (final k in _gorunenKalemler)
-      if (_secilebilir(k) && _secim.adet(k.id) > 0) (kalem: k, adet: _secim.adet(k.id).clamp(1, k.adet)),
+      if (_secilebilir(k) && _secim.adet(k.id) > 0) (kalem: k, adet: _secim.adet(k.id).clamp(1, k.odenmemisAdet)),
   ];
 
   /// Satırın n adedinin tutarı (satır toplamından orantılı; tamamı = satır toplamı).
@@ -670,7 +770,7 @@ class _KasaEkraniState extends State<KasaEkrani> {
       context.bildir2('Katalog getirilemedi', 'Bağlantıyı kontrol edip tekrar deneyin.', hata: true);
       return;
     }
-    final u = await _penceredeyken(() => urunSecPenceresi(context, katalog));
+    final u = await _penceredeyken(() => urunSecPenceresi(context, katalog, kanal: _secili?.kanal ?? 'table'));
     if (u == null || !mounted) return;
     UrunSecimi? s;
     if (u.secimGerekir) {
@@ -1769,56 +1869,98 @@ class _KasaEkraniState extends State<KasaEkrani> {
     );
 
     // Araç çubuğu: adisyon ekranındaki gibi renkli kare düğmeler (8px köşe).
+    final indirimToplam = tamSayi(h['discount_minor']) + tamSayi(h['iskonto_minor']);
+    final indirimEtkin = _indirimYetkisi && _duzenlenebilir && !_mesgul;
+    // Araç çubuğu (1.2.19): tek satır, eşit genişlikte kare düğmeler (simge
+    // üstte, ad altta; 8px köşe). Hesap · İndirim · Ürün ekle yan yana; dar
+    // ekranda ad küçülür, satır asla taşmaz.
+    final araclarListesi = <_AracDugmesi>[
+      if (d != null && (_kalemDuzenler || _ikramEder) && _duzenlenebilir)
+        _AracDugmesi(
+          key: const ValueKey('kasa-duzelt'),
+          ikon: _duzelt ? Icons.check_rounded : Icons.edit_outlined,
+          ad: _duzelt ? 'Bitir' : 'Düzelt',
+          ipucu: _duzelt ? 'Düzenlemeyi bitir' : 'Kalemleri düzelt (adet, ikram, çıkar)',
+          renk: _duzelt ? Renk.durumUstu : Renk.ikinci,
+          zemin: _duzelt ? Renk.marka : Renk.ic,
+          kenar: _duzelt ? Renk.marka : Renk.cizgi,
+          bas: () {
+            _secim.temizle();
+            _acikKalem.value = null;
+            setState(() => _duzelt = !_duzelt);
+          },
+        ),
+      _AracDugmesi(
+        key: const ValueKey('kasa-hesap'),
+        ikon: Icons.print_outlined,
+        ad: 'Hesap',
+        ipucu: 'Hesap fişi yazdır',
+        renk: Renk.bilgi,
+        zemin: Renk.bilgiZemin,
+        kenar: Renk.bilgiKenar,
+        bas: () => _fisYazdir('bill'),
+      ),
+      // İNDİRİM: Hesap'ın hemen yanında; hazır indirim / manuel iskonto
+      // penceresini açar. Uygulanmışsa düğme turuncu, tutar altta satırda.
+      if (_indirimYetkisi || indirimToplam > 0)
+        _AracDugmesi(
+          key: const ValueKey('kasa-iskonto'),
+          ikon: Icons.local_offer_outlined,
+          ad: 'İndirim',
+          ipucu: indirimToplam > 0
+              ? 'Uygulanan: −${para(indirimToplam)}'
+              : (_o.manuelIskonto ? 'Hazır indirim ya da manuel iskonto' : 'Hazır indirim uygula'),
+          renk: indirimToplam > 0 ? Renk.uyari : Renk.ikinci,
+          zemin: indirimToplam > 0 ? Renk.uyariZemin : Renk.ic,
+          kenar: indirimToplam > 0 ? Renk.uyariKenar : Renk.cizgi,
+          bas: indirimEtkin ? _indirimDiyalogu : null,
+        ),
+      // Adisyona ürün ekle: İndirim'in yanında (eskiden kalem listesinin altındaydı).
+      if (d != null && _kalemDuzenler && _duzenlenebilir)
+        _AracDugmesi(
+          key: const ValueKey('kasa-urun-ekle'),
+          ikon: Icons.add_shopping_cart_outlined,
+          ad: 'Ürün ekle',
+          ipucu: 'Adisyona ürün ekle',
+          renk: Renk.marka,
+          zemin: Renk.markaAcik,
+          kenar: Renk.markaKenar,
+          bas: _mesgul ? null : _urunEkle,
+        ),
+      if (s.odenen > 0)
+        _AracDugmesi(
+          key: const ValueKey('kasa-fis'),
+          ikon: Icons.receipt_long_outlined,
+          ad: 'Fiş',
+          ipucu: 'Ödeme fişi yazdır',
+          renk: Renk.basari,
+          zemin: Renk.basariZemin,
+          kenar: Renk.basariKenar,
+          bas: () => _fisYazdir('payment'),
+        ),
+    ];
     final araclar = Container(
+      key: const ValueKey('kasa-araclar'),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
       child: Row(children: [
-        if (d != null && (_kalemDuzenler || _ikramEder) && _duzenlenebilir) ...[
-          _AracDugmesi(
-            ikon: _duzelt ? Icons.check_rounded : Icons.edit_outlined,
-            ad: _duzelt ? 'Bitir' : 'Düzelt',
-            ipucu: _duzelt ? 'Düzenlemeyi bitir' : 'Kalemleri düzelt (adet, ikram, çıkar)',
-            renk: _duzelt ? Renk.durumUstu : Renk.ikinci,
-            zemin: _duzelt ? Renk.marka : Renk.ic,
-            kenar: _duzelt ? Renk.marka : Renk.cizgi,
-            bas: () {
-              _secim.temizle();
-              _acikKalem.value = null;
-              setState(() => _duzelt = !_duzelt);
-            },
-          ),
-          const SizedBox(width: 6),
+        for (final (i, w) in araclarListesi.indexed) ...[
+          if (i > 0) const SizedBox(width: 6),
+          // Uzun adlı düğme ("Ürün ekle") biraz geniş: yazı küçülmeden sığar.
+          Expanded(flex: (w.ad?.length ?? 0) >= 8 ? 5 : 4, child: w),
         ],
-        _AracDugmesi(
-          ikon: Icons.print_outlined,
-          ad: 'Hesap',
-          ipucu: 'Hesap fişi yazdır',
-          renk: Renk.bilgi,
-          zemin: Renk.bilgiZemin,
-          kenar: Renk.bilgiKenar,
-          bas: () => _fisYazdir('bill'),
-        ),
-        if (s.odenen > 0) ...[
-          const SizedBox(width: 6),
-          _AracDugmesi(
-            ikon: Icons.receipt_long_outlined,
-            ad: 'Fiş',
-            ipucu: 'Ödeme fişi yazdır',
-            renk: Renk.basari,
-            zemin: Renk.basariZemin,
-            kenar: Renk.basariKenar,
-            bas: () => _fisYazdir('payment'),
-          ),
-        ],
-        const Spacer(),
-        Builder(
-          builder: (c) => _AracDugmesi(
-            ikon: Icons.more_vert_rounded,
-            ipucu: 'Diğer işlemler',
-            renk: Renk.ikinci,
-            zemin: Renk.ic,
-            kenar: Renk.cizgi,
-            bas: () => _digerMenu(c, indirimVar: indirimVar, servisVar: servisVar),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 40,
+          child: Builder(
+            builder: (c) => _AracDugmesi(
+              ikon: Icons.more_vert_rounded,
+              ipucu: 'Diğer işlemler',
+              renk: Renk.ikinci,
+              zemin: Renk.ic,
+              kenar: Renk.cizgi,
+              bas: () => _digerMenu(c, indirimVar: indirimVar, servisVar: servisVar),
+            ),
           ),
         ),
       ]),
@@ -1882,7 +2024,7 @@ class _KasaEkraniState extends State<KasaEkrani> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: genis ? MainAxisSize.max : MainAxisSize.min, children: [
         kunye,
         araclar,
-        _iskontoBolumu(s, h),
+        _indirimSeridi(h),
         sekmeler,
         if (genis)
           Expanded(child: RepaintBoundary(child: icerik))
@@ -1893,84 +2035,46 @@ class _KasaEkraniState extends State<KasaEkrani> {
     );
   }
 
-  /// ÜST BÖLGEDE İNDİRİM / İSKONTO: uygulananlar görünür, tek dokunuşla
-  /// kaldırılır; "Uygula" hazır indirimler penceresini açar.
-  Widget _iskontoBolumu(AdisyonOzet s, Json h) {
+  /// Uygulanmış indirim / iskonto: yalnız varsa, araç çubuğunun altında
+  /// ince satır(lar) — ad, tutar ve tek dokunuşla kaldır.
+  Widget _indirimSeridi(Json h) {
     final indirim = tamSayi(h['discount_minor']);
     final iskonto = tamSayi(h['iskonto_minor']);
-    final var_ = indirim > 0 || iskonto > 0;
-    if (!_indirimYetkisi && !var_) return const SizedBox.shrink();
+    if (indirim <= 0 && iskonto <= 0) return const SizedBox.shrink();
     final yuzde = h['discount_percent'];
     final etkin = _indirimYetkisi && _duzenlenebilir && !_mesgul;
 
-    Widget kalem(IconData ikon, String ad, int tutar, VoidCallback kaldir) => Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.only(left: 10),
-            decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.uyariKenar)),
-            child: Row(children: [
-              Icon(ikon, size: 15, color: Renk.uyari),
-              const SizedBox(width: 6),
-              Expanded(child: Text(ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-              Text('−${para(tutar)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Renk.uyari)),
-              if (etkin)
-                Tooltip(
-                  message: 'Kaldır',
-                  child: InkWell(
-                    borderRadius: koseYuvarlak,
-                    onTap: kaldir,
-                    child: SizedBox(width: 34, height: 34, child: Icon(Icons.close_rounded, size: 16, color: Renk.ikinci)),
-                  ),
-                )
-              else
-                const SizedBox(width: 10),
-            ]),
-          ),
+    Widget kalem(Key key, IconData ikon, String ad, int tutar, VoidCallback kaldir) => SizedBox(
+          key: key,
+          height: 34,
+          child: Row(children: [
+            Icon(ikon, size: 15, color: Renk.uyari),
+            const SizedBox(width: 8),
+            Expanded(child: Text(ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+            Text('−${para(tutar)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Renk.uyari)),
+            if (etkin)
+              Tooltip(
+                message: 'Kaldır',
+                child: InkWell(
+                  borderRadius: koseYuvarlak,
+                  onTap: kaldir,
+                  child: SizedBox(width: 34, height: 34, child: Icon(Icons.close_rounded, size: 16, color: Renk.ikinci)),
+                ),
+              )
+            else
+              const SizedBox(width: 4),
+          ]),
         );
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: BoxDecoration(
-        color: var_ ? Renk.uyariZemin.carp(.6) : Renk.yuzey,
-        border: Border(bottom: BorderSide(color: Renk.cizgi)),
-      ),
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+      decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: var_ ? Renk.uyariZemin : Renk.markaAcik, borderRadius: koseYuvarlak, border: Border.all(color: var_ ? Renk.uyariKenar : Renk.markaKenar)),
-            child: Icon(Icons.sell_outlined, size: 16, color: var_ ? Renk.uyari : Renk.marka),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('İndirim / İskonto', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-              Text(
-                var_ ? 'Toplam −${para(indirim + iskonto)} düşüldü' : (_o.manuelIskonto ? 'Hazır indirim ya da manuel iskonto' : 'Hazır indirimlerden seçin'),
-                style: TextStyle(fontSize: 12, color: var_ ? Renk.uyari : Renk.ikinci),
-              ),
-            ]),
-          ),
-          if (_indirimYetkisi)
-            OutlinedButton.icon(
-              key: const ValueKey('kasa-iskonto'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(0, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                foregroundColor: Renk.marka,
-                backgroundColor: Renk.yuzey,
-                side: BorderSide(color: Renk.markaKenar),
-              ),
-              onPressed: etkin ? _indirimDiyalogu : null,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Uygula'),
-            ),
-        ]),
         if (indirim > 0)
-          kalem(Icons.sell_outlined, '${h['discount_reason'] ?? 'İndirim'}${yuzde != null ? ' (%${_oran(yuzde).substring(1)})' : ''}', indirim, _indirimKaldir),
-        if (iskonto > 0) kalem(Icons.percent_rounded, h['iskonto_reason']?.toString() ?? 'İskonto', iskonto, _iskontoKaldir),
+          kalem(const ValueKey('kasa-indirim-satiri'), Icons.local_offer_outlined,
+              '${h['discount_reason'] ?? 'İndirim'}${yuzde != null ? ' (%${_oran(yuzde).substring(1)})' : ''}', indirim, _indirimKaldir),
+        if (iskonto > 0)
+          kalem(const ValueKey('kasa-iskonto-satiri'), Icons.percent_rounded, h['iskonto_reason']?.toString() ?? 'İskonto', iskonto, _iskontoKaldir),
       ]),
     );
   }
@@ -2096,17 +2200,6 @@ class _KasaEkraniState extends State<KasaEkrani> {
       ogeler.add(() => Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: Text('Değişiklikler anında adisyona ve kalan tutara işler. Bittiğinde “Bitir”e basın.', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
-          ));
-    }
-    if (_kalemDuzenler && _duzenlenebilir) {
-      ogeler.add(() => Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(backgroundColor: Renk.yuzey, minimumSize: const Size.fromHeight(40)),
-              onPressed: _mesgul ? null : _urunEkle,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Adisyona ürün ekle'),
-            ),
           ));
     }
     ogeler.add(() => _tutarDokumu(h, kalemler));
@@ -2323,7 +2416,7 @@ class _KasaEkraniState extends State<KasaEkrani> {
     ]);
 
     return Material(
-      color: secAdet > 0 ? Renk.markaAcik.carp(.55) : (soluk ? Renk.ic : Renk.yuzey),
+      color: secAdet > 0 ? Renk.markaAcik.carp(.55) : (soluk ? Renk.ic : (_yeniKalemler.contains(k.id) ? Renk.markaAcik.carp(.35) : Renk.yuzey)),
       child: InkWell(
         onTap: secilebilir ? () => _kalemDokun(k) : null,
         child: Container(
@@ -2867,6 +2960,8 @@ class _KasaEkraniState extends State<KasaEkrani> {
   }
 
   Widget _posKutusu() {
+    final cihaz = _posCihazi;
+    if (cihaz != null) return _manuelPosKutusu(cihaz);
     final manuel = _posManuel;
     final p = _pos;
     final String metin;
@@ -2894,6 +2989,64 @@ class _KasaEkraniState extends State<KasaEkrani> {
             Text(metin, style: TextStyle(fontSize: 12, color: renk)),
           ]),
         ),
+      ]),
+    );
+  }
+
+  /// Konsolda tanımlı manuel kart POS'u: simülasyon uyarısı yerine sade bilgi
+  /// kutusu; birden çok cihaz varsa küçük seçici (oturum boyunca hatırlanır).
+  Widget _manuelPosKutusu(Json cihaz) {
+    final l = _manuelCihazlar;
+    String ad(Json c) => '${c['ad'] ?? c['banka'] ?? 'Kart POS'}';
+    String alt(Json c) => [
+          if (c['banka'] != null && '${c['banka']}' != ad(c)) '${c['banka']}',
+          if (c['terminal_no'] != null && '${c['terminal_no']}'.isNotEmpty) 'T: ${c['terminal_no']}',
+        ].join(' · ');
+    return Container(
+      key: const ValueKey('kasa-manuel-pos'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgiKoyu)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.point_of_sale_outlined, size: 18, color: Renk.bilgi),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                const TextSpan(text: 'Kartı '),
+                TextSpan(text: ad(cihaz), style: const TextStyle(fontWeight: FontWeight.w700)),
+                const TextSpan(text: ' cihazında okutun; onaylandıktan sonra tutarı burada onaylayın.'),
+              ]),
+              style: TextStyle(fontSize: 12.5, color: Renk.yazi),
+            ),
+          ),
+        ]),
+        if (l.length > 1) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final c in l)
+              Builder(builder: (_) {
+                final secili = tamSayi(c['id']) == tamSayi(cihaz['id']);
+                final a = alt(c);
+                return Material(
+                  color: secili ? Renk.markaAcik : Renk.ic,
+                  shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? Renk.marka : Renk.cizgi)),
+                  child: InkWell(
+                    key: ValueKey('kasa-pos-cihaz-${c['id']}'),
+                    customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+                    onTap: () => setState(() => _secilenPosCihazi = tamSayi(c['id'])),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                        Text(ad(c), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: secili ? Renk.marka : Renk.yazi)),
+                        if (a.isNotEmpty) Text(a, style: TextStyle(fontSize: 11, color: Renk.ikinci)),
+                      ]),
+                    ),
+                  ),
+                );
+              }),
+          ]),
+        ],
       ]),
     );
   }
@@ -3460,9 +3613,9 @@ class _KalemSecimi extends ChangeNotifier {
 
   /// Güncel satırlara göre ayıklar: ödenmiş/çıkmış satır düşer, adedi
   /// azalmış satırın seçimi yeni adede indirilir.
-  void ayikla(Iterable<Kalem> secilebilir) {
-    if (_birimler.isEmpty) return;
-    final adetler = {for (final k in secilebilir) k.id: k.adet};
+  bool ayikla(Iterable<Kalem> secilebilir) {
+    if (_birimler.isEmpty) return false;
+    final adetler = {for (final k in secilebilir) k.id: k.odenmemisAdet};
     var degisti = false;
     for (final id in _birimler.keys.toList()) {
       final enFazla = adetler[id];
@@ -3477,6 +3630,7 @@ class _KalemSecimi extends ChangeNotifier {
       }
     }
     if (degisti) notifyListeners();
+    return degisti;
   }
 }
 
@@ -3521,7 +3675,7 @@ class _Etiket extends StatelessWidget {
 
 /// Araç çubuğu düğmesi: renkli zemin + simge (+ isteğe bağlı yazı), 36 px.
 class _AracDugmesi extends StatelessWidget {
-  const _AracDugmesi({required this.ikon, this.ad, required this.ipucu, required this.renk, required this.zemin, required this.kenar, required this.bas});
+  const _AracDugmesi({super.key, required this.ikon, this.ad, required this.ipucu, required this.renk, required this.zemin, required this.kenar, required this.bas});
   final IconData ikon;
   final String? ad;
   final String ipucu;
@@ -3534,32 +3688,27 @@ class _AracDugmesi extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: ipucu,
-      child: Material(
-        color: zemin,
-        shape: RoundedRectangleBorder(
-          borderRadius: koseYuvarlak,
-          side: BorderSide(color: kenar),
-        ),
-        child: InkWell(
-          customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
-          onTap: bas,
-          child: SizedBox(
-            height: 36,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: ad == null ? 8 : 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(ikon, size: 18, color: renk),
-                  if (ad != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      ad!,
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: renk),
+      child: Opacity(
+        opacity: bas == null ? .5 : 1,
+        child: Material(
+          color: zemin,
+          shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: kenar)),
+          child: InkWell(
+            customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+            onTap: bas,
+            child: SizedBox(
+              height: 52,
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(ikon, size: 20, color: renk),
+                if (ad != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(3, 3, 3, 0),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(ad!, maxLines: 1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: renk, height: 1.1)),
                     ),
-                  ],
-                ],
-              ),
+                  ),
+              ]),
             ),
           ),
         ),

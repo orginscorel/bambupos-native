@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -152,6 +153,9 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   bool _kuyrukCalisiyor = false;
 
   Timer? _yoklama;
+  bool _yoklaniyor = false;
+  String? _etag;
+  String? _imza;
   late final Api _api;
 
   int get id => widget.adisyonId;
@@ -170,8 +174,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     _katalog = KatalogDeposu.ornek.katalog;
     _yukle();
     _kataloguYukle();
-    _yoklama = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && _modal == 0 && !_mesgul && !_kuyrukCalisiyor && context.yoklamaUygun) _yukle(sessiz: true);
+    // CANLI (1.2.19): aynı adisyondaki başka personelin eklediği kalemler 3 sn
+    // içinde görünür; ETag'le sorulur, değişmediyse hiçbir şey çizilmez.
+    _yoklama = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && _modal == 0 && !_mesgul && !_kuyrukCalisiyor && !_yoklaniyor && context.yoklamaUygun) _yukle(sessiz: true, canli: true);
     });
   }
 
@@ -195,15 +201,31 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
   /* ═════════════ Yükleme ═════════════ */
 
-  Future<void> _yukle({bool sessiz = false}) async {
+  Future<void> _yukle({bool sessiz = false, bool canli = false}) async {
+    _yoklaniyor = true;
     try {
+      if (canli && _a != null) {
+        final y = await context.api.getEtagli('/api/v1/orders/$id', _etag);
+        if (y == null || !mounted) return; // 304: değişmedi
+        _etag = y.etag;
+        final ham = y.veri is Map ? (y.veri as Map)['order'] : null;
+        // ETag'siz sunucu: gövde aynıysa yeniden çizilmez.
+        final imza = ham is Map ? jsonEncode(ham) : null;
+        if (imza != null && imza == _imza) return;
+        // Yoklama yanıtı gelirken kendi işlemimiz başladıysa eski veri yazılmaz.
+        if (_mesgul || _kuyrukCalisiyor || _modal > 0) return;
+        _isle(y.veri);
+        return;
+      }
       final r = await context.api.get('/api/v1/orders/$id');
+      _etag = null;
       _isle(r);
     } on ApiHata catch (e) {
       if (!mounted) return;
       if (e.kod == 404) return _bulunamadi();
       if (!sessiz) context.bildir2('Adisyon yüklenemedi', e.mesaj, hata: true);
     } finally {
+      _yoklaniyor = false;
       if (mounted && _yukleniyor) setState(() => _yukleniyor = false);
     }
   }
@@ -211,6 +233,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   void _isle(dynamic r) {
     final ham = r is Map ? r['order'] : null;
     if (ham is! Map || !mounted) return;
+    _imza = jsonEncode(ham);
     final a = Adisyon(ham.cast<String, dynamic>());
     setState(() {
       _a = a;
