@@ -284,6 +284,24 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
                                 child: Text('Kodu yenile', style: TextStyle(color: Colors.white.withValues(alpha: .7), fontSize: 13)),
                               ),
                             ),
+                          const SizedBox(height: 6),
+                          Belirme(
+                            sira: 6,
+                            child: Basilir(
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ParolaGirisEkrani())),
+                              child: Container(
+                                height: 50,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: .08),
+                                  borderRadius: Marka.yaricap,
+                                  border: Border.all(color: Colors.white.withValues(alpha: .15)),
+                                ),
+                                child: const Text('E-posta / kullanıcı adı ve parola ile giriş',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -531,4 +549,175 @@ class _BekleniyorState extends State<_Bekleniyor> with SingleTickerProviderState
           ),
         ]),
       );
+}
+
+/* ───────────────────────── Parola ile giriş ─────────────────────────
+   Eşleme yapılamadığında (ya da App Store incelemesi için) hesap bilgisiyle
+   giriş. Yalnız patron paneli yetkisi olanlar içeri girer. */
+
+class ParolaGirisEkrani extends StatefulWidget {
+  const ParolaGirisEkrani({super.key});
+  @override
+  State<ParolaGirisEkrani> createState() => _ParolaGirisEkraniState();
+}
+
+class _ParolaGirisEkraniState extends State<ParolaGirisEkrani> {
+  final _kim = TextEditingController();
+  final _parola = TextEditingController();
+  bool _gizli = true;
+  bool _bekle = false;
+  String? _hata;
+
+  @override
+  void dispose() {
+    _kim.dispose();
+    _parola.dispose();
+    super.dispose();
+  }
+
+  Future<void> _gir() async {
+    if (_kim.text.trim().isEmpty || _parola.text.isEmpty) {
+      setState(() => _hata = 'E-posta / kullanıcı adı ve parolanı gir.');
+      return;
+    }
+    setState(() {
+      _bekle = true;
+      _hata = null;
+    });
+    try {
+      final r = await Uyg.api.post('/api/v1/auth/login', {'email': _kim.text.trim(), 'password': _parola.text, 'remember': true});
+      if (r is Map && r['two_factor'] == true) {
+        setState(() => _hata = 'Hesabında iki adımlı doğrulama açık. Telefonu eşleme koduyla bağla.');
+        return;
+      }
+      // Patron yetkisi denetimi: özet ucu yalnız patron paneli iznine açıktır.
+      try {
+        await Uyg.api.get('/api/v1/boss/overview');
+      } on ApiHata catch (e) {
+        if (e.yetkiYok || e.oturumYok) {
+          try {
+            await Uyg.api.post('/api/v1/auth/logout');
+          } catch (_) {}
+          setState(() => _hata = 'Bu hesap patron uygulamasına giremez. Yalnız sahip, müdür ve şube müdürü girebilir.');
+          return;
+        }
+        rethrow;
+      }
+      if (r is Map && r['user'] is Map) await Uyg.adKaydet((r['user'] as Map)['name']?.toString() ?? '');
+      HapticFeedback.mediumImpact();
+      if (!mounted) return;
+      kabugaGec(context);
+    } on ApiHata catch (e) {
+      if (mounted) setState(() => _hata = e.mesaj);
+    } finally {
+      if (mounted) setState(() => _bekle = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ust = MediaQuery.paddingOf(context).top;
+    InputDecoration koyu(String etiket, IconData ikon, {Widget? sag}) => InputDecoration(
+          labelText: etiket,
+          prefixIcon: Icon(ikon, color: Colors.white60),
+          suffixIcon: sag,
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: .08),
+          labelStyle: const TextStyle(color: Colors.white60),
+          enabledBorder: OutlineInputBorder(borderRadius: Marka.yaricap, borderSide: BorderSide(color: Colors.white.withValues(alpha: .15))),
+          focusedBorder: OutlineInputBorder(borderRadius: Marka.yaricap, borderSide: const BorderSide(color: Marka.gok, width: 2)),
+        );
+    return AnnotatedRegion(
+      value: durumCubuguAcikSimge,
+      child: Scaffold(
+        backgroundColor: Marka.gece,
+        body: GeceZemin(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: AutofillGroup(
+                child: ListView(padding: EdgeInsets.fromLTRB(20, ust + 10, 20, 30), children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      tooltip: 'Geri',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 30),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Belirme(sira: 0, child: Align(alignment: Alignment.centerLeft, child: PaMark(boyut: 48))),
+                  const SizedBox(height: 16),
+                  Belirme(sira: 1, child: Text('Parola ile giriş', style: gosterim(28, renk: Colors.white))),
+                  const SizedBox(height: 4),
+                  Belirme(
+                    sira: 2,
+                    child: Text('BamBumPOS hesabınla gir. Yalnız patron paneli yetkisi olanlar girebilir.',
+                        style: TextStyle(color: Colors.white.withValues(alpha: .7), height: 1.4)),
+                  ),
+                  const SizedBox(height: 22),
+                  Belirme(
+                    sira: 3,
+                    child: TextField(
+                      controller: _kim,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.username],
+                      textInputAction: TextInputAction.next,
+                      autocorrect: false,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: koyu('E-posta / kullanıcı adı', Icons.person_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Belirme(
+                    sira: 4,
+                    child: TextField(
+                      controller: _parola,
+                      obscureText: _gizli,
+                      autofillHints: const [AutofillHints.password],
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _bekle ? null : _gir(),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: koyu('Parola', Icons.lock_rounded,
+                          sag: IconButton(
+                            tooltip: _gizli ? 'Parolayı göster' : 'Parolayı gizle',
+                            onPressed: () => setState(() => _gizli = !_gizli),
+                            icon: Icon(_gizli ? Icons.visibility_rounded : Icons.visibility_off_rounded, color: Colors.white60),
+                          )),
+                    ),
+                  ),
+                  if (_hata != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Marka.gul.withValues(alpha: .18), borderRadius: Marka.yaricap),
+                      child: Text(_hata!, style: const TextStyle(color: Color(0xFFFFE4E6), fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Belirme(
+                    sira: 5,
+                    child: SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: _bekle ? null : _gir,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Marka.mor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: Marka.yaricap),
+                        ),
+                        child: _bekle
+                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                            : const Text('Giriş yap', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
