@@ -74,6 +74,8 @@ void adreseGit(String url) {
 /// izin panosu çıkar (işletme kuralı kapalıysa "Şimdilik geç" de var).
 /// Tüm girişler (alt çubuk, ana sayfa kartı, Mesaim, bildirim) bunu kullanır.
 Future<void> qrOkutAc(BuildContext context, {bool kabuktan = false}) async {
+  // Konsolda değişen mesai noktası (konum/yarıçap) beklemeden gelsin.
+  unawaited(Uyg.hesapTazele(enAz: Duration.zero));
   if (!await qrOncesiKonum(context) || !context.mounted) return;
   if (!kabuktan) {
     await git(context, const QrOkutEkrani());
@@ -99,6 +101,13 @@ class Kabuk extends StatefulWidget {
 
 class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
   final _ziyaret = <int>{0};
+  /// Mesai noktası ayarı konsoldan anlık gelsin diye önde iken dakikada bir hesap tazelenir (küçük istek).
+  Timer? _hesapSaati;
+
+  void _hesapSaatiKur() {
+    _hesapSaati?.cancel();
+    _hesapSaati = Timer.periodic(const Duration(seconds: 60), (_) => Uyg.hesapTazele(enAz: const Duration(seconds: 50)));
+  }
 
   @override
   void initState() {
@@ -111,6 +120,7 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
     // Canlı uzaklık (yalnız kural açık + izin tamam + önde iken akış çalışır).
     KonumIzleyici.tazele();
     KonumIzleyici.takipBaslat();
+    _hesapSaatiKur();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 3), () {
         if (mounted) Guncelleme.bak();
@@ -127,17 +137,20 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
       Guncelleme.bak();
       // Shift planı değişmiş olabilir: sesli hatırlatmaları tazele (Android, 15 dk sınırı).
       BildirimMerkezi.hatirlatmaTazele();
-      // Konsolda değişen ayarlar (ör. mesai konum kuralı) gelsin — en çok 5 dk'da bir.
-      Uyg.hesapTazele();
+      // Konsolda değişen ayarlar (ör. mesai konum kuralı) hemen gelsin.
+      Uyg.hesapTazele(enAz: const Duration(seconds: 10));
+      _hesapSaatiKur();
     } else if (s == AppLifecycleState.paused || s == AppLifecycleState.hidden) {
       // Arka planda ön plan yoklaması yok (pil + veri). Android'de WorkManager,
       // iPhone'da APNs bildirimleri getirir.
       BildirimMerkezi.durdur();
+      _hesapSaati?.cancel();
     }
   }
 
   @override
   void dispose() {
+    _hesapSaati?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     KonumKapisi.etkin.value = false;
     KonumIzleyici.takipDurdur();

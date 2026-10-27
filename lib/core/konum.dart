@@ -412,12 +412,13 @@ String mesafeYaz(int m) => m >= 1000 ? '${(m / 1000).toStringAsFixed(m % 1000 ==
 class KonumCanli {
   const KonumCanli({required this.mesafe, required this.dogruluk, required this.yaricap, required this.icerde});
 
-  /// Sunucuyla AYNI kural: uzaklık ≤ yarıçap + min(doğruluk, 100) → içeride.
+  /// Sunucuyla AYNI kural: uzaklık ≤ yarıçap + min(doğruluk, 25) → içeride
+  /// (2026-10-27: 50 m ayarda 100 m'ye kadar içeride sayılıyordu; pay 25 m'ye indi).
   factory KonumCanli.hesapla({required double mesafe, required double dogruluk, required int yaricap}) => KonumCanli(
         mesafe: mesafe.round(),
         dogruluk: dogruluk,
         yaricap: yaricap,
-        icerde: mesafe <= yaricap + math.min(dogruluk.isFinite ? dogruluk : 100, 100),
+        icerde: mesafe <= yaricap + math.min(dogruluk.isFinite ? dogruluk : 25, 25),
       );
 
   final int mesafe;
