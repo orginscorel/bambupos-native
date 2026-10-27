@@ -159,16 +159,36 @@ void main() {
       await t.pumpWidget(const SizedBox());
     }, skip: _dizin == null);
   }
-  // Raporlar: açılışta (Özet + Bugün) bütün odaklar; uzun boy = sayfanın tamamı.
-  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('telefon-tam', const Size(412, 2300)), ('tablet-tam', const Size(1280, 1300))]) {
+  // Raporlar: referans düzeni (Özet + açık iş günü); Rapor ▾ listesinden Ciro.
+  for (final (ad, boyut, koyu) in [
+    ('tablet', tablet, false),
+    ('telefon', telefon, false),
+    ('tablet-koyu', tablet, true),
+    ('telefon-koyu', telefon, true),
+    ('telefon-tam', const Size(412, 1900), false),
+  ]) {
     testWidgets('raporlar $ad', (t) async {
       await _boyut(t, boyut);
+      koyuTema.value = koyu;
+      addTearDown(() => koyuTema.value = false);
       final d = await _durum();
       await t.pumpWidget(_uygulama(d, const Scaffold(body: SafeArea(child: RaporlarEkrani()))));
       await _bekle(t);
       await t.pump(const Duration(seconds: 1));
       await _yaz(t, '10-raporlar-$ad');
-      await t.tap(find.text('Ciro').first);
+      if (koyu) {
+        await t.pumpWidget(const SizedBox());
+        return;
+      }
+      await t.tap(find.byIcon(Icons.calendar_today_outlined).first);
+      await _bekle(t);
+      await _yaz(t, '10-raporlar-tarih-$ad');
+      await t.tap(find.text('Kapat'));
+      await _bekle(t);
+      await t.tap(find.text('Özet').first);
+      await _bekle(t);
+      await _yaz(t, '10-raporlar-liste-$ad');
+      await t.tap(find.text('Ciro').last);
       await _bekle(t);
       await t.pump(const Duration(seconds: 1));
       await _yaz(t, '10-raporlar-ciro-$ad');
