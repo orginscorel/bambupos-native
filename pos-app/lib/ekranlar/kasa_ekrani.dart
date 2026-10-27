@@ -140,7 +140,7 @@ class _KasaEkraniState extends State<KasaEkrani> {
   /* ═════════════ Yükleme / yoklama (§6) ═════════════ */
 
   void _kasaTuru() {
-    if (!mounted || _modal > 0 || _duzelt) return;
+    if (!mounted || _modal > 0 || _duzelt || !context.yoklamaUygun) return;
     _yukle(sessiz: true);
     _posDurumu(sessiz: true);
     if (_secili != null) _seciliyiTazele();

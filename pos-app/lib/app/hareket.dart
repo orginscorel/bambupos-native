@@ -5,12 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// HAREKET DİLİ (2026-10-27): uygulamanın bütün geçişleri buradan.
-/// Kural: hızlı (150–300 ms), tek yönlü, abartısız. Kasada çalışan biri
+/// Kural: hızlı (140–240 ms), tek yönlü, abartısız. Kasada çalışan biri
 /// animasyonu BEKLEMEZ — her geçiş dokunuşu hemen kabul eder.
+///
+/// BAŞARIM (2026-10-27, düşük güçlü Android tablet): geçişler yalnız
+/// konum/ölçek + EN ÇOK BİR saydamlık katmanı kullanır. Saydamlık (Opacity /
+/// FadeTransition) bütün ekranı ekran dışı bir katmana çizdirir; zayıf GPU'da
+/// iki tam ekran katman aynı karede takılmaya yol açıyordu. Çıkan ekran artık
+/// sönmez, yenisinin altında olduğu gibi durur; kararma = üstüne yarı saydam
+/// siyah dikdörtgen (aynı görüntü, katmansız).
 abstract final class Hareket {
-  static const kisa = Duration(milliseconds: 160);
-  static const orta = Duration(milliseconds: 240);
-  static const uzun = Duration(milliseconds: 320);
+  static const kisa = Duration(milliseconds: 140);
+  static const orta = Duration(milliseconds: 200);
+  static const uzun = Duration(milliseconds: 240);
 
   /// Material 3 "emphasized" eğrisinin hızlı çıkışlı eşi.
   static const giris = Cubic(0.05, 0.7, 0.1, 1.0);
@@ -36,28 +43,87 @@ class PosSayfaGecisi extends PageTransitionsBuilder {
   Widget buildTransitions<T>(PageRoute<T> route, BuildContext context, Animation<double> animation,
       Animation<double> secondaryAnimation, Widget child) {
     if (Hareket.kapali(context)) return child;
-    final gir = CurvedAnimation(parent: animation, curve: Hareket.giris, reverseCurve: Hareket.cikis);
-    final arka = CurvedAnimation(parent: secondaryAnimation, curve: Hareket.giris, reverseCurve: Hareket.cikis);
+    return _SayfaGecisi(animation: animation, arka: secondaryAnimation, child: child);
+  }
+}
 
+class _SayfaGecisi extends StatefulWidget {
+  const _SayfaGecisi({required this.animation, required this.arka, required this.child});
+  final Animation<double> animation;
+  final Animation<double> arka;
+  final Widget child;
+
+  @override
+  State<_SayfaGecisi> createState() => _SayfaGecisiState();
+}
+
+class _SayfaGecisiState extends State<_SayfaGecisi> {
+  late CurvedAnimation _gir;
+  late CurvedAnimation _arka;
+
+  void _kur() {
+    _gir = CurvedAnimation(parent: widget.animation, curve: Hareket.giris, reverseCurve: Hareket.cikis);
+    _arka = CurvedAnimation(parent: widget.arka, curve: Hareket.giris, reverseCurve: Hareket.cikis);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _kur();
+  }
+
+  @override
+  void didUpdateWidget(_SayfaGecisi eski) {
+    super.didUpdateWidget(eski);
+    if (eski.animation != widget.animation || eski.arka != widget.arka) {
+      _gir.dispose();
+      _arka.dispose();
+      _kur();
+    }
+  }
+
+  @override
+  void dispose() {
+    _gir.dispose();
+    _arka.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: gir,
-      child: FadeTransition(
-        opacity: Tween(begin: 1.0, end: .65).animate(arka),
-        child: AnimatedBuilder(
-          animation: Listenable.merge([gir, arka]),
-          child: child,
-          builder: (context, child) {
-            final t = gir.value;
-            final g = arka.value;
-            return Transform.translate(
-              offset: Offset(0, 24 * (1 - t)),
-              child: Transform.scale(scale: (0.97 + .03 * t) * (1 - .03 * g), child: child),
-            );
-          },
-        ),
+      opacity: _gir,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_gir, _arka]),
+        // Alttaki sayfa %35 kararır: saydamlık katmanı yerine üstüne siyah örtü.
+        child: CustomPaint(foregroundPainter: _Karartma(_arka), child: widget.child),
+        builder: (context, child) {
+          final t = _gir.value;
+          final g = _arka.value;
+          return Transform.translate(
+            offset: Offset(0, 24 * (1 - t)),
+            child: Transform.scale(scale: (0.97 + .03 * t) * (1 - .03 * g), child: child),
+          );
+        },
       ),
     );
   }
+}
+
+/// Opacity(.65) siyah zemin üstünde = %35 siyah örtü; ekran dışı katman yok.
+class _Karartma extends CustomPainter {
+  _Karartma(this.a) : super(repaint: a);
+  final Animation<double> a;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final v = a.value.clamp(0.0, 1.0);
+    if (v <= 0) return;
+    canvas.drawRect(Offset.zero & size, Paint()..color = Color.fromRGBO(0, 0, 0, .35 * v));
+  }
+
+  @override
+  bool shouldRepaint(_Karartma eski) => eski.a != a;
 }
 
 PageTransitionsTheme posSayfaGecisleri() => const PageTransitionsTheme(builders: {
@@ -127,14 +193,23 @@ class Belirme extends StatefulWidget {
 
 class _BelirmeState extends State<Belirme> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
+  late final CurvedAnimation _t = CurvedAnimation(parent: _c, curve: Hareket.giris);
+
+  /// İlk ekranı dolduran kartlardan sonrası (kaydırınca gelenler) anında
+  /// görünür: kaydırma sırasında kart başına saydamlık katmanı açılmaz.
+  static const _enCokKademe = 24;
 
   @override
   void initState() {
     super.initState();
+    if (widget.sira >= _enCokKademe) {
+      _c.value = 1;
+      return;
+    }
     // İlk 16 kart kademeli, sonrası birlikte: uzun listede bekleme olmasın.
     final gecikme = Duration(milliseconds: 22 * math.min(widget.sira, 16));
     Future.delayed(gecikme, () {
-      if (mounted) _c.forward();
+      if (mounted && !_c.isCompleted) _c.forward();
     });
   }
 
@@ -146,21 +221,21 @@ class _BelirmeState extends State<Belirme> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    _t.dispose();
     _c.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = CurvedAnimation(parent: _c, curve: Hareket.giris);
     return FadeTransition(
-      opacity: t,
+      opacity: _t,
       child: AnimatedBuilder(
-        animation: t,
+        animation: _t,
         child: widget.child,
         builder: (_, child) => Transform.translate(
-          offset: Offset(0, 14 * (1 - t.value)),
-          child: Transform.scale(scale: .96 + .04 * t.value, child: child),
+          offset: Offset(0, 14 * (1 - _t.value)),
+          child: Transform.scale(scale: .96 + .04 * _t.value, child: child),
         ),
       ),
     );
@@ -180,36 +255,92 @@ class EkranGecisi extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (Hareket.kapali(context)) return KeyedSubtree(key: ValueKey(anahtar), child: child);
+    // Eski ekran sönmez: yenisi (tek saydamlık katmanı) onun üstünde belirir,
+    // giriş bitince eskisi kaldırılır.
     return AnimatedSwitcher(
       duration: Hareket.orta,
-      reverseDuration: Hareket.kisa,
+      reverseDuration: Hareket.orta,
       switchInCurve: Hareket.giris,
-      switchOutCurve: Curves.easeIn,
       layoutBuilder: (simdiki, oncekiler) => Stack(fit: StackFit.expand, children: [...oncekiler, ?simdiki]),
-      transitionBuilder: (cocuk, a) {
-        final yeni = cocuk.key == ValueKey(anahtar);
-        if (!yeni) return FadeTransition(opacity: a, child: IgnorePointer(child: cocuk));
-        return FadeTransition(
-          opacity: a,
-          child: SlideTransition(
-            position: Tween(begin: Offset(.035 * yon, 0), end: Offset.zero).animate(a),
-            child: cocuk,
-          ),
-        );
-      },
+      transitionBuilder: (cocuk, a) => _GirenCikan(
+        animation: a,
+        yeni: (a) => SlideTransition(
+          position: Tween(begin: Offset(.035 * yon, 0), end: Offset.zero).animate(a),
+          child: IgnorePointer(ignoring: false, child: cocuk),
+        ),
+        cikan: (a) => SlideTransition(position: const AlwaysStoppedAnimation(Offset.zero), child: IgnorePointer(child: cocuk)),
+      ),
       child: KeyedSubtree(key: ValueKey(anahtar), child: child),
     );
   }
 }
 
 /// AŞAMA GEÇİŞİ (açılış → aktivasyon → PIN → kasa): yeni aşama hafifçe
-/// büyüyerek belirir, eskisi geri çekilerek söner.
-Widget asamaGecisi(Widget child, Animation<double> a) {
-  final e = CurvedAnimation(parent: a, curve: Hareket.giris);
-  return FadeTransition(
-    opacity: e,
-    child: ScaleTransition(scale: Tween(begin: .97, end: 1.0).animate(e), child: child),
-  );
+/// büyüyerek belirir; eskisi altında olduğu gibi durur (tek saydamlık katmanı).
+/// AnimatedSwitcher'ın reverseDuration'ı girişle aynı olmalı (main.dart).
+Widget asamaGecisi(Widget child, Animation<double> a) => _GirenCikan(
+      animation: a,
+      yeni: (e) => ScaleTransition(scale: Tween(begin: .97, end: 1.0).animate(e), child: child),
+      cikan: (_) => ScaleTransition(scale: const AlwaysStoppedAnimation(1.0), child: child),
+    );
+
+/// AnimatedSwitcher geçişi: GİREN ekran eğriyle söner/belirir, ÇIKAN ekran
+/// (animasyon geri sararken) saydamlıksız, yerinde durur. İki dal aynı
+/// widget türlerini kurar ki ekranın durumu (State) dal değişince kaybolmasın.
+class _GirenCikan extends StatefulWidget {
+  const _GirenCikan({required this.animation, required this.yeni, required this.cikan});
+  final Animation<double> animation;
+  final Widget Function(Animation<double> egri) yeni;
+  final Widget Function(Animation<double> egri) cikan;
+
+  @override
+  State<_GirenCikan> createState() => _GirenCikanState();
+}
+
+class _GirenCikanState extends State<_GirenCikan> {
+  late CurvedAnimation _e;
+
+  /// Yalnız geri sarma = çıkış (yeni giren ilk karede "dismissed" olabilir).
+  bool get _cikiyor => widget.animation.status == AnimationStatus.reverse;
+
+  @override
+  void initState() {
+    super.initState();
+    _e = CurvedAnimation(parent: widget.animation, curve: Hareket.giris);
+    widget.animation.addStatusListener(_durum);
+  }
+
+  @override
+  void didUpdateWidget(_GirenCikan eski) {
+    super.didUpdateWidget(eski);
+    if (eski.animation != widget.animation) {
+      eski.animation.removeStatusListener(_durum);
+      _e.dispose();
+      _e = CurvedAnimation(parent: widget.animation, curve: Hareket.giris);
+      widget.animation.addStatusListener(_durum);
+    }
+  }
+
+  bool _sonCikis = false;
+  void _durum(AnimationStatus s) {
+    if ((s == AnimationStatus.reverse) != _sonCikis && mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.animation.removeStatusListener(_durum);
+    _e.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cik = _sonCikis = _cikiyor;
+    return FadeTransition(
+      opacity: cik ? kAlwaysCompleteAnimation : _e,
+      child: cik ? widget.cikan(_e) : widget.yeni(_e),
+    );
+  }
 }
 
 /// Dokununca hafifçe içe basılan kart/düğme hissi (titreşimle).

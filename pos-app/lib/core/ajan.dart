@@ -80,9 +80,10 @@ class YazdirmaAjani extends ChangeNotifier {
     _nabizAt();
     _nabiz = Timer.periodic(const Duration(seconds: 30), (_) => _nabizAt());
     _isler = Timer.periodic(const Duration(seconds: 4), (_) => _isleriAl());
-    // İlk tarama açılıştan biraz sonra (ekran önce çizilsin).
+    // İlk tarama açılıştan bir dakika sonra: yüzlerce soket denemesi, personel
+    // PIN girerken / ilk ekran açılırken düşük güçlü tableti yormasın.
     _tekSefer?.cancel();
-    _tekSefer = Timer(const Duration(seconds: 8), tara);
+    _tekSefer = Timer(const Duration(seconds: 60), tara);
     _tarama = Timer.periodic(_taramaAraligi, (_) => tara());
   }
 
@@ -216,7 +217,8 @@ class YazdirmaAjani extends ChangeNotifier {
         _ => 'Ağ yazıcısı ($port)',
       };
 
-  /// En çok 96 eşzamanlı bağlantıyla port yoklar; açık olanları döner.
+  /// En çok 96 (telefon/tablette 48) eşzamanlı bağlantıyla port yoklar;
+  /// açık olanları döner.
   static Future<List<(String, int)>> _paralelYokla(List<(String, int)> hedefler) async {
     final acik = <(String, int)>[];
     var i = 0;
@@ -233,7 +235,8 @@ class YazdirmaAjani extends ChangeNotifier {
       }
     }
 
-    await Future.wait(List.generate(96, (_) => isci()));
+    final mobil = Platform.isAndroid || Platform.isIOS;
+    await Future.wait(List.generate(mobil ? 48 : 96, (_) => isci()));
     return acik;
   }
 

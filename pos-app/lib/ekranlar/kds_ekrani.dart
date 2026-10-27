@@ -1243,7 +1243,8 @@ class _NabizNoktasiState extends State<_NabizNoktasi> with SingleTickerProviderS
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: SizedBox(
         width: 18,
         height: 18,
         child: AnimatedBuilder(
@@ -1258,6 +1259,7 @@ class _NabizNoktasiState extends State<_NabizNoktasi> with SingleTickerProviderS
             ),
             Container(width: 10, height: 10, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
           ]),
+        ),
         ),
       );
 }

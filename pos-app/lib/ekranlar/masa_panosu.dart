@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -45,13 +46,17 @@ class _MasaPanosuState extends State<MasaPanosu> {
   String _sekme = 'bos';
   Timer? _zamanlayici;
   bool _acilisYapiliyor = false;
+  String? _sonHam;
+  DateTime _sonCizim = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _onbellektenAc();
     _yenile();
-    _zamanlayici = Timer.periodic(const Duration(seconds: 5), (_) => _yenile());
+    _zamanlayici = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && context.yoklamaUygun) _yenile();
+    });
   }
 
   @override
@@ -71,11 +76,20 @@ class _MasaPanosuState extends State<MasaPanosu> {
     try {
       final veri = (await context.api.get('/api/v1/orders/board') as Map).cast<String, dynamic>();
       if (!mounted) return;
+      // Pano değişmediyse (5 sn'lik turların çoğu) diske yazılmaz; ızgara da
+      // yalnız "… dk" süre yazıları ilerlesin diye 20 sn'de bir yeniden çizilir.
+      final ham = jsonEncode(veri);
+      final ayni = ham == _sonHam && _pano != null;
+      if (ayni && !_baglantiYok && DateTime.now().difference(_sonCizim) < const Duration(seconds: 20)) return;
+      _sonCizim = DateTime.now();
       setState(() {
-        _pano = Pano(veri);
+        if (!ayni) _pano = Pano(veri);
         _baglantiYok = false;
       });
-      context.durum.onbellekYaz('pano', veri);
+      if (!ayni) {
+        _sonHam = ham;
+        context.durum.onbellekYaz('pano', veri, hazirMetin: ham);
+      }
     } on ApiHata catch (e) {
       if (mounted) setState(() => _baglantiYok = e.baglantiYok);
     } finally {

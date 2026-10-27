@@ -52,6 +52,26 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
     });
   }
 
+  // Kare yalnız adres değişince kodlanır; saniyelik geri sayım QR'ı yeniden
+  // kodlayıp boyamaz (önceden her saniye baştan hesaplanıyordu).
+  String? _kareAdres;
+  Widget? _kareWidget;
+  Widget _kare(String adres) {
+    if (adres != _kareAdres || _kareWidget == null) {
+      _kareAdres = adres;
+      _kareWidget = RepaintBoundary(
+        child: QrImageView(
+          data: adres,
+          padding: EdgeInsets.zero,
+          backgroundColor: Colors.white,
+          eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFF0F172A)),
+          dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Color(0xFF0F172A)),
+        ),
+      );
+    }
+    return _kareWidget!;
+  }
+
   @override
   void dispose() {
     _saniye?.cancel();
@@ -136,13 +156,7 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
         height: qrBoy,
         child: p == null
             ? const Center(child: CircularProgressIndicator())
-            : QrImageView(
-                data: '${p['adres']}',
-                padding: EdgeInsets.zero,
-                backgroundColor: Colors.white,
-                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFF0F172A)),
-                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Color(0xFF0F172A)),
-              ),
+            : _kare('${p['adres']}'),
       ),
     );
 

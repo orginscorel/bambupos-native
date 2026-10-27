@@ -21,6 +21,12 @@ extension DurumErisimi on BuildContext {
   UygulamaDurumu get durum => DurumKapsami.of(this);
   Api get api => DurumKapsami.of(this).api;
 
+  /// Periyodik ekran yoklaması şimdi yapılmalı mı? Uygulama arka plandaysa ya
+  /// da ekranın üstünde tam sayfa başka bir ekran (adisyon, ayrıntı) açıksa
+  /// HAYIR: görünmeyen ekran için ağ + çizim + pil harcanmaz. Üstteki sayfa
+  /// kapanınca ekran zaten kendini tazeler / bir sonraki turda yakalar.
+  bool get yoklamaUygun => uygulamaOnde() && TickerMode.getValuesNotifier(this).value.enabled;
+
   void bildir(String mesaj, {bool hata = false}) {
     final m = ScaffoldMessenger.maybeOf(this);
     m?.hideCurrentSnackBar();

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -71,11 +72,19 @@ class UygulamaDurumu extends ChangeNotifier {
   }
 
   static Future<UygulamaDurumu> kur() async {
-    final bilgi = await PackageInfo.fromPlatform();
-    final tercih = await SharedPreferences.getInstance();
-    final dizin = await getApplicationSupportDirectory();
-    final api = await Api.kur(kullaniciAjani: _kullaniciAjani(bilgi.version), ekBasliklar: await _cihazBasliklari(bilgi.version));
-    final d = UygulamaDurumu._(api, bilgi.version, tercih, dizin.path);
+    // Birbirinden bağımsız platform çağrıları AYNI ANDA (açılış süresi).
+    final bilgiF = PackageInfo.fromPlatform();
+    final tercihF = SharedPreferences.getInstance();
+    final dizinF = getApplicationSupportDirectory();
+    final bilgi = await bilgiF;
+    final basliklarF = _cihazBasliklari(bilgi.version);
+    final dizin = await dizinF;
+    final api = await Api.kur(
+      kullaniciAjani: _kullaniciAjani(bilgi.version),
+      ekBasliklar: await basliklarF,
+      destekDizini: dizin.path,
+    );
+    final d = UygulamaDurumu._(api, bilgi.version, await tercihF, dizin.path);
     api.oturumDustu = d._oturumDustu;
     return d;
   }
@@ -146,38 +155,56 @@ class UygulamaDurumu extends ChangeNotifier {
   Future<void> oturumuYenile({bool ilk = false}) async {
     try {
       final veri = await api.get('/api/v1/uygulama/oturum');
-      oturum = Oturum((veri as Map).cast<String, dynamic>());
-      sonHata = null;
-      if (ajan == null) {
-        ajan = YazdirmaAjani(api, surum);
-        ajan!.baslat();
-      }
-      // UYGULAMA KAPANIP AÇILINCA PIN (2026-10-26 işletme isteği): soğuk
-      // açılışta önceki personel oturumu düşürülür, cihaz eşli kalır. Öne
-      // gelme (arka plandan dönüş) bunu YAPMAZ — yalnız ilk açılış.
-      if (ilk && oturum!.operatorVar) {
-        await kilitle();
-        return;
-      }
-      _gec(oturum!.operatorVar ? Asama.calisma : Asama.pin);
+      _oturumuAl((veri as Map).cast<String, dynamic>(), ilk: ilk);
     } on ApiHata catch (e) {
-      if (e.oturumYok || e.yetkiYok) {
-        // Cihaz hiç eşlenmemiş ya da yönetici cihazı kaldırmış.
-        if (e.yetkiYok) await api.cerezleriSil();
-        oturum = null;
-        _gec(Asama.aktivasyon);
-      } else if (e.baglantiYok || (e.kod ?? 0) >= 500) {
-        sonHata = e.mesaj;
-        // Çalışırken kısa kopma ekranı DEĞİŞTİRMEZ; yalnız ilk açılışta bekleme ekranı.
-        if (ilk || oturum == null) {
-          _gec(Asama.baglantiYok);
-          _yenidenDene?.cancel();
-          _yenidenDene = Timer(const Duration(seconds: 4), () => oturumuYenile(ilk: true));
-        }
-      } else {
-        sonHata = e.mesaj;
-        notifyListeners();
+      await _oturumHatasi(e, ilk: ilk);
+    }
+  }
+
+  /// Son oturum yanıtının ham metni: aynı yanıt gelince ekran yeniden
+  /// kurulmaz (40 sn'lik yenileme bütün kabuğu baştan çiziyordu).
+  String? _sonOturumHam;
+
+  void _oturumuAl(Map<String, dynamic> veri, {bool ilk = false}) {
+    final ham = jsonEncode(veri);
+    final ayni = ham == _sonOturumHam && oturum != null && sonHata == null;
+    _sonOturumHam = ham;
+    if (!ayni) oturum = Oturum(veri);
+    sonHata = null;
+    if (ajan == null) {
+      ajan = YazdirmaAjani(api, surum);
+      ajan!.baslat();
+    }
+    // UYGULAMA KAPANIP AÇILINCA PIN (2026-10-26 işletme isteği): soğuk
+    // açılışta önceki personel oturumu düşürülür, cihaz eşli kalır. Öne
+    // gelme (arka plandan dönüş) bunu YAPMAZ — yalnız ilk açılış.
+    if (ilk && oturum!.operatorVar) {
+      unawaited(kilitle());
+      return;
+    }
+    final yeni = oturum!.operatorVar ? Asama.calisma : Asama.pin;
+    if (ayni && yeni == asama) return;
+    _gec(yeni);
+  }
+
+  Future<void> _oturumHatasi(ApiHata e, {bool ilk = false}) async {
+    if (e.oturumYok || e.yetkiYok) {
+      // Cihaz hiç eşlenmemiş ya da yönetici cihazı kaldırmış.
+      if (e.yetkiYok) await api.cerezleriSil();
+      oturum = null;
+      _sonOturumHam = null;
+      _gec(Asama.aktivasyon);
+    } else if (e.baglantiYok || (e.kod ?? 0) >= 500) {
+      sonHata = e.mesaj;
+      // Çalışırken kısa kopma ekranı DEĞİŞTİRMEZ; yalnız ilk açılışta bekleme ekranı.
+      if (ilk || oturum == null) {
+        _gec(Asama.baglantiYok);
+        _yenidenDene?.cancel();
+        _yenidenDene = Timer(const Duration(seconds: 4), () => oturumuYenile(ilk: true));
       }
+    } else {
+      sonHata = e.mesaj;
+      notifyListeners();
     }
   }
 
@@ -186,22 +213,33 @@ class UygulamaDurumu extends ChangeNotifier {
 
   /// Personel PIN'i ile operatör olur.
   Future<void> pinIleGir(String pin) async {
-    await api.post('/terminal/operator/pin', {'pin': pin});
+    // Kilit isteği hâlâ yoldaysa önce o bitsin (yoksa sunucu yeni girişi silebilir).
+    await _kilitIstegi;
+    final r = await api.post('/terminal/operator/pin', {'pin': pin});
+    // Sunucu yanıtı oturumu da taşıyorsa ikinci gidiş-dönüş yok.
+    final o = r is Map ? r['oturum'] : null;
+    if (o is Map && o['cihaz'] is Map && o['operator'] is Map) {
+      _oturumuAl(o.cast<String, dynamic>());
+      return;
+    }
     await oturumuYenile();
   }
 
+  Future<void>? _kilitIstegi;
+
   /// Ekranı kilitler: operatör düşer, cihaz eşli kalır (PIN ekranı).
-  Future<void> kilitle() async {
-    try {
-      await api.post('/terminal/operator/clear');
-    } on ApiHata {
+  /// PIN ekranı HEMEN gelir; sunucuya bildirim arkada gider.
+  Future<void> kilitle() {
+    final istek = _kilitIstegi = api.post('/terminal/operator/clear').then<void>((_) {}, onError: (_) {
       // Bağlantı yoksa bile ekran kilitlenir; sunucuda operatör boşta kalma süresiyle düşer.
-    }
+    });
     if (oturum != null) {
       final ham = Map<String, dynamic>.from(oturum!.ham)..['operator'] = null;
       oturum = Oturum(ham);
+      _sonOturumHam = null;
     }
     _gec(Asama.pin);
+    return istek;
   }
 
   /// İşlem "önce personel seçin" / 401 derse ekran durumu tazelenir.
@@ -214,6 +252,7 @@ class UygulamaDurumu extends ChangeNotifier {
   void _oturumDustu() {
     if (asama == Asama.aktivasyon) return;
     oturum = null;
+    _sonOturumHam = null;
     ajan?.dispose();
     ajan = null;
     _gec(Asama.aktivasyon);
@@ -243,17 +282,20 @@ class UygulamaDurumu extends ChangeNotifier {
     try {
       final f = File('$_onbellekDizini${Platform.pathSeparator}$ad.json');
       if (!await f.exists()) return null;
-      return (jsonDecode(await f.readAsString()) as Map).cast<String, dynamic>();
+      final metin = await f.readAsString();
+      // Büyük katalog / pano dosyası ayrı iş parçacığında çözülür (açılışta takılma olmasın).
+      final ham = metin.length > 64 * 1024 ? await Isolate.run(() => jsonDecode(metin)) : jsonDecode(metin);
+      return (ham as Map).cast<String, dynamic>();
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> onbellekYaz(String ad, Map<String, dynamic> veri) async {
+  Future<void> onbellekYaz(String ad, Map<String, dynamic> veri, {String? hazirMetin}) async {
     try {
       final f = File('$_onbellekDizini${Platform.pathSeparator}$ad.json');
       final gecici = File('${f.path}.tmp');
-      await gecici.writeAsString(jsonEncode(veri), flush: true);
+      await gecici.writeAsString(hazirMetin ?? jsonEncode(veri), flush: true);
       await gecici.rename(f.path);
     } catch (_) {
       // Önbellek yazılamazsa uygulama yine çalışır.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -51,6 +52,7 @@ class BildirimMerkezi extends ChangeNotifier {
   void Function(String adres)? adresAc;
 
   Set<int>? _gorulen;
+  String? _sonImza;
   Timer? _zaman;
   bool _sistemHazir = false;
   final _sistem = FlutterLocalNotificationsPlugin();
@@ -75,6 +77,7 @@ class BildirimMerkezi extends ChangeNotifier {
   }
 
   void durdur() {
+    _sonImza = null;
     _zaman?.cancel();
     _zaman = null;
     baloncuklar.clear();
@@ -84,6 +87,10 @@ class BildirimMerkezi extends ChangeNotifier {
     try {
       final r = await _api.get('/api/v1/notifications');
       if (r is! Map) return;
+      // Değişiklik yoksa (15 sn'lik turların çoğu) zil ve baloncuklar yeniden çizilmez.
+      final imza = jsonEncode(r);
+      if (imza == _sonImza) return;
+      _sonImza = imza;
       okunmamis = (r['unread_count'] as num?)?.toInt() ?? 0;
       liste = (r['items'] as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
       _yeniler();
@@ -95,6 +102,7 @@ class BildirimMerkezi extends ChangeNotifier {
 
   Future<void> hepsiOkundu() async {
     okunmamis = 0;
+    _sonImza = null;
     notifyListeners();
     try {
       await _api.post('/api/v1/notifications/read-all');

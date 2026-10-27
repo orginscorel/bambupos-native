@@ -32,11 +32,12 @@ class AcilisKatmani extends StatefulWidget {
 }
 
 class _AcilisKatmaniState extends State<AcilisKatmani> with TickerProviderStateMixin {
-  static const enAz = Duration(milliseconds: 1500);
+  /// Sunucu hızlıysa gösterimin en kısa süresi (PIN ekranını bekletmesin).
+  static const enAz = Duration(milliseconds: 1100);
 
   late final AnimationController _giris = AnimationController(vsync: this, duration: enAz);
   late final AnimationController _dongu = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
-  late final AnimationController _cikis = AnimationController(vsync: this, duration: const Duration(milliseconds: 520));
+  late final AnimationController _cikis = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
   bool _bitti = false;
 
   @override
@@ -389,6 +390,9 @@ class _ZeminRessami extends CustomPainter {
   final Animation<double> dongu;
   final Animation<double> giris;
 
+  static Size? _izgaraBoyut;
+  static List<Offset> _izgara = const [];
+
   static final _zerreler = List.generate(26, (i) {
     final r = math.Random(i * 7919 + 13);
     return (x: r.nextDouble(), y: r.nextDouble(), hiz: .35 + r.nextDouble() * .65, boy: 1 + r.nextDouble() * 2.2, faz: r.nextDouble());
@@ -399,14 +403,25 @@ class _ZeminRessami extends CustomPainter {
     final g = Curves.easeOut.transform(giris.value.clamp(0.0, 1.0));
     final d = dongu.value;
 
-    // Nokta ızgarası (çok silik).
-    final nokta = Paint()..color = Colors.white.withValues(alpha: .05 * g);
-    const ara = 28.0;
-    for (var x = ara / 2; x < size.width; x += ara) {
-      for (var y = ara / 2; y < size.height; y += ara) {
-        canvas.drawCircle(Offset(x, y), .9, nokta);
-      }
+    // Nokta ızgarası (çok silik): binlerce drawCircle yerine TEK drawPoints
+    // (yuvarlak uçlu 1,8 px nokta = 0,9 yarıçaplı daire). Konumlar ekran
+    // boyutu değişmedikçe yeniden hesaplanmaz.
+    if (_izgaraBoyut != size) {
+      _izgaraBoyut = size;
+      const ara = 28.0;
+      _izgara = [
+        for (var x = ara / 2; x < size.width; x += ara)
+          for (var y = ara / 2; y < size.height; y += ara) Offset(x, y),
+      ];
     }
+    canvas.drawPoints(
+      ui.PointMode.points,
+      _izgara,
+      Paint()
+        ..color = Colors.white.withValues(alpha: .05 * g)
+        ..strokeWidth = 1.8
+        ..strokeCap = StrokeCap.round,
+    );
 
     // Işık zerreleri.
     for (final z in _zerreler) {

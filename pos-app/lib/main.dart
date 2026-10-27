@@ -26,8 +26,10 @@ Future<void> main() async {
   WakelockPlus.enable().ignore();
 
   await eskiWindowsHazirla();
-  await temaYukle();
+  // Tema tercihi ve durum kurulumu birbirini beklemez (açılış süresi).
+  final tema = temaYukle();
   final durum = await UygulamaDurumu.kur();
+  await tema;
   runApp(BamBumPosUygulamasi(durum: durum));
   durum.baslat();
 }
@@ -97,7 +99,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
               surum: widget.durum.surum,
               child: AnimatedSwitcher(
               duration: Hareket.uzun,
-              reverseDuration: Hareket.kisa,
+              reverseDuration: Hareket.uzun,
               switchInCurve: Curves.linear,
               transitionBuilder: asamaGecisi,
               child: switch (widget.durum.asama) {

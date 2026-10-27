@@ -20,9 +20,17 @@ class PinEkrani extends StatefulWidget {
 
 class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMixin {
   static const _enCok = 10;
-  String _pin = '';
-  String? _hata;
-  bool _bekliyor = false;
+
+  // BAŞARIM: tuşa basınca bütün ekran (üst/alt çubuk, tuş takımı, telefon
+  // kartı) yeniden kurulmasın; yalnız noktalar, hata satırı ve düğme dinler.
+  final _pinN = ValueNotifier<String>('');
+  final _hataN = ValueNotifier<String?>(null);
+  final _bekliyorN = ValueNotifier<bool>(false);
+  late final Listenable _degisim = Listenable.merge([_pinN, _hataN, _bekliyorN]);
+
+  String get _pin => _pinN.value;
+  bool get _bekliyor => _bekliyorN.value;
+
   late final AnimationController _salla = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
   final _odak = FocusNode();
 
@@ -30,46 +38,43 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
   void dispose() {
     _salla.dispose();
     _odak.dispose();
+    _pinN.dispose();
+    _hataN.dispose();
+    _bekliyorN.dispose();
     super.dispose();
   }
 
   void _bas(String h) {
     if (_bekliyor || _pin.length >= _enCok) return;
     HapticFeedback.selectionClick();
-    setState(() {
-      _pin += h;
-      _hata = null;
-    });
+    _pinN.value = _pin + h;
+    _hataN.value = null;
   }
 
   void _sil() {
     if (_pin.isEmpty || _bekliyor) return;
-    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+    _pinN.value = _pin.substring(0, _pin.length - 1);
   }
 
   void _temizle() {
     if (_bekliyor) return;
-    setState(() {
-      _pin = '';
-      _hata = null;
-    });
+    _pinN.value = '';
+    _hataN.value = null;
   }
 
   Future<void> _gir() async {
     if (_pin.length < 4 || _bekliyor) return;
-    setState(() => _bekliyor = true);
+    _bekliyorN.value = true;
     try {
       await context.durum.pinIleGir(_pin);
     } on ApiHata catch (e) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
       _salla.forward(from: 0);
-      setState(() {
-        _hata = e.mesaj;
-        _pin = '';
-      });
+      _hataN.value = e.mesaj;
+      _pinN.value = '';
     } finally {
-      if (mounted) setState(() => _bekliyor = false);
+      if (mounted) _bekliyorN.value = false;
     }
   }
 
@@ -201,39 +206,46 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
               final dx = t == 0 ? 0.0 : 10 * (1 - t) * ((t * 10).floor().isEven ? 1 : -1);
               return Transform.translate(offset: Offset(dx, 0), child: child);
             },
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Renk.ic,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _hata != null ? Renk.hataKenar : Colors.transparent),
-              ),
-              child: Row(
-                children: [
-                  for (var i = 0; i < (_pin.length < 4 ? 4 : _pin.length); i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      width: 11,
-                      height: 11,
-                      margin: const EdgeInsets.only(right: 9),
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: i < _pin.length ? Renk.yazi : const Color(0xFFCBD5E1)),
-                    ),
-                  const Spacer(),
-                  Text(_pin.length >= 4 ? '${_pin.length} hane' : 'en az 4 hane', style: TextStyle(fontSize: 12, color: Renk.soluk)),
-                ],
+            child: ListenableBuilder(
+              listenable: _degisim,
+              builder: (context, _) => Container(
+                height: 46,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Renk.ic,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _hataN.value != null ? Renk.hataKenar : Colors.transparent),
+                ),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < (_pin.length < 4 ? 4 : _pin.length); i++)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        width: 11,
+                        height: 11,
+                        margin: const EdgeInsets.only(right: 9),
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: i < _pin.length ? Renk.yazi : const Color(0xFFCBD5E1)),
+                      ),
+                    const Spacer(),
+                    Text(_pin.length >= 4 ? '${_pin.length} hane' : 'en az 4 hane', style: TextStyle(fontSize: 12, color: Renk.soluk)),
+                  ],
+                ),
               ),
             ),
           ),
-          if (_hata != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                _hata!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Renk.hata, fontWeight: FontWeight.w600, fontSize: 13),
-              ),
-            ),
+          ValueListenableBuilder<String?>(
+            valueListenable: _hataN,
+            builder: (context, hata, _) => hata == null
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      hata,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Renk.hata, fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+          ),
           const SizedBox(height: 12),
           for (final satir in const [
             ['1', '2', '3'],
@@ -245,16 +257,19 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
           const SizedBox(height: 10),
           SizedBox(
             height: 52,
-            child: FilledButton(
-              onPressed: _pin.length >= 4 && !_bekliyor ? _gir : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF4F5BD5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                textStyle: const TextStyle(fontFamily: yaziTipi, fontSize: 16, fontWeight: FontWeight.w600),
+            child: ListenableBuilder(
+              listenable: _degisim,
+              builder: (context, _) => FilledButton(
+                onPressed: _pin.length >= 4 && !_bekliyor ? _gir : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F5BD5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  textStyle: const TextStyle(fontFamily: yaziTipi, fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                child: _bekliyor
+                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
+                    : const Text('Oturum aç'),
               ),
-              child: _bekliyor
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.6, color: Colors.white))
-                  : const Text('Oturum aç'),
             ),
           ),
         ],

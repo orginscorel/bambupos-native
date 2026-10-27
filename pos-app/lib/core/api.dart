@@ -4,8 +4,66 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+
+/// Uygulama ekranda mı? Arka plandayken (simge durumunda / başka uygulama
+/// önde) ekran yoklamaları atlanır: pil, işlemci ve veri harcanmaz. Masaüstünde
+/// pencere yalnız odağı kaybedince ("inactive") yoklama SÜRER.
+bool uygulamaOnde() {
+  final s = WidgetsBinding.instance.lifecycleState;
+  return s != AppLifecycleState.paused && s != AppLifecycleState.hidden && s != AppLifecycleState.detached;
+}
+
+/// Çerez deposu: yazma isteği ANINDA döner, diske sırayla ve birleştirilerek
+/// yazılır. Laravel her yanıtta XSRF/oturum çerezini tazelediği için
+/// PersistCookieJar her istekte dosya yazıyordu ve yanıt, yazma bitene kadar
+/// ekrana ulaşmıyordu (PIN girişi dahil). Okuma bekleyen yazmayı görür.
+class _ArkaPlanDepo implements Storage {
+  _ArkaPlanDepo(this._ic);
+  final FileStorage _ic;
+  final Map<String, String> _bekleyen = {};
+  Future<void> _zincir = Future.value();
+  bool _planli = false;
+
+  Future<void> _sirala(Future<void> Function() is_) => _zincir = _zincir.then((_) => is_()).catchError((_) {});
+
+  @override
+  Future<void> init(bool persistSession, bool ignoreExpires) => _ic.init(persistSession, ignoreExpires);
+
+  @override
+  Future<String?> read(String key) async => _bekleyen[key] ?? await _ic.read(key);
+
+  @override
+  Future<void> write(String key, String value) {
+    _bekleyen[key] = value;
+    if (!_planli) {
+      _planli = true;
+      _sirala(() async {
+        _planli = false;
+        final yaz = Map.of(_bekleyen);
+        for (final e in yaz.entries) {
+          await _ic.write(e.key, e.value);
+          if (identical(_bekleyen[e.key], e.value)) _bekleyen.remove(e.key);
+        }
+      });
+    }
+    return Future.value();
+  }
+
+  @override
+  Future<void> delete(String key) {
+    _bekleyen.remove(key);
+    return _sirala(() => _ic.delete(key));
+  }
+
+  @override
+  Future<void> deleteAll(List<String> keys) {
+    _bekleyen.clear();
+    return _sirala(() => _ic.deleteAll(keys));
+  }
+}
 
 /// Sunucudan dönen hata. Mesaj DOĞRUDAN kullanıcıya gösterilir (Laravel
 /// doğrulama mesajları zaten Türkçe).
@@ -53,10 +111,11 @@ class Api {
     String tabanUrl = varsayilanTaban,
     required String kullaniciAjani,
     Map<String, String> ekBasliklar = const {},
+    String? destekDizini,
   }) async {
-    final dizin = await getApplicationSupportDirectory();
+    final dizin = destekDizini ?? (await getApplicationSupportDirectory()).path;
     final jar = PersistCookieJar(
-      storage: FileStorage('${dizin.path}${Platform.pathSeparator}cerezler${Platform.pathSeparator}'),
+      storage: _ArkaPlanDepo(FileStorage('$dizin${Platform.pathSeparator}cerezler${Platform.pathSeparator}')),
     );
 
     return _kur(tabanUrl, kullaniciAjani, jar, ekBasliklar);

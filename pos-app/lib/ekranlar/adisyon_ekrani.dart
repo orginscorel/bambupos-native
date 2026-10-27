@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -172,7 +171,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     _yukle();
     _kataloguYukle();
     _yoklama = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_modal == 0 && !_mesgul && !_kuyrukCalisiyor) _yukle(sessiz: true);
+      if (mounted && _modal == 0 && !_mesgul && !_kuyrukCalisiyor && context.yoklamaUygun) _yukle(sessiz: true);
     });
   }
 
@@ -1911,7 +1910,19 @@ class _UrunKarti extends StatelessWidget {
             if (gorsel == null)
               monogram(20)
             else ...[
-              ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12), child: Opacity(opacity: .7, child: resim(BoxFit.cover))),
+              // Bulanık zemin: aynı görsel 16 px'e küçük çözülüp gerilir — GPU
+              // bulanıklığı (ImageFiltered) ve saydamlık katmanı yok; ürün
+              // ızgarası kaydırılırken kart başına iki ekran dışı katman açılıyordu.
+              CachedNetworkImage(
+                imageUrl: gorsel,
+                fit: BoxFit.cover,
+                memCacheWidth: 16,
+                filterQuality: FilterQuality.medium,
+                fadeInDuration: const Duration(milliseconds: 120),
+                color: const Color.fromRGBO(255, 255, 255, .7),
+                colorBlendMode: BlendMode.modulate,
+                errorWidget: (_, _, _) => const SizedBox.shrink(),
+              ),
               resim(BoxFit.contain),
             ],
             if (!u.mevcut)

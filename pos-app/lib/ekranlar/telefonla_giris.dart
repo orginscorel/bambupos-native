@@ -21,8 +21,12 @@ class TelefonlaGiris extends StatefulWidget {
 
 class _TelefonlaGirisState extends State<TelefonlaGiris> {
   String? _adres;
+
+  /// Kare bir kez kodlanıp çizilir: geri sayım her saniye yalnız kendi
+  /// satırını yeniler (önceden QR her saniye baştan kodlanıp boyanıyordu).
+  Widget? _kare;
   String _mesaj = 'Kare hazırlanıyor…';
-  int _kalan = 0;
+  final _kalan = ValueNotifier<int>(0);
   int _toplam = 110;
   int _onayliTur = 0;
   Timer? _sayac;
@@ -39,6 +43,7 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
 
   @override
   void dispose() {
+    _kalan.dispose();
     _sayac?.cancel();
     _yoklama?.cancel();
     _tazele?.cancel();
@@ -54,12 +59,13 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
       if (!mounted || adres == null) return;
       setState(() {
         _adres = adres;
+        _kare = RepaintBoundary(child: QrImageView(data: adres, padding: EdgeInsets.zero, gapless: true));
         _toplam = (omur - 10).clamp(5, 600);
-        _kalan = _toplam;
+        _kalan.value = _toplam;
       });
       _sayac?.cancel();
       _sayac = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() => _kalan = (_kalan - 1).clamp(0, _toplam));
+        if (mounted) _kalan.value = (_kalan.value - 1).clamp(0, _toplam);
       });
       _tazele?.cancel();
       _tazele = Timer(Duration(seconds: (omur - 10).clamp(30, 600)), _anahtarAl);
@@ -67,6 +73,7 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
       if (mounted) {
         setState(() {
           _adres = null;
+          _kare = null;
           _mesaj = 'Kare alınamadı';
         });
       }
@@ -76,7 +83,8 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
   }
 
   Future<void> _yokla() async {
-    if (_adres == null) return;
+    // Uygulama arka plandayken kimse kareyi okutamaz: yoklama yok.
+    if (_adres == null || !uygulamaOnde()) return;
     try {
       final d = (await _api.get('/api/v1/auth/qr-giris/durum') as Map);
       final durum = d['durum']?.toString();
@@ -95,10 +103,10 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
     }
   }
 
-  String get _sureMetni {
-    if (_kalan <= 0) return 'Kare yenileniyor…';
-    if (_kalan < 60) return 'Kare $_kalan sn sonra yenilenir';
-    return 'Kare ${_kalan ~/ 60}:${(_kalan % 60).toString().padLeft(2, '0')} sonra yenilenir';
+  static String _sureMetni(int kalan) {
+    if (kalan <= 0) return 'Kare yenileniyor…';
+    if (kalan < 60) return 'Kare $kalan sn sonra yenilenir';
+    return 'Kare ${kalan ~/ 60}:${(kalan % 60).toString().padLeft(2, '0')} sonra yenilenir';
   }
 
   @override
@@ -127,27 +135,30 @@ class _TelefonlaGirisState extends State<TelefonlaGiris> {
             border: Border.all(color: Renk.cizgi),
             boxShadow: const [BoxShadow(color: Color(0x141C1917), blurRadius: 14, offset: Offset(0, 4))],
           ),
-          child: _adres == null
-              ? Center(child: Text(_mesaj, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Renk.soluk)))
-              : QrImageView(data: _adres!, padding: EdgeInsets.zero, gapless: true),
+          child: _kare ?? Center(child: Text(_mesaj, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Renk.soluk))),
         ),
       ),
-      const SizedBox(height: 8),
-      Text(_sureMetni, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.ikinci)),
-      const SizedBox(height: 4),
-      Center(
-        child: SizedBox(
-          width: 140,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: _toplam > 0 ? _kalan / _toplam : 0,
-              minHeight: 3,
-              backgroundColor: Renk.ic,
-              color: Renk.ikinci,
+      ValueListenableBuilder<int>(
+        valueListenable: _kalan,
+        builder: (context, kalan, _) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: 8),
+          Text(_sureMetni(kalan), textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.ikinci)),
+          const SizedBox(height: 4),
+          Center(
+            child: SizedBox(
+              width: 140,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: _toplam > 0 ? kalan / _toplam : 0,
+                  minHeight: 3,
+                  backgroundColor: Renk.ic,
+                  color: Renk.ikinci,
+                ),
+              ),
             ),
           ),
-        ),
+        ]),
       ),
       const SizedBox(height: 10),
       Text.rich(
