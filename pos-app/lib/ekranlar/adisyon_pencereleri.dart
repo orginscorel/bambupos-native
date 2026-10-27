@@ -5,6 +5,7 @@ import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
+import 'kasa_pencereleri.dart' show paraCoz;
 import 'ortak.dart';
 
 /// Adisyon ekranının pencereleri (web Detail.vue §4). Belge:
@@ -357,16 +358,24 @@ class _TasimaState extends State<_Tasima> {
   }
 }
 
-/* ───────── İndirim (§4.6) ───────── */
+/* ───────── İndirim / iskonto (§4.6) ───────── */
 
-Future<bool> indirimPenceresi(BuildContext context, Adisyon a) async {
-  final r = await pencereAc<bool>(context: context, builder: (_) => _Indirim(adisyon: a));
+/// İndirim penceresi — HAZIR İNDİRİMLER varsayılandır (işletme kararı
+/// 2026-10-27). "Tutar yaz", "%" ve "Hesabı şu tutara indir" yalnız
+/// `manuel_iskonto` eklentisi açık işletmede görünür (sunucu da kapalıysa
+/// 403 ile reddeder; mesajı aynen gösterilir).
+///
+/// Değişiklik olduysa true döner (çağıran adisyonu yeniden yükler).
+Future<bool> indirimPenceresi(BuildContext context, Adisyon a, {bool? manuel}) async {
+  final m = manuel ?? (context.durum.oturum?.manuelIskonto ?? false);
+  final r = await pencereAc<bool>(context: context, builder: (_) => _Indirim(adisyon: a, manuel: m));
   return r ?? false;
 }
 
 class _Indirim extends StatefulWidget {
-  const _Indirim({required this.adisyon});
+  const _Indirim({required this.adisyon, required this.manuel});
   final Adisyon adisyon;
+  final bool manuel;
 
   @override
   State<_Indirim> createState() => _IndirimState();
@@ -375,18 +384,22 @@ class _Indirim extends StatefulWidget {
 class _IndirimState extends State<_Indirim> {
   static List<Json>? _onbellek;
   List<Json>? _tanimlar = _onbellek;
-  bool _serbest = false;
-  String _tur = 'percent';
+  bool _manuelSekme = false;
+  String _kip = 'tutar'; // tutar | yuzde | hedef
   final _deger = TextEditingController();
   final _gerekce = TextEditingController();
   bool _mesgul = false;
 
   Adisyon get a => widget.adisyon;
+  int get _indirim => tamSayi(a.ham['discount_minor']);
+  int get _iskonto => tamSayi(a.ham['iskonto_minor']);
+  String get _yol => '/api/v1/orders/${a.id}';
 
   @override
   void initState() {
     super.initState();
-    if (_onbellek == null) _yukle();
+    // Önbellek varsa hemen gösterilir, arkada tazelenir (tanım eklenmiş olabilir).
+    _yukle();
   }
 
   @override
@@ -401,170 +414,374 @@ class _IndirimState extends State<_Indirim> {
       final r = (await context.api.get('/api/v1/discount-presets') as Map);
       _onbellek = (r['presets'] as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
     } on ApiHata {
-      _onbellek = const [];
+      _onbellek ??= const [];
+    } catch (_) {
+      _onbellek ??= const [];
     }
     if (mounted) setState(() => _tanimlar = _onbellek);
   }
 
-  Future<void> _gonder(Map<String, dynamic> govde, String baslik, String metin) async {
+  Future<void> _istek(Future<dynamic> Function() f, String baslik, String metin, {String hata = 'İndirim uygulanamadı'}) async {
+    if (_mesgul) return;
     setState(() => _mesgul = true);
     try {
-      await context.api.post('/api/v1/orders/${a.id}/discount', {...govde, 'expected_version': a.surum});
+      await f();
       if (!mounted) return;
       context.bildir2(baslik, metin);
       Navigator.pop(context, true);
     } on ApiHata catch (e) {
-      if (mounted) context.bildir2('İndirim uygulanamadı', e.mesaj, hata: true);
+      // 403: eklenti kapalı / yetki yok — sunucunun mesajı aynen.
+      if (mounted) context.bildir2(e.yetkiYok ? 'İzin verilmedi' : hata, e.mesaj, hata: true);
     } finally {
       if (mounted) setState(() => _mesgul = false);
     }
   }
 
-  Future<void> _kaldir() async {
-    setState(() => _mesgul = true);
-    try {
-      await context.api.delete('/api/v1/orders/${a.id}/discount', {'expected_version': a.surum});
-      if (!mounted) return;
-      context.bildir2('İndirim kaldırıldı', 'Tutar yeniden hesaplandı.');
-      Navigator.pop(context, true);
-    } on ApiHata catch (e) {
-      if (mounted) context.bildir2('Kaldırılamadı', e.mesaj, hata: true);
-    } finally {
-      if (mounted) setState(() => _mesgul = false);
+  void _hazir(Json t) => _istek(() => context.api.post('$_yol/discount', {'preset_id': tamSayi(t['id']), 'expected_version': a.surum}),
+      'İndirim uygulandı', '${t['name']} · ${t['value_label']}');
+
+  void _indirimKaldir() => _istek(() => context.api.delete('$_yol/discount', {'expected_version': a.surum}), 'İndirim kaldırıldı', 'Tutar yeniden hesaplandı.',
+      hata: 'Kaldırılamadı');
+
+  void _iskontoKaldir() => _istek(() => context.api.delete('$_yol/iskonto'), 'İskonto kaldırıldı', 'Adisyon eski tutarına döndü.', hata: 'Kaldırılamadı');
+
+  /// Manuel kipte girilen değerin sonucu: (düşülecek kuruş, hata metni).
+  ({int dus, String? hata}) get _hesap {
+    final toplam = a.toplam;
+    final metin = _deger.text.trim();
+    if (metin.isEmpty) return (dus: 0, hata: null);
+    switch (_kip) {
+      case 'yuzde':
+        final n = double.tryParse(metin.replaceAll(' ', '').replaceAll('%', '').replaceAll(',', '.'));
+        if (n == null || n <= 0 || n >= 100) return (dus: 0, hata: 'Yüzde 0 ile 100 arasında olmalı.');
+        return (dus: (a.araToplam * n / 100).round(), hata: null);
+      case 'hedef':
+        final h = paraCoz(metin);
+        if (h == null) return (dus: 0, hata: 'Tutar geçersiz.');
+        if (h >= toplam) return (dus: 0, hata: 'Hedef tutar, adisyon toplamından (${para(toplam)}) küçük olmalı.');
+        return (dus: toplam - h, hata: null);
+      default:
+        final t = paraCoz(metin);
+        if (t == null || t <= 0) return (dus: 0, hata: 'Pozitif bir tutar girin.');
+        if (t >= toplam) return (dus: 0, hata: 'İskonto adisyon toplamını (${para(toplam)}) aşamaz.');
+        return (dus: t, hata: null);
     }
+  }
+
+  bool get _kipKilitli => _kip == 'yuzde' ? _indirim > 0 : _iskonto > 0;
+
+  void _manuelUygula() {
+    final h = _hesap;
+    if (h.hata != null || h.dus <= 0) {
+      context.bildir2('Değer geçersiz', h.hata ?? 'Bir değer girin.', hata: true);
+      return;
+    }
+    final gerekce = _gerekce.text.trim();
+    if (_kip == 'yuzde') {
+      final n = double.parse(_deger.text.trim().replaceAll(' ', '').replaceAll('%', '').replaceAll(',', '.'));
+      final y = n == n.roundToDouble() ? n.toInt().toString() : n.toString().replaceAll('.', ',');
+      _istek(
+        () => context.api.post('$_yol/discount', {
+          'type': 'percent',
+          'value': n,
+          'reason': gerekce.length >= 3 ? gerekce : 'Kasada %$y indirim',
+          'expected_version': a.surum,
+        }),
+        'İndirim uygulandı',
+        '%$y · yaklaşık ${para(h.dus)} düşüldü',
+      );
+      return;
+    }
+    final hedef = _kip == 'hedef';
+    final yeni = a.toplam - h.dus;
+    _istek(
+      () => context.api.post('$_yol/iskonto', {
+        'amount_minor': h.dus,
+        'reason': gerekce.length >= 3 ? gerekce : (hedef ? "Kasada hesap ${para(yeni)}'ye indirildi" : 'Kasada iskonto'),
+      }),
+      'İskonto uygulandı',
+      '${para(h.dus)} düşüldü — yeni tutar ${para(yeni)}',
+      hata: 'İskonto uygulanamadı',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final varMi = tamSayi(a.ham['discount_minor']) > 0;
-    final yuzde = a.ham['discount_percent'];
-    Widget govde;
-    if (varMi) {
-      govde = Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Renk.uyariZemin, borderRadius: koseYuvarlak, border: Border.all(color: Renk.uyariKenar)),
+    final genis = MediaQuery.sizeOf(context).width >= 560;
+    final mevcut = <Widget>[
+      if (_indirim > 0)
+        _mevcutSatir(
+          Icons.sell_outlined,
+          '${a.ham['discount_reason'] ?? 'İndirim'}${a.ham['discount_percent'] != null ? ' (%${a.ham['discount_percent']})' : ''}',
+          '−${para(_indirim)}',
+          _indirimKaldir,
+        ),
+      if (_iskonto > 0)
+        _mevcutSatir(Icons.percent_rounded, a.ham['iskonto_reason']?.toString() ?? 'İskonto', '−${para(_iskonto)}', _iskontoKaldir),
+    ];
+
+    final govde = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      // Adisyon özeti: ara toplam → güncel tutar.
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(color: Renk.ic, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
         child: Row(children: [
-          Icon(Icons.sell_outlined, size: 20, color: Renk.uyari),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${a.ham['discount_reason'] ?? 'İndirim'}${yuzde != null ? ' (%$yuzde)' : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              const Text('Bu adisyonda zaten bir indirim var. Başka indirim uygulamak için önce bunu kaldırın.', style: TextStyle(fontSize: 12.5)),
-            ]),
-          ),
+          Icon(Icons.receipt_long_outlined, size: 18, color: Renk.ikinci),
           const SizedBox(width: 8),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: Renk.hata, minimumSize: const Size(0, 36)),
-            onPressed: _mesgul ? null : _kaldir,
-            icon: const Icon(Icons.delete_outline_rounded, size: 16),
-            label: const Text('Kaldır'),
-          ),
+          Expanded(child: Text('Kalem toplamı ${para(a.araToplam)}', style: TextStyle(fontSize: 13, color: Renk.ikinci))),
+          Text('Tutar ', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+          Text(para(a.toplam), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
         ]),
+      ),
+      if (mevcut.isNotEmpty) ...[const SizedBox(height: 10), ...mevcut],
+      const SizedBox(height: 14),
+      if (widget.manuel)
+        _Sekmeler(
+          secili: _manuelSekme ? 1 : 0,
+          ogeler: genis
+              ? const [(Icons.bookmark_border_rounded, 'Hazır indirimler'), (Icons.edit_note_rounded, 'Manuel iskonto')]
+              : const [(Icons.bookmark_border_rounded, 'Hazır'), (Icons.edit_note_rounded, 'Manuel')],
+          degisti: (i) => setState(() => _manuelSekme = i == 1),
+        )
+      else
+        Row(children: [
+          Icon(Icons.bookmark_border_rounded, size: 18, color: Renk.marka),
+          const SizedBox(width: 6),
+          const Text('Hazır indirimler', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        ]),
+      const SizedBox(height: 12),
+      if (_manuelSekme && widget.manuel) _manuelGovde() else _hazirGovde(genis),
+    ]);
+
+    return AlertDialog(
+      insetPadding: genis ? const EdgeInsets.symmetric(horizontal: 40, vertical: 24) : const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+      contentPadding: EdgeInsets.fromLTRB(genis ? 24 : 16, 16, genis ? 24 : 16, 20),
+      titlePadding: EdgeInsets.fromLTRB(genis ? 20 : 16, 16, 12, 0),
+      title: Row(children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: koseYuvarlak),
+          child: Icon(Icons.sell_outlined, size: 18, color: Renk.marka),
+        ),
+        const SizedBox(width: 10),
+        const Expanded(child: Text('İndirim / İskonto', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700))),
+        IconButton(tooltip: 'Kapat', onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, size: 20)),
+      ]),
+      content: SizedBox(width: 520, child: SingleChildScrollView(child: govde)),
+    );
+  }
+
+  Widget _mevcutSatir(IconData ikon, String ad, String tutar, VoidCallback kaldir) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+          decoration: BoxDecoration(color: Renk.uyariZemin, borderRadius: koseYuvarlak, border: Border.all(color: Renk.uyariKenar)),
+          child: Row(children: [
+            Icon(ikon, size: 17, color: Renk.uyari),
+            const SizedBox(width: 8),
+            Expanded(child: Text(ad, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
+            Text(tutar, style: TextStyle(fontWeight: FontWeight.w700, color: Renk.uyari)),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Renk.hata, minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 8)),
+              onPressed: _mesgul ? null : kaldir,
+              icon: const Icon(Icons.close_rounded, size: 16),
+              label: const Text('Kaldır'),
+            ),
+          ]),
+        ),
       );
-    } else {
-      final l = _tanimlar;
-      govde = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        const Text('Hazır indirimler', style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        if (l == null)
-          Text('Tanımlar yükleniyor…', style: TextStyle(color: Renk.soluk))
-        else if (l.isEmpty)
-          Text(
-              'Tanımlı hazır indirim yok. Sol menüdeki İndirim Tanımları ekranından ekleyebilirsiniz (ör. “Şehit/Gazi yakını”, “Kamu personeli”).',
-              style: TextStyle(fontSize: 13, color: Renk.ikinci))
-        else
-          LayoutBuilder(builder: (ctx, k) {
-            final iki = k.maxWidth >= 400;
-            return Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final t in l)
-                SizedBox(
-                  width: iki ? (k.maxWidth - 8) / 2 : k.maxWidth,
-                  child: Material(
-                    color: Renk.yuzey,
-                    borderRadius: koseYuvarlak,
-                    child: InkWell(
-                      borderRadius: koseYuvarlak,
-                      onTap: _mesgul ? null : () => _gonder({'preset_id': tamSayi(t['id'])}, 'İndirim uygulandı', '${t['name']} · ${t['value_label']}'),
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
-                        child: Row(children: [
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('${t['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                              if (t['note'] != null) Text('${t['note']}', style: TextStyle(fontSize: 12, color: Renk.soluk)),
-                            ]),
-                          ),
-                          Rozet('${t['value_label']}', renk: Renk.marka, zemin: Renk.markaAcik),
-                        ]),
-                      ),
+
+  Widget _hazirGovde(bool genis) {
+    final l = _tanimlar;
+    if (l == null) {
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('Tanımlar yükleniyor…', style: TextStyle(color: Renk.soluk)));
+    }
+    if (l.isEmpty) {
+      return Text('Tanımlı hazır indirim yok. Yönetim › İndirim Tanımları ekranından ekleyebilirsiniz (ör. “Öğrenci”, “Personel”).',
+          style: TextStyle(fontSize: 13, color: Renk.ikinci));
+    }
+    final kilitli = _indirim > 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      if (kilitli)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text('Adisyonda zaten bir indirim var; başkasını uygulamak için önce yukarıdan kaldırın.', style: TextStyle(fontSize: 12.5, color: Renk.ikinci)),
+        ),
+      LayoutBuilder(builder: (ctx, k) {
+        final sutun = k.maxWidth >= 400 ? 2 : 1;
+        final en = (k.maxWidth - 8 * (sutun - 1)) / sutun;
+        return Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final t in l)
+            SizedBox(
+              width: en,
+              child: Material(
+                color: Renk.yuzey,
+                shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
+                child: InkWell(
+                  borderRadius: koseYuvarlak,
+                  onTap: _mesgul || kilitli ? null : () => _hazir(t),
+                  child: Opacity(
+                    opacity: kilitli ? .5 : 1,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${t['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            if (t['note'] != null)
+                              Text('${t['note']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.soluk)),
+                          ]),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: koseYuvarlak, border: Border.all(color: Renk.markaKenar)),
+                          child: Text('${t['value_label']}', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Renk.marka)),
+                        ),
+                      ]),
                     ),
                   ),
                 ),
-            ]);
-          }),
-        const Divider(height: 24),
-        if (!_serbest)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(onPressed: () => setState(() => _serbest = true), child: const Text('+ Tanımsız (serbest) indirim gir')),
-          )
-        else ...[
-          FormAlani(
-            etiket: 'Tür',
-            child: Secici<String>(
-              deger: _tur,
-              secenekler: const [('percent', 'Yüzde (%)'), ('amount', 'Sabit tutar (₺)')],
-              degisti: (v) => setState(() => _tur = v ?? 'percent'),
+              ),
             ),
+        ]);
+      }),
+    ]);
+  }
+
+  Widget _manuelGovde() {
+    final h = _hesap;
+    final kilit = _kipKilitli;
+    final ipucu = switch (_kip) { 'yuzde' => 'ör. 10', 'hedef' => 'ör. 350,00', _ => 'ör. 45,00' };
+    final etiket = switch (_kip) { 'yuzde' => 'İndirim yüzdesi (%)', 'hedef' => 'Hesabın yeni tutarı (₺)', _ => 'Düşülecek tutar (₺)' };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final (k, ikon, ad) in const [
+          ('tutar', Icons.remove_circle_outline_rounded, 'Tutar yaz'),
+          ('yuzde', Icons.percent_rounded, 'Yüzde (%)'),
+          ('hedef', Icons.south_rounded, 'Hesabı şu tutara indir'),
+        ])
+          _KipDugmesi(ikon: ikon, ad: ad, secili: _kip == k, bas: () => setState(() {
+                _kip = k;
+                _deger.clear();
+              })),
+      ]),
+      const SizedBox(height: 12),
+      if (kilit)
+        Text(
+            _kip == 'yuzde'
+                ? 'Adisyonda zaten bir indirim var; yüzde indirim için önce yukarıdan kaldırın.'
+                : 'Adisyonda zaten bir iskonto var; yeni tutar için önce yukarıdan kaldırın.',
+            style: TextStyle(fontSize: 12.5, color: Renk.ikinci))
+      else ...[
+        FormAlani(
+          etiket: etiket,
+          child: TextField(
+            controller: _deger,
+            autofocus: false,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(hintText: ipucu),
+            onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 10),
-          FormAlani(
-            etiket: _tur == 'percent' ? 'Yüzde' : 'Tutar (₺)',
-            child: TextField(
-              controller: _deger,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(hintText: _tur == 'percent' ? 'ör. 10' : 'ör. 25,00'),
+        ),
+        const SizedBox(height: 8),
+        FormAlani(
+          etiket: 'Gerekçe',
+          ipucu: 'İsteğe bağlı — raporda görünür',
+          child: TextField(controller: _gerekce, decoration: const InputDecoration(hintText: 'ör. müdavim, yönetici onayı')),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(color: Renk.ic, borderRadius: koseYuvarlak),
+          child: Row(children: [
+            Expanded(
+              child: Text(
+                h.hata ?? (h.dus > 0 ? '−${para(h.dus)} düşülür' : 'Değer girince yeni tutar burada görünür.'),
+                style: TextStyle(fontSize: 13, color: h.hata != null ? Renk.hata : Renk.ikinci, fontWeight: h.dus > 0 ? FontWeight.w600 : null),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          FormAlani(
-            etiket: 'Gerekçe',
-            child: TextField(controller: _gerekce, decoration: const InputDecoration(hintText: 'ör. yönetici onaylı özel indirim')),
-          ),
-          const SizedBox(height: 10),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            OutlinedButton(onPressed: () => setState(() => _serbest = false), child: const Text('Vazgeç')),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _mesgul
-                  ? null
-                  : () {
-                      final n = double.tryParse(_deger.text.replaceAll(' ', '').replaceAll(',', '.'));
-                      if (n == null || n <= 0) {
-                        context.bildir2('Değer geçersiz', 'Sıfırdan büyük bir değer girin.', hata: true);
-                        return;
-                      }
-                      if (_gerekce.text.trim().length < 3) {
-                        context.bildir2('Gerekçe gerekli', 'En az 3 karakterlik bir gerekçe yazın.', hata: true);
-                        return;
-                      }
-                      _gonder({
-                        'type': _tur,
-                        'value': _tur == 'percent' ? n : (n * 100).round(),
-                        'reason': _gerekce.text.trim(),
-                      }, 'İndirim uygulandı', _gerekce.text.trim());
-                    },
-              child: const Text('Uygula'),
-            ),
+            if (h.hata == null && h.dus > 0) ...[
+              Text('Yeni tutar ', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+              Text(para(a.toplam - h.dus), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Renk.marka)),
+            ],
           ]),
-        ],
-      ]);
-    }
-    return AlertDialog(
-      title: const Text('İndirim'),
-      content: SizedBox(width: 512, child: SingleChildScrollView(child: govde)),
-      actions: [OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Kapat'))],
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: _mesgul || h.hata != null || h.dus <= 0 ? null : _manuelUygula,
+          icon: const Icon(Icons.check_rounded, size: 18),
+          label: Text(_kip == 'yuzde' ? 'İndirimi uygula' : 'İskontoyu uygula'),
+        ),
+      ],
+    ]);
+  }
+}
+
+/// İki sekmeli seçici (alt çizgili; 8px köşe kuralına uygun, hap yok).
+class _Sekmeler extends StatelessWidget {
+  const _Sekmeler({required this.secili, required this.ogeler, required this.degisti});
+  final int secili;
+  final List<(IconData, String)> ogeler;
+  final ValueChanged<int> degisti;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi))),
+      child: Row(children: [
+        for (var i = 0; i < ogeler.length; i++)
+          Expanded(
+            child: InkWell(
+              key: ValueKey('indirim-sekme-$i'),
+              onTap: () => degisti(i),
+              child: Container(
+                height: 42,
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: i == secili ? Renk.marka : Colors.transparent, width: 2))),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(ogeler[i].$1, size: 18, color: i == secili ? Renk.marka : Renk.ikinci),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(ogeler[i].$2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: i == secili ? Renk.marka : Renk.ikinci)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+class _KipDugmesi extends StatelessWidget {
+  const _KipDugmesi({required this.ikon, required this.ad, required this.secili, required this.bas});
+  final IconData ikon;
+  final String ad;
+  final bool secili;
+  final VoidCallback bas;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: secili ? Renk.markaAcik : Renk.yuzey,
+      shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? Renk.marka : Renk.cizgiKoyu)),
+      child: InkWell(
+        borderRadius: koseYuvarlak,
+        onTap: bas,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(ikon, size: 17, color: secili ? Renk.marka : Renk.ikinci),
+            const SizedBox(width: 6),
+            Text(ad, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: secili ? Renk.marka : Renk.yazi)),
+          ]),
+        ),
+      ),
     );
   }
 }

@@ -12,6 +12,7 @@ import 'package:bambumpos_pos/ekranlar/cerceve.dart' show BildirimZili;
 import 'package:bambumpos_pos/ekranlar/adisyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/aktivasyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kabuk.dart';
+import 'package:bambumpos_pos/ekranlar/kasa_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/ortak.dart';
 import 'package:bambumpos_pos/ekranlar/pin_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/raporlar_ekrani.dart';
@@ -28,13 +29,16 @@ final _dizin = Platform.environment['GORUNTU_DIZINI'];
 String _veri(String ad) => File('test/veri/$ad.json').readAsStringSync();
 
 class _SahteSunucu implements HttpClientAdapter {
-  _SahteSunucu(this.oturum);
+  _SahteSunucu(this.oturum, [this.ek = const {}]);
   final String oturum;
+
+  /// Ekrana özel yanıtlar (yol → gövde); varsa önce bunlar kullanılır.
+  final Map<String, String> ek;
 
   @override
   Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async {
     final yol = o.uri.path;
-    final govde = switch (yol) {
+    final govde = ek[yol] ?? switch (yol) {
       '/api/v1/uygulama/oturum' => oturum,
       '/api/v1/orders/board' => _veri('pano'),
       '/api/v1/orders/catalog' => _veri('katalog'),
@@ -82,10 +86,10 @@ Future<void> _fontlar() async {
   await ikon.load();
 }
 
-Future<UygulamaDurumu> _durum({Map<String, dynamic>? oturumDegis}) async {
+Future<UygulamaDurumu> _durum({Map<String, dynamic>? oturumDegis, Map<String, String> ek = const {}}) async {
   SharedPreferences.setMockInitialValues({});
   final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>()..addAll(oturumDegis ?? {});
-  final api = Api.bellekte(_SahteSunucu(jsonEncode(ham)));
+  final api = Api.bellekte(_SahteSunucu(jsonEncode(ham), ek));
   final d = UygulamaDurumu.test(api, await SharedPreferences.getInstance(), Directory.systemTemp.createTempSync('bbpos').path);
   return d;
 }
@@ -125,6 +129,68 @@ Future<void> _bekle(WidgetTester t) async {
     await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
     await t.pump(const Duration(milliseconds: 50));
   }
+}
+
+/// Kasa örnek adisyonu: 4× çay, 2× tost, tek kahve, ödenmiş su, ikram.
+Map<String, String> _kasaVerisi() {
+  final o = ((jsonDecode(_veri('adisyon')) as Map)['order'] as Map).cast<String, dynamic>();
+  final kalemler = (o['items'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
+  Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {bool odendi = false}) => {
+        ...kalemler.firstWhere((k) => k['id'] == 815),
+        'id': id,
+        'name': ad,
+        'qty': adet,
+        'pending_qty': 0,
+        'unit_price_minor': birim,
+        'options_price_minor': 0,
+        'line_total_minor': adet * birim,
+        'is_settled': odendi,
+        'note': null,
+        'options': const [],
+        'variant_name': null,
+      };
+  o['items'] = [
+    kalem(901, 'Çay', 4, 2500),
+    kalem(902, 'Kaşarlı Tost', 2, 9000),
+    kalemler.firstWhere((k) => k['id'] == 815),
+    kalemler.firstWhere((k) => k['id'] == 814),
+    kalem(903, 'Su', 1, 2000, odendi: true),
+  ];
+  o
+    ..['items_total_minor'] = 41000
+    ..['total_minor'] = 41000
+    ..['paid_minor'] = 2000
+    ..['remaining_minor'] = 39000
+    ..['payment_state'] = 'partial'
+    ..['items_count'] = 5
+    ..['vat_total_minor'] = 3727
+    ..['created_at'] = DateTime.now().subtract(const Duration(minutes: 47)).toUtc().toIso8601String();
+  final ozet = Map<String, dynamic>.from(o)..remove('items')..remove('events');
+  final diger = Map<String, dynamic>.from(ozet)
+    ..['id'] = 301
+    ..['table_name'] = 'Salon 4'
+    ..['paid_minor'] = 0
+    ..['remaining_minor'] = 18500
+    ..['total_minor'] = 18500;
+  return {
+    '/api/v1/payments/pending-orders': jsonEncode({'orders': [ozet, diger]}),
+    '/api/v1/orders/300': jsonEncode({'order': o}),
+    '/api/v1/orders/300/payments': jsonEncode({
+      'order': ozet,
+      'payments': [
+        {'id': 71, 'kind': 'payment', 'status': 'succeeded', 'status_label': 'Başarılı', 'status_variant': 'success', 'method': 'cash', 'method_label': 'Nakit', 'method_icon': 'cart', 'amount_minor': 2000, 'tip_minor': 0, 'refunded_total_minor': 0, 'provider': 'cash', 'cashier': 'Ayşe Yıldız', 'created_at': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String()},
+      ],
+    }),
+    '/api/v1/payments/terminal-status': jsonEncode({'simulated': true, 'online': false, 'provider_label': 'Simülasyon'}),
+    '/api/v1/discount-presets': jsonEncode({
+      'presets': [
+        {'id': 1, 'name': 'Öğrenci', 'value_label': '%10', 'note': 'Öğrenci kartı ile'},
+        {'id': 2, 'name': 'Personel', 'value_label': '%20'},
+        {'id': 3, 'name': 'Şehit/Gazi yakını', 'value_label': '%15'},
+        {'id': 4, 'name': 'Esnaf indirimi', 'value_label': '25,00 ₺'},
+      ],
+    }),
+  };
 }
 
 void main() {
@@ -194,6 +260,73 @@ void main() {
       await _yaz(t, '10-raporlar-ciro-$ad');
       await t.pumpWidget(const SizedBox());
     }, skip: _dizin == null);
+  }
+
+  // Kasa: tahsilat ekranı, 4× çay açılıp 2'si seçili, indirim penceresi
+  // (Hazır sekmesi; manuel iskonto eklentisi açık / kapalı).
+  for (final (ad, boyut, koyu) in [
+    ('tablet', tablet, false),
+    ('telefon', telefon, false),
+    ('tablet-koyu', tablet, true),
+    ('telefon-koyu', telefon, true),
+  ]) {
+    for (final manuel in [true, false]) {
+      testWidgets('kasa $ad manuel=$manuel', (t) async {
+        await _boyut(t, boyut);
+        koyuTema.value = koyu;
+        addTearDown(() => koyuTema.value = false);
+        final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
+        final d = await _durum(oturumDegis: {
+          'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'payments.refund', 'orders.discount', 'orders.update', 'orders.comp', 'orders.view'],
+          'eklentiler': {...(ham['eklentiler'] as Map), 'manuel_iskonto': manuel},
+        }, ek: _kasaVerisi());
+        await t.runAsync(d.oturumuYenile);
+        await t.pumpWidget(_uygulama(d, const Scaffold(body: SafeArea(child: KasaEkrani()))));
+        await _bekle(t);
+        final on = 'kasa-$ad${manuel ? '' : '-manuelsiz'}';
+        if (manuel) await _yaz(t, '$on-0-liste');
+        await t.tap(find.text('Bahçe 2').first);
+        await _bekle(t);
+        if (manuel) await _yaz(t, '$on-1-tahsilat');
+        // 4× çay: dokununca açılır, iki adet seçilir.
+        final cay = find.text('Çay');
+        if (cay.evaluate().isNotEmpty) {
+          await t.ensureVisible(cay.first);
+          await t.tap(cay.first);
+          await _bekle(t);
+          final birim = find.byKey(const ValueKey('kasa-birim-901-0'));
+          if (birim.evaluate().isNotEmpty) {
+            await t.tap(birim);
+            await t.pump();
+            await t.tap(find.byKey(const ValueKey('kasa-birim-901-1')));
+            await _bekle(t);
+          }
+          if (manuel) await _yaz(t, '$on-2-cay-iki');
+        }
+        // İndirim penceresi.
+        final iskonto = find.byKey(const ValueKey('kasa-iskonto'));
+        final eski = find.text('İndirim / İskonto uygula');
+        final hedef = iskonto.evaluate().isNotEmpty ? iskonto : eski;
+        if (hedef.evaluate().isNotEmpty) {
+          await t.ensureVisible(hedef.first);
+          await _bekle(t);
+          await t.tap(hedef.first);
+          await _bekle(t);
+          await t.pump(const Duration(seconds: 1));
+          await _yaz(t, '$on-3-indirim');
+          final man = find.byKey(const ValueKey('indirim-sekme-1'));
+          if (manuel && man.evaluate().isNotEmpty) {
+            await t.tap(man.first);
+            await _bekle(t);
+            await _yaz(t, '$on-4-manuel');
+          }
+        }
+        await t.pumpWidget(const SizedBox());
+        d.ajan?.dispose();
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+        await t.pump(const Duration(seconds: 30));
+      }, skip: _dizin == null);
+    }
   }
   for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('dikey', dikey)]) {
     testWidgets('aktivasyon $ad', (t) async {

@@ -86,6 +86,20 @@ const kasaYontemleri = <(String, String, String, bool)>[
   ('gift_card', 'Hediye kartı', 'inbox', false),
 ];
 
+/// Ödeme yönteminin simgesi (yöntem koduna göre; sunucu simgesi yalnız yedek).
+IconData yontemSimgesi(String? kod, [String? sunucuSimgesi]) => switch (kod) {
+      'cash' => Icons.payments_outlined,
+      'credit_card' => Icons.credit_card_rounded,
+      'debit_card' => Icons.account_balance_outlined,
+      'meal_card' => Icons.restaurant_rounded,
+      'transfer' => Icons.swap_horiz_rounded,
+      'qr' => Icons.qr_code_2_rounded,
+      'online' => Icons.language_rounded,
+      'gift_card' => Icons.card_giftcard_rounded,
+      'on_account' => Icons.person_outline_rounded,
+      _ => kasaSimge(sunucuSimgesi),
+    };
+
 String yontemAdi(String? y) => kasaYontemleri.where((e) => e.$1 == y).map((e) => e.$2).firstOrNull ?? (y == 'on_account' ? 'Açık hesap' : (y ?? ''));
 
 /* ───────── Ortak pencere iskeleti ───────── */
@@ -546,7 +560,7 @@ Future<({String yontem, String? neden})?> yontemDegistirPenceresi(BuildContext c
                 side: BorderSide(color: secili == y.$1 ? Renk.marka : Renk.cizgi),
               ),
               onPressed: () => yenile(() => secili = y.$1),
-              icon: Icon(kasaSimge(y.$3), size: 16),
+              icon: Icon(yontemSimgesi(y.$1, y.$3), size: 16),
               label: Text(y.$2, overflow: TextOverflow.ellipsis),
             ),
         ],

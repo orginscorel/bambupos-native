@@ -54,6 +54,21 @@ class Oturum {
     return e[anahtar] == true;
   }
 
+  /// MANUEL İSKONTO eklentisi (2026-10-27): kasada "Tutar yaz", "%" ve
+  /// "Hesabı şu tutara indir". Kapalıyken yalnız hazır indirimler görünür.
+  /// Sunucu bunu `eklentiler` haritasına koyar; eski/farklı biçimler de
+  /// kabul edilir (`ozellikler` listesi ya da haritası, düz `manuel_iskonto`).
+  /// Hiçbir yerde yoksa KAPALI (eklentiler varsayılan kapalı gelir).
+  bool get manuelIskonto {
+    const k = 'manuel_iskonto';
+    final e = ham['eklentiler'];
+    if (e is Map && e.containsKey(k)) return e[k] == true;
+    final oz = ham['ozellikler'];
+    if (oz is List && oz.any((x) => '$x' == k)) return true;
+    if (oz is Map && oz.containsKey(k)) return oz[k] == true;
+    return ham[k] == true;
+  }
+
   /// Sunucu saati ile cihaz saati arasındaki fark (süre rozetleri doğru olsun).
   Duration get saatFarki {
     final t = DateTime.tryParse(_metin(ham['sunucu_saati']) ?? '');
