@@ -184,6 +184,28 @@ Future<void> _ode(WidgetTester t, {String yontem = 'Nakit', String dugme = 'öde
 
 Map<String, (int, String)> _posYaniti(Map<String, dynamic> g) => {'/api/v1/payments/terminal-status': (200, jsonEncode(g))};
 
+/// Kalem notu: Çay 2 adet gönderilmedi (notlu), Tost 2'nin 1'i gönderildi,
+/// Kahve tamamen gönderildi (notlu).
+Map<String, (int, String)> _notYanitlari({String? cayNotu = 'az şekerli'}) {
+  final y = _kasaYanitlari();
+  final o = _adisyon(y);
+  final ks = (o['items'] as List).cast<Map<String, dynamic>>();
+  ks[0]
+    ..['qty'] = 2
+    ..['pending_qty'] = 2
+    ..['status'] = 'placed'
+    ..['note'] = cayNotu
+    ..['dokum'] = const [];
+  ks[1]
+    ..['pending_qty'] = 1
+    ..['status'] = 'placed'
+    ..['note'] = null;
+  ks.add({...ks[1], 'id': 903, 'name': 'Filtre Kahve', 'qty': 1, 'pending_qty': 0, 'status': 'sent_to_station', 'note': 'laktosuz süt'});
+  o['is_open'] = true;
+  o['version'] = 7;
+  return {...y, '/api/v1/orders/300': (200, jsonEncode({'order': o}))};
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
@@ -476,5 +498,82 @@ void main() {
     await t.pump();
     expect(find.textContaining('1 adet seçili'), findsOneWidget);
     await _bitir(t, d);
+  });
+
+  group('kalem notu', () {
+    Future<(UygulamaDurumu, _Sunucu)> ac(WidgetTester t, {Map<String, (int, String)>? y}) =>
+        _kur(t, manuel: false, boyut: const Size(1280, 1800), ekran: const AdisyonEkrani(adisyonId: 300), ek: y ?? _notYanitlari());
+
+    testWidgets('not görünür; düğme yalnız gönderilmemiş adet varken', (t) async {
+      final (d, _) = await ac(t);
+      expect(find.text('Not: az şekerli'), findsOneWidget);
+      expect(find.text('Not: laktosuz süt'), findsOneWidget);
+      expect(find.byKey(const ValueKey('kalem-not-901')), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Notu düzenle'), findsOneWidget);
+      expect(find.byKey(const ValueKey('kalem-not-902')), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Not ekle'), findsOneWidget);
+      // Kahve tamamen gönderildi: salt okunur.
+      expect(find.byKey(const ValueKey('kalem-not-903')), findsNothing);
+      await _bitir(t, d);
+    });
+
+    testWidgets('Kaydet → PATCH {note, expected_version}', (t) async {
+      final (d, s) = await ac(t);
+      await t.ensureVisible(find.byKey(const ValueKey('kalem-not-902')));
+      await t.tap(find.byKey(const ValueKey('kalem-not-902')));
+      await t.pumpAndSettle();
+      expect(find.text('Not yalnız gönderilmemiş 1 adede uygulanır'), findsOneWidget);
+      expect(find.text('Notu sil'), findsNothing);
+      await t.enterText(find.byKey(const ValueKey('kalem-notu-alan')), '  mantar eklemeyin ');
+      await t.pump();
+      await t.tap(find.text('Kaydet'));
+      await _bekle(t);
+      final r = s.istekler.lastWhere((r) => r.$2.endsWith('/note'));
+      expect(r.$1, 'PATCH');
+      expect(r.$2, '/api/v1/orders/300/items/902/note');
+      expect(r.$3, {'note': 'mantar eklemeyin', 'expected_version': 7});
+      await _bitir(t, d);
+    });
+
+    testWidgets('Notu sil → note: null', (t) async {
+      final (d, s) = await ac(t);
+      await t.ensureVisible(find.byKey(const ValueKey('kalem-not-901')));
+      await t.tap(find.byKey(const ValueKey('kalem-not-901')));
+      await t.pumpAndSettle();
+      expect(find.text('az şekerli'), findsOneWidget); // alan dolu gelir
+      await t.tap(find.text('Notu sil'));
+      await _bekle(t);
+      final r = s.istekler.lastWhere((r) => r.$2.endsWith('/note'));
+      expect(r.$2, '/api/v1/orders/300/items/901/note');
+      expect(r.$3!.containsKey('note'), isTrue);
+      expect(r.$3!['note'], isNull);
+      await _bitir(t, d);
+    });
+
+    testWidgets('422: sunucu mesajı gösterilir', (t) async {
+      final (d, _) = await ac(t, y: {
+        ..._notYanitlari(),
+        'PATCH /api/v1/orders/300/items/901/note': (422, jsonEncode({
+          'message': 'x',
+          'errors': {'note': ['Hazırlığa gönderilen kaleme not eklenemez.']},
+        })),
+      });
+      await t.ensureVisible(find.byKey(const ValueKey('kalem-not-901')));
+      await t.tap(find.byKey(const ValueKey('kalem-not-901')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const ValueKey('kalem-notu-alan')), 'az pişmiş');
+      await t.pump();
+      await t.tap(find.text('Kaydet'));
+      await _bekle(t);
+      expect(find.text('Hazırlığa gönderilen kaleme not eklenemez.'), findsOneWidget);
+      await _bitir(t, d);
+    });
+
+    testWidgets('Kasa: not satırda salt okunur görünür', (t) async {
+      final (d, _) = await _kur(t, manuel: false, ek: _notYanitlari());
+      expect(find.text('Not: az şekerli'), findsWidgets);
+      expect(find.text('Not ekle'), findsNothing);
+      await _bitir(t, d);
+    });
   });
 }

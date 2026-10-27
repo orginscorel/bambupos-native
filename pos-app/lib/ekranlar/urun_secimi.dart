@@ -19,20 +19,23 @@ class UrunSecimi {
 /// Ürün yapılandırma penceresi — web Detail.vue §4.1 birebir:
 /// "Boyut / Porsiyon" varyantları, seçenek grupları (tek seçim / en çok n /
 /// çoklu), ücretsiz seçenek limiti, adet sınırları, not.
-Future<UrunSecimi?> urunSecimiAc(BuildContext context, Urun urun, {String kanal = 'table'}) {
+Future<UrunSecimi?> urunSecimiAc(BuildContext context, Urun urun, {String kanal = 'table', String? ilkNot}) {
   return pencereAc<UrunSecimi>(
     context: context,
     builder: (_) => Dialog(
       insetPadding: const EdgeInsets.all(16),
-      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 512, maxHeight: 760), child: _UrunSecimi(urun: urun, kanal: kanal)),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 512, maxHeight: 760), child: _UrunSecimi(urun: urun, kanal: kanal, ilkNot: ilkNot)),
     ),
   );
 }
 
 class _UrunSecimi extends StatefulWidget {
-  const _UrunSecimi({required this.urun, required this.kanal});
+  const _UrunSecimi({required this.urun, required this.kanal, this.ilkNot});
   final Urun urun;
   final String kanal;
+
+  /// Kalem değiştirilirken mevcut not (yanlışlıkla silinmesin).
+  final String? ilkNot;
 
   @override
   State<_UrunSecimi> createState() => _UrunSecimiState();
@@ -42,7 +45,7 @@ class _UrunSecimiState extends State<_UrunSecimi> {
   int? _varyant;
   final Map<int, List<int>> _secim = {}; // seçim sırası korunur
   late int _adet = widget.urun.minAdet;
-  final _not = TextEditingController();
+  late final _not = TextEditingController(text: widget.ilkNot ?? '');
 
   Urun get u => widget.urun;
 

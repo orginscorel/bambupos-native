@@ -186,6 +186,8 @@ class Api {
 
   Future<dynamic> put(String yol, [Object? govde]) => _istek('PUT', yol, govde: govde ?? const {});
 
+  Future<dynamic> patch(String yol, [Object? govde]) => _istek('PATCH', yol, govde: govde ?? const {});
+
   Future<dynamic> delete(String yol, [Object? govde]) => _istek('DELETE', yol, govde: govde);
 
   /// İkili dosya (QR görseli, PDF …) indirir. Oturum çereziyle gider.

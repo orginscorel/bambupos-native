@@ -286,7 +286,8 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   }
 
   /// web runOp: tek seferde bir işlem; yanıttaki adisyon ekrana basılır.
-  Future<bool> _islem(Future<dynamic> Function() f, {String? ok, String okMetin = '', bool yeniledi = true}) async {
+  Future<bool> _islem(Future<dynamic> Function() f,
+      {String? ok, String okMetin = '', bool yeniledi = true, String hataBaslik = 'İşlem tamamlanamadı'}) async {
     if (_mesgul) return false;
     setState(() => _mesgul = true);
     try {
@@ -303,7 +304,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
         context.bildir2('Eşzamanlı değişiklik', e.mesaj, hata: true);
         _yukle(sessiz: true);
       } else {
-        context.bildir2('İşlem tamamlanamadı', e.mesaj, hata: true);
+        context.bildir2(hataBaslik, e.mesaj, hata: true);
         context.durum.islemHatasi(e);
       }
       return false;
@@ -413,6 +414,19 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   Future<void> _cikar(Kalem k) async {
     final ok = await _islem(() => context.api.delete('$_yol/items/${k.id}', {'expected_version': _surum}), ok: 'Kalem çıkarıldı');
     if (ok) _secimiTemizle(k.id);
+  }
+
+  /// Kalem notu (yalnız hazırlığa gönderilmemiş adetler). Sunucu kısmen
+  /// gönderilmiş satırı böler; yanıttaki adisyon ekrana basılır.
+  Future<void> _kalemNotu(Kalem k) async {
+    final r = await _penceredeyken(() => kalemNotuPenceresi(context, k, _bekleyen(k)));
+    if (r == null || !mounted) return;
+    await _islem(
+      () => context.api.patch('$_yol/items/${k.id}/note', {'note': r.not, 'expected_version': _surum}),
+      ok: r.not == null ? 'Not silindi' : 'Not kaydedildi',
+      okMetin: k.ad,
+      hataBaslik: 'Not kaydedilemedi',
+    );
   }
 
   Future<void> _servisEdildi(Kalem k) =>
@@ -1488,6 +1502,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     final kismi = _secili.contains(k.id) && topluAdet > 0 && topluAdet < k.adet;
     final bekleyen = _bekleyen(k);
     final acik = _acikDokum == k.id;
+    // Not: yalnız gönderilmemiş adet varken (web: "Gönderilmedi" yanında).
+    final notDuzenlenir = a.acik && bekleyen > 0 && _can('orders.update');
+    final notVar = k.not != null && k.not!.trim().isNotEmpty;
+    final notEtiket = notVar && bekleyen >= k.adet ? 'Notu düzenle' : 'Not ekle';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -1530,8 +1548,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                     style: const TextStyle(fontSize: 15),
                   ),
                   if (k.secenekler.isNotEmpty) Text(k.secenekler.join(', '), style: TextStyle(fontSize: 12, color: Renk.ikinci)),
-                  if (k.not != null && k.not!.isNotEmpty)
-                    Text('“${k.not}”', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Renk.ikinci)),
+                  if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
                   if (k.ikram) Text('İkram — ${k.ikramNedeni ?? ''}', style: TextStyle(fontSize: 12, color: Renk.basari)),
                 ]),
               ),
@@ -1561,18 +1578,40 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Row(children: [
-            if (bekleyen > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: Renk.uyariZemin, borderRadius: BorderRadius.circular(999), border: Border.all(color: Renk.uyariKenar)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.schedule_rounded, size: 11, color: Renk.uyari),
-                  const SizedBox(width: 4),
-                  Text(bekleyen >= k.adet ? 'Gönderilmedi' : '$bekleyen adet gönderilmedi',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.uyari)),
-                ]),
-              ),
-            const Spacer(),
+            // Rozet + Not düğmesi: dar panelde düğme rozetin altına iner.
+            Expanded(
+              child: Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                if (bekleyen > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: Renk.uyariZemin, borderRadius: BorderRadius.circular(999), border: Border.all(color: Renk.uyariKenar)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.schedule_rounded, size: 11, color: Renk.uyari),
+                      const SizedBox(width: 4),
+                      Text(bekleyen >= k.adet ? 'Gönderilmedi' : '$bekleyen adet gönderilmedi',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.uyari)),
+                    ]),
+                  ),
+                if (notDuzenlenir)
+                  Tooltip(
+                    message: '$notEtiket — mutfak / bar fişine basılır',
+                    child: TextButton.icon(
+                      key: ValueKey('kalem-not-${k.id}'),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 30),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+                      ),
+                      onPressed: _mesgul ? null : () => _kalemNotu(k),
+                      icon: Icon(notVar && bekleyen >= k.adet ? Icons.edit_note_rounded : Icons.sticky_note_2_outlined, size: 15),
+                      label: Text(notEtiket, style: const TextStyle(fontSize: 12.5)),
+                    ),
+                  ),
+              ]),
+            ),
+            const SizedBox(width: 6),
             if (a.acik) ...[
               if (k.durum == 'placed' && !k.ikram)
                 Container(

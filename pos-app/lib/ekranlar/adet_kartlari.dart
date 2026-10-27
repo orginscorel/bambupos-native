@@ -57,6 +57,7 @@ class AdetKartlari extends StatelessWidget {
     final k = kalem;
     final dokum = birimDokumu(k);
     final dokumVar = (k.ham['dokum'] as List? ?? const []).isNotEmpty;
+    final notVar = k.not != null && k.not!.trim().isNotEmpty;
     Widget kart(int i) {
       final b = dokum[i];
       final odendi = i < odenmis;
@@ -115,7 +116,8 @@ class AdetKartlari extends StatelessWidget {
                 // Geniş yerde (sık düzen) ürün + kişi tek satır; dar yerde iki
                 // satır: kişi adı kırpılmaz.
                 Expanded(
-                  child: LayoutBuilder(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+                  LayoutBuilder(
                     builder: (_, k2) => sik && k2.maxWidth >= 340
                         ? Row(children: [
                             ConstrainedBox(
@@ -143,6 +145,8 @@ class AdetKartlari extends StatelessWidget {
                             ]),
                           ]),
                   ),
+                  if (notVar) KalemNotu(k.not!, boyut: 11.5, satir: 1),
+                  ]),
                 ),
                 const SizedBox(width: 8),
                 Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -169,4 +173,29 @@ class AdetKartlari extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < k.adet; i++) kart(i)]),
     );
   }
+}
+
+/// Kalem notu (web: ürün adının altında not simgesi + "Not: …", soluk
+/// italik). Mutfak/bar fişine de basılır; burada yalnız gösterilir.
+class KalemNotu extends StatelessWidget {
+  const KalemNotu(this.not, {super.key, this.boyut = 12, this.satir = 2});
+
+  final String not;
+  final double boyut;
+  final int satir;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.sticky_note_2_outlined, size: boyut, color: Renk.soluk)),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text('Not: $not',
+                maxLines: satir,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: boyut, height: 1.3, fontStyle: FontStyle.italic, color: Renk.ikinci)),
+          ),
+        ]),
+      );
 }

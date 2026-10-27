@@ -777,7 +777,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ok: 'Kalem güncellendi', okMetin: k.ad, hataBaslik: 'Güncellenemedi');
       return;
     }
-    final s = await _penceredeyken(() => urunSecimiAc(context, u));
+    final s = await _penceredeyken(() => urunSecimiAc(context, u, ilkNot: k.not));
     if (s == null || !mounted) return;
     await _islem(
       () => _api.put('$_oyol/items/${k.id}', {'qty': s.adet, 'note': s.not, 'option_ids': s.secenekler, 'expected_version': _surum}),
@@ -2388,7 +2388,6 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final meta = [
       if (k.varyant != null) k.varyant!,
       ...k.secenekler,
-      if (k.not != null && k.not!.isNotEmpty) '“${k.not}”',
     ];
     final oran = (k.ham['tax_rate'] is num) ? (k.ham['tax_rate'] as num).toDouble() : double.tryParse('${k.ham['tax_rate']}') ?? 0;
     final duzenle = _duzelt && _duzenlenebilir;
@@ -2461,6 +2460,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                 color: soluk ? Renk.soluk : Renk.yazi,
               )),
           if (meta.isNotEmpty) Text(meta.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
           if (secilebilir && k.odenmemisAdet < k.adet)
             Text('${k.adet - k.odenmemisAdet} adet ödendi${secAdet > 0 ? ' · $secAdet seçili' : ''}',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: secAdet > 0 ? Renk.marka : Renk.basari))

@@ -133,7 +133,7 @@ Future<void> _bekle(WidgetTester t) async {
 }
 
 /// Kasa örnek adisyonu: 4× çay, 2× tost, tek kahve, ödenmiş su, ikram.
-Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = false, bool cokKalem = false, bool ethernetPos = false}) {
+Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = false, bool cokKalem = false, bool ethernetPos = false, bool notlu = false}) {
   final o = ((jsonDecode(_veri('adisyon')) as Map)['order'] as Map).cast<String, dynamic>();
   final kalemler = (o['items'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
   Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {bool odendi = false, List<Map<String, dynamic>> dokum = const []}) => {
@@ -179,6 +179,20 @@ Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = fal
     ..['items_count'] = 5
     ..['vat_total_minor'] = 3727
     ..['created_at'] = DateTime.now().subtract(const Duration(minutes: 47)).toUtc().toIso8601String();
+  if (notlu) {
+    // 1.2.23 kalem notu: Çay 4'ün 2'si gönderilmedi; Tost tamamen gönderilmedi
+    // ve notlu; Kahve gönderildi, notlu (salt okunur).
+    final ks = (o['items'] as List).cast<Map<String, dynamic>>();
+    ks[0]
+      ..['pending_qty'] = 2
+      ..['status'] = 'placed';
+    ks[1]
+      ..['pending_qty'] = 2
+      ..['status'] = 'placed'
+      ..['note'] = 'Az pişmiş, domatessiz';
+    ks[2] = {...ks[2], 'note': 'Laktosuz süt'};
+    o['is_open'] = true;
+  }
   if (indirimli) {
     o
       ..['discount_minor'] = 4100
@@ -469,6 +483,69 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       }, skip: _dizin == null);
     }
+  }
+
+  // 1.2.23 kalem notu: Adisyon (Not ekle / Notu düzenle, pencere) + Kasa.
+  for (final (ad, boyut) in [('tablet', const Size(1280, 800)), ('1366x728', const Size(1366, 728))]) {
+    testWidgets('kalem notu $ad', (t) async {
+      if (ad != 'tablet') debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      await _boyut(t, boyut);
+      final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
+      final d = await _durum(oturumDegis: {
+        'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'orders.update', 'orders.view'],
+      }, ek: _kasaVerisi(notlu: true));
+      await t.runAsync(d.oturumuYenile);
+      await t.pumpWidget(_uygulama(d, const AdisyonEkrani(adisyonId: 300)));
+      await _bekle(t);
+      await _yaz(t, 'not-adisyon-$ad');
+      final cay = find.text('4× Çay', findRichText: true).first;
+      await t.ensureVisible(cay);
+      await t.tap(cay);
+      await _bekle(t);
+      await _yaz(t, 'not-adisyon-adetler-$ad');
+      await t.ensureVisible(find.byKey(const ValueKey('kalem-not-901')));
+      await _bekle(t);
+      await t.tap(find.byKey(const ValueKey('kalem-not-901')));
+      await _bekle(t);
+      await t.enterText(find.byKey(const ValueKey('kalem-notu-alan')), 'Şekersiz, ince belli bardak');
+      await _bekle(t);
+      await _yaz(t, 'not-pencere-kismi-$ad');
+      // Ekran klavyesi açıkken (alt 340 px): pencere yukarı kayar, Kaydet görünür.
+      // (Arkadaki adisyon paneli 728 px'te klavye altında sıkışır — 1.2.22'den
+      // beri aynı, Ürün ara kutusunda da; bu çekimin konusu pencere.)
+      final onceki = FlutterError.onError;
+      FlutterError.onError = (e) {
+        if (!e.exceptionAsString().contains('overflowed')) onceki?.call(e);
+      };
+      t.view.viewInsets = const FakeViewPadding(bottom: 340);
+      await _bekle(t);
+      await _yaz(t, 'not-pencere-klavye-$ad');
+      expect(t.getRect(find.text('Kaydet')).bottom, lessThan(boyut.height - 340));
+      t.view.resetViewInsets();
+      await _bekle(t);
+      FlutterError.onError = onceki;
+      await t.tap(find.text('Vazgeç'));
+      await _bekle(t);
+      await t.ensureVisible(find.byKey(const ValueKey('kalem-not-902')));
+      await _bekle(t);
+      await t.tap(find.byKey(const ValueKey('kalem-not-902')));
+      await _bekle(t);
+      await _yaz(t, 'not-pencere-duzenle-$ad');
+      await t.tap(find.text('Vazgeç'));
+      await _bekle(t);
+      await t.pumpWidget(_uygulama(d, const Scaffold(body: SafeArea(child: KasaEkrani()))));
+      await _bekle(t);
+      await t.tap(find.text('Bahçe 2').first);
+      await _bekle(t);
+      await t.tap(find.text('Çay').first);
+      await _bekle(t);
+      await _yaz(t, 'not-kasa-$ad');
+      await t.pumpWidget(const SizedBox());
+      d.ajan?.dispose();
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await t.pump(const Duration(seconds: 30));
+      debugDefaultTargetPlatformOverride = null;
+    }, skip: _dizin == null);
   }
 
   // Adisyon: çok adetli satıra dokununca adet kartları (web gibi), iki adet seçili.

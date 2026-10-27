@@ -955,3 +955,87 @@ Future<bool> adisyonBosaldiSor(BuildContext context) async {
   );
   return r ?? false;
 }
+
+/* ───────── Kalem notu (web Detail.vue: Not ekle / Notu düzenle) ───────── */
+
+/// Hazırlığa gönderilmemiş kaleme not. Dönüş: null = vazgeçildi;
+/// `(not: null)` = notu sil; `(not: '…')` = kaydet. [bekleyen] satır
+/// adedinden azsa not yalnız gönderilmemiş adetlere uygulanır (sunucu
+/// satırı böler), bu yüzden mevcut not düzenlenmez — yeni not yazılır.
+Future<({String? not})?> kalemNotuPenceresi(BuildContext context, Kalem k, int bekleyen) {
+  final kismi = bekleyen < k.adet;
+  final mevcut = kismi ? null : k.not?.trim();
+  final duzenle = mevcut != null && mevcut.isNotEmpty;
+  final c = TextEditingController(text: duzenle ? mevcut : '');
+  return pencereAc<({String? not})>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, yenile) {
+        final metin = c.text.trim();
+        // Ekran klavyesi: Ürün ara kutusuyla aynı — sistemin klavyesi (alana
+        // dokununca / açılışta odakla açılır). Pencere klavye kadar yukarı
+        // kayar (Dialog viewInsets); içerik kayar, Kaydet hep görünür.
+        return AlertDialog(
+          scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          title: Text(duzenle ? 'Notu düzenle' : 'Not ekle'),
+          content: SizedBox(
+            width: 560,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${k.adet}× ${k.ad}${k.varyant != null ? ' (${k.varyant})' : ''}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text('Mutfak / bar fişine basılır.', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+              if (kismi) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(color: Renk.uyariZemin, borderRadius: koseYuvarlak, border: Border.all(color: Renk.uyariKenar)),
+                  child: Row(children: [
+                    Icon(Icons.info_outline_rounded, size: 15, color: Renk.uyari),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text('Not yalnız gönderilmemiş $bekleyen adede uygulanır', style: TextStyle(fontSize: 13.5, color: Renk.uyari))),
+                  ]),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('kalem-notu-alan'),
+                controller: c,
+                autofocus: true,
+                minLines: 5,
+                maxLines: 5,
+                maxLength: 200,
+                keyboardType: TextInputType.multiline,
+                textCapitalization: TextCapitalization.sentences,
+                scrollPadding: const EdgeInsets.only(bottom: 120),
+                style: const TextStyle(fontSize: 17, height: 1.4),
+                decoration: const InputDecoration(
+                  hintText: 'İsteğe bağlı — ör. az pişmiş, mantar eklemeyin, laktozsuz süt',
+                  hintMaxLines: 2,
+                  contentPadding: EdgeInsets.all(14),
+                ),
+                onChanged: (_) => yenile(() {}),
+              ),
+            ]),
+          ),
+          actions: [
+            if (duzenle)
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Renk.hata),
+                onPressed: () => Navigator.pop(ctx, (not: null)),
+                icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                label: const Text('Notu sil'),
+              ),
+            OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+            FilledButton(
+              onPressed: metin.isEmpty || metin == mevcut ? null : () => Navigator.pop(ctx, (not: metin)),
+              child: const Text('Kaydet'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
