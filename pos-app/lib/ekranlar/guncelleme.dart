@@ -15,8 +15,10 @@ import 'ortak.dart';
 /// UYGULAMA İÇİ GÜNCELLEME (mağaza dışı dağıtım).
 ///
 /// Yeni sürüm bambumpos.com/indir/pos/surum.json'da ilan edilir (GitHub
-/// sürümü yayımlanınca aynı dosya güncellenir). Uygulama her açılışta ve
-/// 6 saatte bir bakar; yeni sürüm varsa üstte şerit çıkar:
+/// sürümü yayımlanınca aynı dosya güncellenir). Uygulama açılışta, öne her
+/// gelişte ve açık kaldıkça 20 dakikada bir bakar (kasalar gün boyu açık
+/// kalıyor; eskiden 6 saatte bir ve yalnız açılışta bakıyordu — Android ve
+/// masaüstüne güncelleme geç düşüyordu, 2026-10-27). Yeni sürüm varsa şerit çıkar:
 ///   • Android: APK uygulamanın içinde iner ve AYNI İMZAYLA mevcut kurulumun
 ///     üstüne kurulur — silip yeniden kurmak gerekmez, cihaz eşlemesi ve
 ///     oturum korunur.
@@ -29,22 +31,32 @@ class GuncellemeSeridi extends StatefulWidget {
   State<GuncellemeSeridi> createState() => _GuncellemeSeridiState();
 }
 
-class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
+class _GuncellemeSeridiState extends State<GuncellemeSeridi> with WidgetsBindingObserver {
   static ({String surum, String adres, String? notlar})? _bulunan;
   static DateTime? _sonBakis;
   bool _gizli = false;
   double? _ilerleme;
   String? _mesaj;
   StreamSubscription<OtaEvent>? _ota;
+  Timer? _saat;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _saat = Timer.periodic(const Duration(minutes: 20), (_) => _bak());
     _bak();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) _bak();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _saat?.cancel();
     _ota?.cancel();
     super.dispose();
   }
@@ -59,10 +71,10 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
       };
 
   Future<void> _bak() async {
-    if (_sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(hours: 6)) return;
+    if (_sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 15)) return;
     _sonBakis = DateTime.now();
     try {
-      final r = await context.api.get('/indir/pos/surum.json');
+      final r = await context.api.get('/indir/pos/surum.json', sorgu: {'t': DateTime.now().millisecondsSinceEpoch ~/ 60000});
       if (r is! Map) return;
       final yeni = r['surum']?.toString() ?? '';
       final adres = (r['indir'] is Map ? (r['indir'] as Map)[_platform] : null)?.toString();
