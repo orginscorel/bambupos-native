@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app/hareket.dart';
@@ -20,6 +22,7 @@ import 'mesailer_ekrani.dart';
 import 'mesai_qr_ekrani.dart';
 import 'raporlar_ekrani.dart';
 import 'teslimat_ekrani.dart';
+import 'usb_cihazlar.dart';
 import 'ortak.dart';
 
 /// Panelin OPERASYON ekranları — web resources/js/config/navigation.ts ile
@@ -160,6 +163,7 @@ Widget posAltSerit(BuildContext context, {required PosEkrani? secili, required v
     cihazlar: [
       _internetOgesi(),
       if (durum.ajan != null) _ajanOgesi(durum.ajan!),
+      if (durum.ajan?.usbDestekli ?? false) _usbOgesi(durum.ajan!, () => usbCihazlarAc(context, durum.ajan!)),
       for (final c in o.seritCihaz)
         _sunucuCihazi(c, mesaiQrAc: ekranlar.contains(PosEkrani.mesaiQr) ? () => git(PosEkrani.mesaiQr) : null),
     ],
@@ -215,12 +219,44 @@ SeritCihaz _ajanOgesi(YazdirmaAjani a) {
         ('Ağda bulunan POS / ÖKC', '${a.bulunanPos.length}'),
         ('Son tarama', _onceSure(a.sonTarama)),
         ('Bu açılışta basılan fiş', '${a.basilanFis}'),
+        ('USB cihazlar', a.usbDestekli ? '${a.usbCihazlar.length}' : (Platform.isIOS ? 'iOS\'ta USB cihaz desteklenmez' : '—')),
       ],
       eylem: (ad: 'Ağı şimdi tara', bas: a.tara, kapat: false),
     );
   }
 
   return SeritCihaz(ad: 'Yazdırma ajanı', ikon: Icons.wifi_tethering_rounded, balon: '', dinle: a, canli: olustur);
+}
+
+SeritCihaz _usbOgesi(YazdirmaAjani a, VoidCallback ac) {
+  SeritCihaz olustur() {
+    final l = a.usbCihazlar;
+    final izin = l.where((c) => c.izinGerekli).length;
+    final yeni = l.where((c) => c.tur != 'bilinmiyor' && !a.usbTanimli.contains(c.anahtar)).length;
+    return SeritCihaz(
+      ad: 'USB cihazlar',
+      ikon: Icons.usb_rounded,
+      durum: a.usbHata != null || izin > 0 ? 'uyari' : 'iyi',
+      balon: a.usbHata ??
+          (l.isEmpty
+              ? 'Bağlı USB yazıcı / POS yok'
+              : [
+                  '${l.length} USB cihaz',
+                  if (izin > 0) '$izin izin bekliyor',
+                  if (yeni > 0) '$yeni eklenmedi',
+                ].join(' · ')),
+      aciklama: 'Bu cihaza USB kablosuyla takılı fiş yazıcıları ve kart POS cihazları. Takılan cihaz '
+          'kendiliğinden bulunur ve İşletme Yönetimi\'ne bildirilir; USB yazıcıya giden fişleri bu cihaz basar.',
+      ayrintilar: [
+        ('USB yazıcı', '${l.where((c) => c.tur == 'yazici').length}'),
+        ('USB kart POS', '${l.where((c) => c.tur == 'pos').length}'),
+        ('Son tarama', _onceSure(a.usbSonTarama)),
+      ],
+      eylem: (ad: 'USB cihazları yönet', bas: ac, kapat: true),
+    );
+  }
+
+  return SeritCihaz(ad: 'USB cihazlar', ikon: Icons.usb_rounded, balon: '', dinle: a, canli: olustur);
 }
 
 SeritCihaz _sunucuCihazi(Json c, {VoidCallback? mesaiQrAc}) {
@@ -334,6 +370,7 @@ class _KabukState extends State<Kabuk> {
           bottomNavigationBar: posAltSerit(context, secili: ekran, git: _git),
           body: Column(children: [
             const GuncellemeSeridi(),
+            if (durum.ajan?.usbDestekli ?? false) UsbBulunduSeridi(ajan: durum.ajan!),
             Expanded(child: EkranGecisi(anahtar: ekran, yon: _yon, child: _govde(ekran))),
           ]),
         );

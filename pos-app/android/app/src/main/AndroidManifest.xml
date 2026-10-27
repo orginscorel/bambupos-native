@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Uygulama içi güncelleme: yeni APK mevcut kurulumun üstüne kurulur. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- USB'ye takılı fiş yazıcısı / kart POS (UsbKopru.kt). Zorunlu değil:
+         USB ana makine desteği olmayan telefonlara da kurulur. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <!-- ota_update APK'yı uygulamanın İÇ dizinine indirir; depolama izni gerekmez. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
@@ -36,6 +39,13 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- USB yazıcı takılınca uygulama önerilir ("Her zaman" = kalıcı izin). -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_yazici_filtresi" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

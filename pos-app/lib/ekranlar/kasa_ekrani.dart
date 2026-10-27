@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,6 +10,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/katalog_deposu.dart';
 import '../core/modeller.dart';
+import '../core/pos_cihaz.dart';
 import 'adisyon_pencereleri.dart';
 import 'kasa_pencereleri.dart';
 import 'ortak.dart';
@@ -33,6 +35,9 @@ final kasaBorcIstegi = ValueNotifier<int?>(null);
 
 /// Son seçilen manuel kart POS cihazı (uygulama oturumu boyunca hatırlanır).
 int? _secilenPosCihazi;
+
+/// Ethernet'li kart POS'larına bağlantı denemeleri (uygulama boyunca ortak).
+final _posErisim = PosErisimOnbellegi();
 
 /// Kart durumu (§1.3 kartDurum).
 enum _KartDurum { acik, kismi, odendi, hesap }
@@ -519,6 +524,23 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   }
 
   /* ═════════════ Tahsilat (§4.2) ═════════════ */
+
+  /* ── Masaüstü sıkı düzen (1.2.20): kasa bilgisayarında (1366×768 …) her şey
+     kaydırmadan sığsın. Tablet / telefon düzeni DEĞİŞMEZ. ── */
+  static bool get _masaustu =>
+      defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux;
+
+  /// Sağ döküm: masaüstünde ekran yüksekliği 1000 px'ten azsa sık satırlar.
+  bool get _sikSag {
+    final b = MediaQuery.sizeOf(context);
+    return _masaustu && b.width >= 1024 && b.height < 1000;
+  }
+
+  /// Sol ödeme bölmesinin o anki ölçüsü (_odemeBolmesiIc ayarlar).
+  bool _sikSol = false;
+  bool _masaustuSol = false;
+  double _tusYuksekligi = 54;
+  bool _odemelerAcik = false;
 
   bool get _terminalYontemi => kasaYontemleri.any((y) => y.$1 == _yontem && y.$4);
   bool get _posManuel => (_pos?['simulated'] ?? true) == true || (_pos?['online'] ?? false) != true;
@@ -1811,27 +1833,28 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final servisVar = tamSayi(h['service_charge_minor']) > 0;
     final urunAdedi = d?.aktifKalemler.fold<int>(0, (t, k) => t + k.adet);
 
+    final sik = genis && _sikSag;
     Widget hucre(String baslik, String deger, {Color? renk, Color? zemin, bool son = false}) => Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 6),
+            padding: EdgeInsets.symmetric(vertical: sik ? 3 : 6),
             decoration: BoxDecoration(color: zemin, border: son ? null : Border(right: BorderSide(color: Renk.cizgi))),
             child: Column(children: [
               Text(baslik.toUpperCase(), style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Renk.soluk, letterSpacing: .4)),
               const SizedBox(height: 1),
-              FittedBox(fit: BoxFit.scaleDown, child: Text(deger, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: renk ?? Renk.yazi))),
+              FittedBox(fit: BoxFit.scaleDown, child: Text(deger, style: TextStyle(fontSize: sik ? 14 : 15, fontWeight: FontWeight.w700, color: renk ?? Renk.yazi))),
             ]),
           ),
         );
 
     final kunye = Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: EdgeInsets.fromLTRB(12, sik ? 6 : 10, 12, sik ? 6 : 10),
       decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(
             child: Text.rich(
               TextSpan(children: [
-                TextSpan(text: _baslik(s), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                TextSpan(text: _baslik(s), style: TextStyle(fontSize: sik ? 16 : 19, fontWeight: FontWeight.w800)),
                 TextSpan(text: '  #${s.id}', style: TextStyle(fontSize: 13, color: Renk.soluk, fontWeight: FontWeight.w700)),
               ]),
               maxLines: 1,
@@ -1852,7 +1875,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             child: Text([if (s.servisTuruEtiket.isNotEmpty) s.servisTuruEtiket, if (s.acan != null) s.acan!].join(' · '),
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Renk.ikinci)),
           ),
-        const SizedBox(height: 8),
+        SizedBox(height: sik ? 5 : 8),
         Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
@@ -1877,6 +1900,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final araclarListesi = <_AracDugmesi>[
       if (d != null && (_kalemDuzenler || _ikramEder) && _duzenlenebilir)
         _AracDugmesi(
+          sik: sik,
           key: const ValueKey('kasa-duzelt'),
           ikon: _duzelt ? Icons.check_rounded : Icons.edit_outlined,
           ad: _duzelt ? 'Bitir' : 'Düzelt',
@@ -1891,6 +1915,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           },
         ),
       _AracDugmesi(
+        sik: sik,
         key: const ValueKey('kasa-hesap'),
         ikon: Icons.print_outlined,
         ad: 'Hesap',
@@ -1904,6 +1929,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       // penceresini açar. Uygulanmışsa düğme turuncu, tutar altta satırda.
       if (_indirimYetkisi || indirimToplam > 0)
         _AracDugmesi(
+          sik: sik,
           key: const ValueKey('kasa-iskonto'),
           ikon: Icons.local_offer_outlined,
           ad: 'İndirim',
@@ -1918,6 +1944,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       // Adisyona ürün ekle: İndirim'in yanında (eskiden kalem listesinin altındaydı).
       if (d != null && _kalemDuzenler && _duzenlenebilir)
         _AracDugmesi(
+          sik: sik,
           key: const ValueKey('kasa-urun-ekle'),
           ikon: Icons.add_shopping_cart_outlined,
           ad: 'Ürün ekle',
@@ -1929,6 +1956,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         ),
       if (s.odenen > 0)
         _AracDugmesi(
+          sik: sik,
           key: const ValueKey('kasa-fis'),
           ikon: Icons.receipt_long_outlined,
           ad: 'Fiş',
@@ -1941,7 +1969,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     ];
     final araclar = Container(
       key: const ValueKey('kasa-araclar'),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: EdgeInsets.fromLTRB(12, sik ? 5 : 8, 12, sik ? 5 : 8),
       decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
       child: Row(children: [
         for (final (i, w) in araclarListesi.indexed) ...[
@@ -1954,6 +1982,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           width: 40,
           child: Builder(
             builder: (c) => _AracDugmesi(
+              sik: sik,
               ikon: Icons.more_vert_rounded,
               ipucu: 'Diğer işlemler',
               renk: Renk.ikinci,
@@ -1972,7 +2001,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         child: InkWell(
           onTap: () => setState(() => _sagSekme = k),
           child: Container(
-            height: 42,
+            height: sik ? 36 : 42,
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: secili ? Renk.marka : Colors.transparent, width: 2))),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(ikon, size: 18, color: secili ? Renk.marka : Renk.ikinci),
@@ -2085,7 +2114,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final genis = MediaQuery.sizeOf(context).width >= 640;
     Widget hucre(IconData ikon, String baslik, String deger, Color renk, Color zemin, {bool son = false}) => Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: EdgeInsets.symmetric(vertical: _sikSag ? 5 : 8),
             decoration: BoxDecoration(color: zemin.carp(.55), border: son ? null : Border(right: BorderSide(color: Renk.cizgi))),
             child: Column(children: [
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -2209,14 +2238,20 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// Seçim özeti: "3 adet seçili · 2 üründen · 75,00 ₺" + Temizle / Tutara yaz.
   Widget _secimSeridi() {
     if (_secim.bos) {
+      final sik = _sikSag;
       return Container(
-        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+        padding: EdgeInsets.fromLTRB(12, sik ? 5 : 9, 12, sik ? 5 : 9),
         decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
         child: Row(children: [
           Icon(Icons.touch_app_outlined, size: 16, color: Renk.ikinci),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('Kişi kendi payını ödeyecekse kalemlere dokunun; adedi birden fazla olanlar açılır, istediğiniz kadarını seçin.',
+            child: Text(
+                sik
+                    ? 'Kişi kendi payını ödeyecekse kalemlere dokunun.'
+                    : 'Kişi kendi payını ödeyecekse kalemlere dokunun; adedi birden fazla olanlar açılır, istediğiniz kadarını seçin.',
+                maxLines: sik ? 1 : null,
+                overflow: sik ? TextOverflow.ellipsis : null,
                 style: TextStyle(fontSize: 12, color: Renk.ikinci)),
           ),
         ]),
@@ -2297,6 +2332,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   }
 
   Widget _kalemSatiri(Kalem k) {
+    final sikSatir = _sikSag;
     final secilebilir = _secilebilir(k) && !_duzelt;
     final secAdet = secilebilir ? _secim.adet(k.id).clamp(0, k.adet) : 0;
     final tam = secAdet > 0 && secAdet >= k.adet;
@@ -2370,10 +2406,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(k.ad,
-              maxLines: 2,
+              maxLines: sikSatir ? 1 : 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: sikSatir ? 14 : 15,
                 fontWeight: FontWeight.w600,
                 decoration: soluk ? TextDecoration.lineThrough : null,
                 decorationColor: Renk.soluk,
@@ -2420,7 +2456,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       child: InkWell(
         onTap: secilebilir ? () => _kalemDokun(k) : null,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
+          padding: EdgeInsets.fromLTRB(8, sikSatir ? 2 : 6, 12, sikSatir ? 2 : 6),
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(color: secAdet > 0 ? Renk.marka : Colors.transparent, width: 3),
@@ -2428,7 +2464,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             ),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            ConstrainedBox(constraints: const BoxConstraints(minHeight: 44), child: ust),
+            ConstrainedBox(constraints: BoxConstraints(minHeight: sikSatir ? 36 : 44), child: ust),
             if (acik) _adetSecici(k, secAdet),
             if (duzenle) _duzeltCubugu(k),
           ]),
@@ -2660,8 +2696,33 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /* ── §1.5 ödeme bölmesi (adisyon) ── */
 
   Widget _odemeBolmesi(double g) {
+    if (g >= 1024 && _masaustu) {
+      return LayoutBuilder(builder: (_, k) => _odemeBolmesiIc(g, k.maxHeight.isFinite ? k.maxHeight : null));
+    }
+    return _odemeBolmesiIc(g, null);
+  }
+
+  /// [h]: masaüstünde bölmenin yüksekliği (null = tablet / telefon, eski düzen).
+  Widget _odemeBolmesiIc(double g, double? h) {
     final s = _secili!;
     final genis = g >= 1024;
+    final sik = h != null && h < 920;
+    _sikSol = sik;
+    _masaustuSol = h != null;
+    if (h != null) {
+      // Sabit öğelerin yaklaşık yüksekliği; kalan pay tuş takımına (4 sıra).
+      final odemeVar = _odemeler.any((p) => p['kind'] == 'payment' && p['status'] == 'succeeded');
+      final sabit = (sik ? 255.0 : 380.0) +
+          (_yontem == 'cash' ? 46 : 0) +
+          (odemeVar ? 40 : 0) +
+          (_terminalYontemi ? 80 : 0) +
+          (_bahsisAcik ? 80 : 0) +
+          ((kasaYontemleri.length / 4).ceil() * (sik ? 46.0 : 70.0));
+      _tusYuksekligi = ((h - sabit) / 4 - 4).clamp(38.0, 56.0);
+    } else {
+      _tusYuksekligi = 54;
+    }
+    final ara = sik ? 6.0 : 10.0;
     if (s.kalan == 0) {
       return SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -2739,7 +2800,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
     final ogeler = <Widget>[
       baslik,
-      const SizedBox(height: 10),
+      SizedBox(height: ara),
       if (nakit && g >= 640)
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: tutarKutusu), const SizedBox(width: 10), Expanded(child: verilenKutusu)])
       else ...[
@@ -2747,11 +2808,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         if (nakit) ...[const SizedBox(height: 8), verilenKutusu],
       ],
       if (nakit) ...[
-        const SizedBox(height: 8),
+        SizedBox(height: sik ? 4 : 8),
         Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
           for (final p in presetler)
             OutlinedButton(
-              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34)),
+              style: OutlinedButton.styleFrom(minimumSize: Size(0, sik ? 30 : 34)),
               onPressed: () => setState(() {
                 _verilen = paraGirdisi(p);
                 _hedef = 'tendered';
@@ -2764,10 +2825,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ]),
         ]),
       ],
-      const SizedBox(height: 10),
+      SizedBox(height: ara),
       if (g >= 768) ...[
         _numpad(borc: false),
-        const SizedBox(height: 6),
+        if (!sik) const SizedBox(height: 6),
+        if (!sik)
         Text.rich(
           TextSpan(children: [
             const TextSpan(text: 'Klavye de çalışır: rakamlar '),
@@ -2800,16 +2862,30 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ),
         ),
       ],
-      if (_odemeler.any((p) => p['kind'] == 'payment' && p['status'] == 'succeeded')) ...[const SizedBox(height: 12), _yapilanOdemeler()],
-      const SizedBox(height: 14),
+      if (_odemeler.any((p) => p['kind'] == 'payment' && p['status'] == 'succeeded')) ...[
+        SizedBox(height: sik ? 6 : 12),
+        sik && !_odemelerAcik ? _yapilanOdemelerOzeti() : _yapilanOdemeler(),
+      ],
+      SizedBox(height: sik ? 8 : 14),
       _bolumBasligi(Icons.wallet_outlined, 'Ödeme yöntemi', sag: _yontem == null ? Text('seçilmedi', style: TextStyle(fontSize: 12, color: Renk.uyari, fontWeight: FontWeight.w600)) : null),
-      const SizedBox(height: 8),
+      SizedBox(height: sik ? 6 : 8),
       _yontemIzgarasi(),
-      if (_terminalYontemi) ...[const SizedBox(height: 8), _posKutusu()],
-      if (genis) ...[const SizedBox(height: 10), _odemeDugmesi(yukseklik: 56, buyuk: true)],
+      if (_terminalYontemi) ...[SizedBox(height: sik ? 6 : 8), _posKutusu()],
+      // Masaüstünde ödeme düğmesi aşağıda SABİT (aşağıda); tablette akışta.
+      if (genis && h == null) ...[const SizedBox(height: 10), _odemeDugmesi(yukseklik: 56, buyuk: true)],
     ];
 
     final icerik = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: ogeler);
+    if (genis && h != null) {
+      // Masaüstü: içerik sığmazsa yalnız üst kısım kayar; tahsil düğmesi her zaman görünür.
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(16, sik ? 10 : 16, 16, 8), child: icerik)),
+        Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, sik ? 10 : 16),
+          child: _odemeDugmesi(yukseklik: sik ? 50 : 56, buyuk: true),
+        ),
+      ]);
+    }
     return genis ? SingleChildScrollView(padding: const EdgeInsets.all(16), child: icerik) : Padding(padding: const EdgeInsets.all(12), child: icerik);
   }
 
@@ -2840,7 +2916,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         _hedef = hedef;
       }),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        padding: EdgeInsets.fromLTRB(12, _sikSol ? 5 : 8, 12, _sikSol ? 5 : 8),
         decoration: BoxDecoration(
           color: aktif ? (vurgu == null ? Renk.markaAcik : Renk.uyariZemin) : Renk.yuzey,
           borderRadius: koseYuvarlak,
@@ -2852,7 +2928,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             ?sag,
           ]),
           SizedBox(
-            height: 40,
+            height: _sikSol ? 32 : 40,
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(metin.isEmpty ? '0,00' : metin,
@@ -2867,7 +2943,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   Widget _numpad({required bool borc}) {
     Widget tus(String etiket, VoidCallback bas, {bool hizli = false, bool sil = false, String? ipucu}) => Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(3),
+            padding: EdgeInsets.all(_sikSol ? 2 : 3),
             child: Tooltip(
               message: ipucu ?? '',
               child: Material(
@@ -2877,11 +2953,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                   borderRadius: koseYuvarlak,
                   onTap: bas,
                   child: SizedBox(
-                    height: 54,
+                    height: _tusYuksekligi,
                     child: Center(
                       child: Text(etiket,
                           style: TextStyle(
-                            fontSize: hizli ? 17 : (sil ? 18 : 24),
+                            fontSize: (hizli ? 17 : (sil ? 18 : 24)) * (_tusYuksekligi < 48 ? .88 : 1),
                             fontWeight: FontWeight.w600,
                             color: sil ? Renk.hata : (hizli ? Renk.marka : Renk.yazi),
                             fontFeatures: const [FontFeature.tabularFigures()],
@@ -2913,6 +2989,32 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   Widget _yontemIzgarasi() {
     final g = MediaQuery.sizeOf(context).width;
     final sutun = g >= 768 ? 4 : 2;
+    if (_sikSol) {
+      // Kısa masaüstü ekranı: 4 sütun, simge + ad tek satır.
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 6, crossAxisSpacing: 6, mainAxisExtent: 40),
+        itemCount: kasaYontemleri.length,
+        itemBuilder: (_, i) {
+          final y = kasaYontemleri[i];
+          return _yontemKutusu(y.$1, y.$2, yontemSimgesi(y.$1, y.$3), _yontem == y.$1, () => setState(() => _yontem = y.$1), tekSatir: true);
+        },
+      );
+    }
+    if (_masaustuSol) {
+      // Geniş masaüstü ekranı: kutular enine uzasa da boyu sabit (yer kaplamasın).
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 8, crossAxisSpacing: 8, mainAxisExtent: 64),
+        itemCount: kasaYontemleri.length,
+        itemBuilder: (_, i) {
+          final y = kasaYontemleri[i];
+          return _yontemKutusu(y.$1, y.$2, yontemSimgesi(y.$1, y.$3), _yontem == y.$1, () => setState(() => _yontem = y.$1));
+        },
+      );
+    }
     return GridView.count(
       crossAxisCount: sutun,
       shrinkWrap: true,
@@ -2926,8 +3028,32 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
-  Widget _yontemKutusu(String kod, String ad, IconData ikon, bool secili, VoidCallback bas, {String? ton}) {
+  Widget _yontemKutusu(String kod, String ad, IconData ikon, bool secili, VoidCallback bas, {String? ton, bool tekSatir = false}) {
     final t = yontemTonu(ton ?? kod);
+    if (tekSatir) {
+      return Material(
+        color: secili ? t.zemin : Renk.yuzey,
+        shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? t.kenar : Renk.cizgi, width: secili ? 2 : 1)),
+        child: InkWell(
+          key: ValueKey('kasa-yontem-$kod'),
+          borderRadius: koseYuvarlak,
+          onTap: bas,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(children: [
+              Icon(secili ? Icons.check_circle_rounded : ikon, size: 18, color: secili ? t.yazi : t.ikon),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(ad,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: secili ? t.yazi : Renk.yazi)),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
     return Material(
       color: secili ? t.zemin : Renk.yuzey,
       shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? t.kenar : Renk.cizgi, width: secili ? 2 : 1)),
@@ -2995,13 +3121,52 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
   /// Konsolda tanımlı manuel kart POS'u: simülasyon uyarısı yerine sade bilgi
   /// kutusu; birden çok cihaz varsa küçük seçici (oturum boyunca hatırlanır).
+  /// Ethernet POS'u seçilince arka planda TCP denemesi (ödemeyi bekletmez).
+  void _posErisimDenetle(Json c) {
+    final a = posAdres(c);
+    if (a == null || _posErisim.tazeMi(a.ip, a.port)) return;
+    _posErisim.denetle(a.ip, a.port, posDenetimSuresi(c['zaman_asimi_ms'])).then((ok) {
+      if (!mounted) return;
+      setState(() {});
+      // IP değişmiş olabilir: ağ taraması sunucuya yeni adresi bildirir (10 dk'da en çok bir).
+      if (!ok) context.durum.ajan?.posUlasilamadi();
+    });
+  }
+
+  /// "POS bağlı" / "ulaşılamıyor" / USB durumu satırı (yoksa null).
+  (String, Color)? _posBaglantiDurumu(Json c) {
+    switch (posBaglanti(c)) {
+      case 'ethernet':
+        final a = posAdres(c);
+        if (a == null) return null;
+        return switch (_posErisim.durum(a.ip, a.port)) {
+          true => ('POS bağlı', Renk.basari),
+          false => ('POS\'a ulaşılamıyor — IP değişmiş olabilir', Renk.uyari),
+          null => ('POS bağlantısı denetleniyor…', Renk.ikinci),
+        };
+      case 'usb':
+        final ajan = context.durum.ajan;
+        if (ajan == null || !ajan.usbDestekli) return ('USB', Renk.ikinci);
+        final seri = c['seri_no']?.toString().trim() ?? '';
+        final poslar = ajan.usbCihazlar.where((u) => u.tur == 'pos');
+        final bagli = seri.isNotEmpty && ajan.usbCihazlar.any((u) => u.seri == seri) || poslar.isNotEmpty;
+        return bagli ? ('USB · POS bağlı', Renk.basari) : ('USB · POS bu cihaza takılı görünmüyor', Renk.uyari);
+    }
+    return null;
+  }
+
   Widget _manuelPosKutusu(Json cihaz) {
     final l = _manuelCihazlar;
-    String ad(Json c) => '${c['ad'] ?? c['banka'] ?? 'Kart POS'}';
+    _posErisimDenetle(cihaz);
+    String ad(Json c) => posCihazAdi(c);
     String alt(Json c) => [
+          if (posAdres(c) case final a?) a.ip,
+          if (posBaglanti(c) == 'usb') 'USB',
           if (c['banka'] != null && '${c['banka']}' != ad(c)) '${c['banka']}',
           if (c['terminal_no'] != null && '${c['terminal_no']}'.isNotEmpty) 'T: ${c['terminal_no']}',
         ].join(' · ');
+    final baglanti = _posBaglantiDurumu(cihaz);
+    final adres = posAdres(cihaz);
     return Container(
       key: const ValueKey('kasa-manuel-pos'),
       padding: const EdgeInsets.all(10),
@@ -3015,12 +3180,19 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               TextSpan(children: [
                 const TextSpan(text: 'Kartı '),
                 TextSpan(text: ad(cihaz), style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (adres != null) TextSpan(text: ' · ${adres.ip}', style: TextStyle(color: Renk.ikinci)),
                 const TextSpan(text: ' cihazında okutun; onaylandıktan sonra tutarı burada onaylayın.'),
               ]),
               style: TextStyle(fontSize: 12.5, color: Renk.yazi),
             ),
           ),
         ]),
+        if (baglanti != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 26, top: 4),
+            child: Text(baglanti.$1,
+                key: const ValueKey('kasa-pos-baglanti'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: baglanti.$2)),
+          ),
         if (l.length > 1) ...[
           const SizedBox(height: 8),
           Wrap(spacing: 6, runSpacing: 6, children: [
@@ -3106,6 +3278,30 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
+  /// Kısa ekranda tek satırlık özet; dokununca liste açılır.
+  Widget _yapilanOdemelerOzeti() {
+    final basarili = _odemeler.where((p) => p['kind'] == 'payment' && p['status'] == 'succeeded').toList();
+    final toplam = basarili.fold<int>(0, (t, p) => t + tamSayi(p['amount_minor']));
+    return InkWell(
+      key: const ValueKey('kasa-odemeler-ozet'),
+      borderRadius: koseYuvarlak,
+      onTap: () => setState(() => _odemelerAcik = true),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+        child: Row(children: [
+          Icon(Icons.account_balance_wallet_outlined, size: 15, color: Renk.ikinci),
+          const SizedBox(width: 6),
+          Text('YAPILAN ÖDEMELER', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Renk.ikinci, letterSpacing: .4)),
+          const Spacer(),
+          Text('${basarili.length} ödeme · ${para(toplam)}', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          Icon(Icons.expand_more_rounded, size: 18, color: Renk.soluk),
+        ]),
+      ),
+    );
+  }
+
   /// OdemeListesi: "Yapılan ödemeler".
   Widget _yapilanOdemeler() {
     final basarili = _odemeler.where((p) => p['kind'] == 'payment' && p['status'] == 'succeeded').toList();
@@ -3122,6 +3318,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           Text('YAPILAN ÖDEMELER', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Renk.ikinci, letterSpacing: .4)),
           const Spacer(),
           Text('${basarili.length} ödeme · ${para(toplam)}', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          if (_sikSol)
+            InkWell(
+              onTap: () => setState(() => _odemelerAcik = false),
+              child: Icon(Icons.expand_less_rounded, size: 18, color: Renk.soluk),
+            ),
         ]),
         for (final p in basarili) ...[
           const Divider(height: 14),
@@ -3367,6 +3568,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       });
 
   Widget _borcOdemeBolmesi(double g) {
+    _sikSol = false;
+    _masaustuSol = false;
+    _tusYuksekligi = 54;
     final b = _borclu!;
     final ad = '${b['name'] ?? ''}';
     final f = _sonBorcFisi;
@@ -3675,8 +3879,12 @@ class _Etiket extends StatelessWidget {
 
 /// Araç çubuğu düğmesi: renkli zemin + simge (+ isteğe bağlı yazı), 36 px.
 class _AracDugmesi extends StatelessWidget {
-  const _AracDugmesi({super.key, required this.ikon, this.ad, required this.ipucu, required this.renk, required this.zemin, required this.kenar, required this.bas});
+  const _AracDugmesi(
+      {super.key, required this.ikon, this.ad, required this.ipucu, required this.renk, required this.zemin, required this.kenar, required this.bas, this.sik = false});
   final IconData ikon;
+
+  /// Kısa masaüstü ekranı: simge + ad yan yana, ince düğme.
+  final bool sik;
   final String? ad;
   final String ipucu;
   final Color renk;
@@ -3696,7 +3904,23 @@ class _AracDugmesi extends StatelessWidget {
           child: InkWell(
             customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
             onTap: bas,
-            child: SizedBox(
+            child: sik
+                ? SizedBox(
+                    height: 36,
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(ikon, size: 17, color: renk),
+                      if (ad != null) ...[
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(ad!, maxLines: 1, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: renk)),
+                          ),
+                        ),
+                      ],
+                    ]),
+                  )
+                : SizedBox(
               height: 52,
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(ikon, size: 20, color: renk),

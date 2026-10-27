@@ -18,6 +18,7 @@ import 'package:bambumpos_pos/ekranlar/pin_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/raporlar_ekrani.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -132,7 +133,7 @@ Future<void> _bekle(WidgetTester t) async {
 }
 
 /// Kasa örnek adisyonu: 4× çay, 2× tost, tek kahve, ödenmiş su, ikram.
-Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = false}) {
+Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = false, bool cokKalem = false, bool ethernetPos = false}) {
   final o = ((jsonDecode(_veri('adisyon')) as Map)['order'] as Map).cast<String, dynamic>();
   final kalemler = (o['items'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
   Map<String, dynamic> kalem(int id, String ad, int adet, int birim, {bool odendi = false}) => {
@@ -155,6 +156,14 @@ Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = fal
     kalemler.firstWhere((k) => k['id'] == 815),
     kalemler.firstWhere((k) => k['id'] == 814),
     kalem(903, 'Su', 1, 2000, odendi: true),
+    if (cokKalem) ...[
+      kalem(904, 'Mercimek Çorbası', 2, 8500),
+      kalem(905, 'Izgara Köfte', 1, 32000),
+      kalem(906, 'Ayran', 3, 3500),
+      kalem(907, 'Künefe', 1, 16000),
+      kalem(908, 'Türk Kahvesi', 2, 6000),
+      kalem(909, 'Limonata', 1, 7000),
+    ],
   ];
   o
     ..['items_total_minor'] = 41000
@@ -191,7 +200,11 @@ Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = fal
       'simulated': true,
       'online': false,
       'provider_label': 'Simülasyon',
-      if (posCihazlari)
+      if (ethernetPos)
+        'manuel_cihazlar': [
+          {'id': 11, 'ad': null, 'marka': 'inPos', 'model': 'M530', 'banka': 'Garanti BBVA', 'baglanti': 'ethernet', 'ip': '192.0.2.7', 'port': 59000, 'zaman_asimi_ms': 10000, 'seri_no': 'SD0024139263'},
+        ]
+      else if (posCihazlari)
         'manuel_cihazlar': [
           {'id': 7, 'ad': 'Garanti POS', 'banka': 'Garanti BBVA', 'terminal_no': '10293847'},
           {'id': 9, 'ad': 'Ziraat POS', 'banka': 'Ziraat Bankası', 'terminal_no': '5521'},
@@ -401,6 +414,40 @@ void main() {
       }, skip: _dizin == null);
     }
   }
+  // Kasa masaüstü (1.2.20): Windows kasa bilgisayarı; pencere ölçüsü görev
+  // çubuğu ve başlık çubuğu düşülmüş. Üst / alt şerit yerine aynı yükseklikte boşluk.
+  for (final (ad, boyut) in [('1366x728', const Size(1366, 728)), ('1280x680', const Size(1280, 680)), ('1920x1040', const Size(1920, 1040))]) {
+    for (final yontem in ['Nakit', 'Kredi kartı']) {
+      testWidgets('kasa masaüstü $ad $yontem', (t) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        await _boyut(t, boyut);
+        final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
+        final d = await _durum(oturumDegis: {
+          'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'payments.refund', 'orders.discount', 'orders.update', 'orders.comp', 'orders.view'],
+        }, ek: _kasaVerisi(cokKalem: true, ethernetPos: true));
+        await t.runAsync(d.oturumuYenile);
+        await t.pumpWidget(_uygulama(
+            d,
+            const Scaffold(
+              appBar: PreferredSize(preferredSize: Size.fromHeight(56), child: ColoredBox(color: Color(0xFFE5EAF1))),
+              body: SafeArea(child: KasaEkrani()),
+              bottomNavigationBar: SizedBox(height: 49, child: ColoredBox(color: Color(0xFFE5EAF1))),
+            )));
+        await _bekle(t);
+        await t.tap(find.text('Bahçe 2').first);
+        await _bekle(t);
+        await t.tap(find.text(yontem).last, warnIfMissed: false);
+        await _bekle(t);
+        await _yaz(t, 'kasa-masaustu-$ad-${yontem == 'Nakit' ? 'nakit' : 'kart'}');
+        await t.pumpWidget(const SizedBox());
+        d.ajan?.dispose();
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+        await t.pump(const Duration(seconds: 30));
+        debugDefaultTargetPlatformOverride = null;
+      }, skip: _dizin == null);
+    }
+  }
+
   for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('dikey', dikey)]) {
     testWidgets('aktivasyon $ad', (t) async {
       await _boyut(t, boyut);
