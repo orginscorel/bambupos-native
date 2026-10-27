@@ -24,6 +24,11 @@ import 'ortak.dart';
 ///     oturum korunur.
 ///   • Windows / macOS: kurulum dosyası iner ve açılır (üzerine kurulur).
 ///   • iOS: indirme sayfası açılır.
+///
+/// MAĞAZA KURULUMU (App Store / TestFlight / Mac App Store): şerit HİÇ çıkmaz,
+/// surum.json'a bakılmaz. Güncellemeyi mağaza verir (Apple kuralı 2.4.5 / 2.5.2:
+/// mağaza dışı güncelleme ve indirme yönlendirmesi yasak). Siteden kurulumlar
+/// (Android, Windows, Ad Hoc iPhone, DMG'den Mac) eskisi gibi.
 class GuncellemeSeridi extends StatefulWidget {
   const GuncellemeSeridi({super.key});
 
@@ -70,7 +75,24 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> with WidgetsBinding
         _ => 'diger',
       };
 
+  /// Uygulama Apple mağazasından mı kuruldu?
+  ///   • iOS: siteden (Ad Hoc) kurulumda paket içinde embedded.mobileprovision
+  ///     bulunur; TestFlight / App Store kurulumunda Apple bu dosyayı kaldırır.
+  ///   • macOS: Mac App Store kurulumunda Contents/_MASReceipt/receipt bulunur;
+  ///     DMG ile kurulan uygulamada yoktur.
+  static final bool magazaKurulumu = _magazaKurulumuMu();
+
+  static bool _magazaKurulumuMu() {
+    try {
+      final exe = File(Platform.resolvedExecutable);
+      if (Platform.isIOS) return !File('${exe.parent.path}/embedded.mobileprovision').existsSync();
+      if (Platform.isMacOS) return File('${exe.parent.parent.path}/_MASReceipt/receipt').existsSync();
+    } catch (_) {}
+    return false;
+  }
+
   Future<void> _bak() async {
+    if (magazaKurulumu) return;
     if (_sonBakis != null && DateTime.now().difference(_sonBakis!) < const Duration(minutes: 15)) return;
     _sonBakis = DateTime.now();
     try {
@@ -264,7 +286,7 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     final b = _bulunan;
-    if (b == null || _gizli) return const SizedBox.shrink();
+    if (b == null || _gizli || magazaKurulumu) return const SizedBox.shrink();
     return Material(
       color: Renk.markaAcik,
       child: Container(
