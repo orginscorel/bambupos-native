@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../app/tema.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
+import 'ortak.dart';
 
 /// Bir satırın tek adedi: saat · siparişi giren · devir/aktarım mı.
 typedef BirimDokum = ({String? saat, String? kisi, bool devir});
@@ -122,7 +123,7 @@ class AdetKartlari extends StatelessWidget {
                         ? Row(children: [
                             ConstrainedBox(
                               constraints: BoxConstraints(maxWidth: k2.maxWidth * .4),
-                              child: Text(k.ad,
+                              child: UrunAdi(k.ad,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
@@ -133,7 +134,7 @@ class AdetKartlari extends StatelessWidget {
                             Expanded(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci))),
                           ])
                         : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                            Text(k.ad,
+                            UrunAdi(k.ad,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontSize: sik ? 13 : 13.5, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),

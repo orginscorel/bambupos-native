@@ -5,6 +5,7 @@ import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
+import 'ortak.dart';
 
 class UrunSecimi {
   UrunSecimi({required this.varyantId, required this.secenekler, required this.adet, this.not, required this.birimFiyat, required this.etiket});
@@ -113,7 +114,7 @@ class _UrunSecimiState extends State<_UrunSecimi> {
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 8, 6),
         child: Row(children: [
-          Expanded(child: Text(u.ad, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+          Expanded(child: UrunAdi(u.ad, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
         ]),
       ),
@@ -140,7 +141,7 @@ class _UrunSecimiState extends State<_UrunSecimi> {
                   Expanded(
                     child: Text.rich(
                       TextSpan(children: [
-                        TextSpan(text: u.ad, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ...urunAdiParcalari(u.ad, stil: const TextStyle(fontWeight: FontWeight.w700)),
                         const TextSpan(text: ' adisyona eklenecek. Adedi seçip onaylayın; yanlışsa '),
                         const TextSpan(text: 'Vazgeç', style: TextStyle(fontWeight: FontWeight.w700)),
                         const TextSpan(text: ' ile başka ürün seçin.'),

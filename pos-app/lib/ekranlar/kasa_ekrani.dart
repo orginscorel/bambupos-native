@@ -2449,7 +2449,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       const SizedBox(width: 10),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(k.ad,
+          UrunAdi(k.ad,
               maxLines: sikSatir ? 1 : 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

@@ -300,3 +300,45 @@ class Secici<T> extends StatelessWidget {
         onChanged: degisti,
       );
 }
+
+/* ── Porsiyon son eki (2026-10-27 işletme isteği) ──
+   Ad "… Yarım Porsiyon" / "… Tam Porsiyon" (ya da yalnız "Yarım"/"Tam") ile
+   bitiyorsa son ek renkli yazılır: Yarım = uyarı (turuncu), Tam = başarı
+   (yeşil). Kutu/rozet yok; ad metni değişmez (arama, fiş aynı). */
+final _porsiyonDesen = RegExp(r'^(.*\S)\s+((yarım|tam)(\s+porsiyon)?)$', caseSensitive: false, unicode: true);
+
+/// Adı temel ad + renkli porsiyon eki olarak böler. Eşleşmezse tek parça.
+List<InlineSpan> urunAdiParcalari(String ad, {TextStyle? stil}) {
+  final m = _porsiyonDesen.firstMatch(ad.trim());
+  if (m == null) return [TextSpan(text: ad, style: stil)];
+  final tur = m.group(3)!.toLowerCase();
+  final yarim = tur == 'yarım' || tur == 'yarim' || tur.startsWith('yar');
+  return [
+    TextSpan(text: '${m.group(1)} ', style: stil),
+    TextSpan(
+      text: m.group(2),
+      style: (stil ?? const TextStyle()).copyWith(
+        color: yarim ? Renk.uyari : Renk.basari,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  ];
+}
+
+/// Ürün adı — porsiyon eki renkli. `Text(ad, …)` yerine kullanılır.
+class UrunAdi extends StatelessWidget {
+  const UrunAdi(this.ad, {super.key, this.style, this.maxLines, this.overflow, this.textAlign});
+  final String ad;
+  final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
+  final TextAlign? textAlign;
+
+  @override
+  Widget build(BuildContext context) => Text.rich(
+        TextSpan(children: urunAdiParcalari(ad, stil: style)),
+        maxLines: maxLines,
+        overflow: overflow,
+        textAlign: textAlign,
+      );
+}

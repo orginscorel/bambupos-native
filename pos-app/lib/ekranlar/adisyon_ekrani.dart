@@ -1541,7 +1541,8 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   Text.rich(
                     TextSpan(children: [
                       TextSpan(text: '${k.adet}×', style: const TextStyle(fontWeight: FontWeight.w800)),
-                      TextSpan(text: ' ${k.ad}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const TextSpan(text: ' '),
+                      ...urunAdiParcalari(k.ad, stil: const TextStyle(fontWeight: FontWeight.w600)),
                       if (k.varyant != null) TextSpan(text: ' (${k.varyant})', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
                     ]),
                     maxLines: 1,
@@ -1959,14 +1960,14 @@ class _UrunKarti extends StatelessWidget {
               // Dar kartta (telefonda 3 sütun) ad üstte (17 px, 2 satır), fiyat altta.
               if (k.maxWidth < 170) {
                 return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(u.ad, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.2)),
+                  UrunAdi(u.ad, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.2)),
                   const SizedBox(height: 4),
                   fiyat,
                 ]);
               }
               return Row(children: [
                 Expanded(
-                  child: Text(u.ad, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.15)),
+                  child: UrunAdi(u.ad, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.15)),
                 ),
                 const SizedBox(width: 6),
                 fiyat,
@@ -1981,7 +1982,7 @@ class _UrunKarti extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(u.ad, maxLines: 3, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.15)),
+              UrunAdi(u.ad, maxLines: 3, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.15)),
               const SizedBox(height: 4),
               Text(u.fiyatEtiketi(kanal), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Renk.basari)),
               if (!u.mevcut) Text('TÜKENDİ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Renk.hata)),

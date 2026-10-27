@@ -708,7 +708,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${x['name'] ?? ''}',
+                UrunAdi('${x['name'] ?? ''}',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, decoration: hazir ? TextDecoration.lineThrough : null)),
                 if (_m(x['variant_name']) != null)
                   Text('${x['variant_name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: Renk.ikinci)),
@@ -871,7 +871,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
             Text.rich(
               TextSpan(children: [
                 TextSpan(text: '${x['qty'] ?? 1}× ', style: const TextStyle(fontWeight: FontWeight.w800)),
-                TextSpan(text: '${x['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                ...urunAdiParcalari('${x['name'] ?? ''}', stil: const TextStyle(fontWeight: FontWeight.w700)),
                 if (_m(x['variant_name']) != null) TextSpan(text: ' — ${x['variant_name']}', style: TextStyle(color: Renk.ikinci)),
               ]),
               style: const TextStyle(fontSize: 18),
