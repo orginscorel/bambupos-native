@@ -78,7 +78,7 @@ class _HedeflerEkraniState extends State<HedeflerEkrani> {
     final hak = _i(mo['hak_dk']);
     final asim = _i(mo['asim_gun']);
     return [
-      _Hedef('Mesai saati', dakikaYaz(cal), plan > 0 ? 'Plan ${dakikaYaz(plan)}' : 'Bu ay planlı vardiya yok',
+      _Hedef('Mesai saati', dakikaYaz(cal), plan > 0 ? 'Plan ${dakikaYaz(plan)}' : 'Bu ay planlı shift yok',
           plan > 0 ? cal / plan : null, Icons.schedule_rounded, const [Color(0xFF38BDF8), Color(0xFF2563EB)]),
       _Hedef('Devam', '$calGun gün', planGun > 0 ? '$planGun planlı günün ${math.min(calGun, planGun)}’inde geldin' : 'Çalıştığın gün sayısı',
           planGun > 0 ? calGun / planGun : null, Icons.calendar_month_rounded, const [Color(0xFF34D399), Color(0xFF0D9488)]),

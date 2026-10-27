@@ -8,6 +8,8 @@ import 'dart:ui' as ui;
 import 'package:bambumpos_personel/core/api.dart';
 import 'package:bambumpos_personel/core/durum.dart';
 import 'package:bambumpos_personel/core/guncelleme.dart';
+import 'package:bambumpos_personel/core/hatirlatma.dart';
+import 'package:bambumpos_personel/core/konum.dart';
 import 'package:bambumpos_personel/core/tema.dart';
 import 'package:bambumpos_personel/ekranlar/ana_sayfa.dart';
 import 'package:bambumpos_personel/ekranlar/bildirimler.dart';
@@ -46,7 +48,7 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
   switch (yol) {
     case '/api/v1/portal/hesap':
       return {
-        'id': 57, 'ad': 'Muhammet Ali Yeni', 'pin_var': true, 'izinler': ['tasks.view', 'staff.view', 'tasks.assign'], 'eklentiler': {'commission': true, 'shifts': true},
+        'id': 57, 'ad': 'Muhammet Ali Yeni', 'pin_var': true, 'izinler': ['tasks.view', 'staff.view', 'staff.manage', 'tasks.assign'], 'eklentiler': {'commission': true, 'shifts': true},
         'telefon': '5551234567', 'eposta': 'muhammet@ornek.com', 'personel_kodu': 'P-104', 'pozisyon': 'Kasiyer', 'departman': 'Salon',
         'ise_giris': '2025-04-03', 'isletme': 'Çamlık Sosyal Tesisleri', 'sube': 'Merkez Şube', 'roller': ['Kasiyer'],
       };
@@ -193,7 +195,35 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
           {'id': 24, 'title': 'Menü panosunu sil', 'description': null, 'priority': 'normal', 'status': 'done', 'due_at': null, 'assigned_to': {'id': 15, 'name': 'Elif Şahin', 'position': 'Garson'}, 'created_by': null, 'herkese_acik': false, 'completed_at': _iso(const Duration(hours: -2)),
             'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/24/foto/a.jpg'}, {'ad': 'b.jpg', 'url': '/api/v1/portal/tasks/24/foto/b.jpg'}, {'ad': 'c.jpg', 'url': '/api/v1/portal/tasks/24/foto/c.jpg'}]},
         ],
-        'personel': [for (final p in [(11, 'Ayşe Kaya'), (12, 'Burak Demir'), (13, 'Cansu Yıldız')]) {'id': p.$1, 'ad': p.$2}],
+      };
+    case '/api/v1/portal/shift/ekip':
+      final t = RegExp(r'tarih=([0-9-]+)').firstMatch(sorgu)?.group(1) ?? _gun(0);
+      final bos = Platform.environment['EKIP_BOS'] == '1' || t == _gun(3);
+      const adlar = ['Ayşe Kaya', 'Burak Demir', 'Cansu Yıldız', 'Deniz Aksoy', 'Elif Şahin'];
+      return {
+        'tarih': t, 'gun_adi': t == _gun(0) ? 'Bugün' : t,
+        'ben': {'bas': '09:00', 'bit': '17:00', 'pozisyon': 'Kasa'},
+        'ekip': bos
+            ? []
+            : [
+                {'id': 11, 'ad': adlar[0], 'pozisyon': 'Kasiyer', 'bas': '08:00', 'bit': '16:00', 'durum': 'mesaide', 'ortak_dk': 420},
+                {'id': 12, 'ad': adlar[1], 'pozisyon': 'Garson', 'bas': '12:00', 'bit': '22:00', 'durum': 'molada', 'ortak_dk': 300},
+                {'id': 13, 'ad': adlar[2], 'pozisyon': 'Barista', 'bas': '09:00', 'bit': '17:00', 'durum': 'mesaide', 'ortak_dk': 480},
+                {'id': 14, 'ad': adlar[3], 'pozisyon': 'Aşçı', 'bas': '16:00', 'bit': '00:00', 'durum': 'bekliyor', 'ortak_dk': 60},
+                {'id': 15, 'ad': adlar[4], 'pozisyon': 'Komi', 'bas': '07:00', 'bit': '11:00', 'durum': 'cikti', 'ortak_dk': 120},
+              ],
+        'gunler': [
+          for (var i = 0; i < 7; i++)
+            {'tarih': _gun(i), 'etiket': i == 0 ? 'Bugün' : i == 1 ? 'Yarın' : '${['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'][_simdi.add(Duration(days: i)).weekday - 1]} ${_simdi.add(Duration(days: i)).day}', 'sayi': i == 3 ? 0 : [5, 4, 6, 0, 3, 7, 2][i]},
+        ],
+      };
+    case '/api/v1/portal/yonetici/mesai-noktalari':
+      return {
+        'destekli': Platform.environment['NOKTA_YOK'] != '1',
+        'noktalar': [
+          {'id': 1, 'ad': 'Giriş kapısı QR', 'sube': 'Merkez Şube', 'lat': 40.9873512, 'lng': 29.0284471, 'yaricap_m': 150, 'zorunlu': true},
+          {'id': 2, 'ad': 'Mutfak tableti', 'sube': 'Merkez Şube', 'lat': null, 'lng': null, 'yaricap_m': 100, 'zorunlu': false},
+        ],
       };
     case '/api/v1/personel-eslesme/baslat':
       return {'kod': 'K7M4QX', 'gizli': 'x', 'bitis': _iso(const Duration(minutes: 29, seconds: 41))};
@@ -211,7 +241,7 @@ class _SahteSunucu implements HttpClientAdapter {
     if (o.uri.path.contains('/foto/')) {
       return ResponseBody.fromBytes(File('assets/simge/simge.png').readAsBytesSync(), 200, headers: {Headers.contentTypeHeader: ['image/png']});
     }
-    if (Platform.environment['YOK404'] == '1' && (o.uri.path.contains('/puantaj') || o.uri.path.contains('/yonetici/'))) {
+    if (Platform.environment['YOK404'] == '1' && (o.uri.path.contains('/puantaj') || o.uri.path.contains('/yonetici/') || o.uri.path.contains('/shift/'))) {
       return ResponseBody.fromString('{"message":""}', 404, headers: {Headers.contentTypeHeader: ['application/json']});
     }
     return ResponseBody.fromString(jsonEncode(_yanit(o.uri.path, o.uri.query)), 200, headers: {
@@ -283,6 +313,7 @@ void main() {
   });
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    MesaiHatirlatma.androidZorla = null;
     PackageInfo.setMockInitialValues(appName: 'BamBumPOS Personel', packageName: 'com.bambumpos.personel', version: '1.0.0', buildNumber: '1', buildSignature: '', installerStore: null);
     Uyg.tercih = await SharedPreferences.getInstance();
     Uyg.api = Api.bellekte(_SahteSunucu(), tabanUrl: 'https://personel.bambumpos.com');
@@ -306,11 +337,18 @@ void main() {
     '07-hedefler': () => const HedeflerEkrani(),
     '08-primler': () => const PrimlerEkrani(),
     '09-davet': () => const DavetEkrani(),
-    '10-bildirimler': () => const BildirimlerEkrani(),
+    '10-bildirimler': () {
+      MesaiHatirlatma.androidZorla = true; // Android'deki hatırlatma anahtarı görünsün
+      return const BildirimlerEkrani();
+    },
     '11-destek': () => const DestekEkrani(),
     '12-puantaj': () => const PuantajEkrani(),
     '13-ekibim': () => const EkibimEkrani(),
     '14-ekibim-gorevler': () => const EkibimEkrani(ilkSekme: 1),
+    '15-mesai-noktalari': () => const EkibimEkrani(ilkSekme: 2),
+    '16-konum-panosu': () => const _PanoGosterici(_PanoTur.konum),
+    '17-uzak-panosu': () => const _PanoGosterici(_PanoTur.uzak),
+    '18-dugmeler': () => const _DugmeVitrini(),
   };
   // ALT MENÜ (kabuk) — sayfa + menü birlikte; iPhone ana ekran çizgisi payı (34) ile.
   Widget menulu(Widget sayfa, int sekme) => Scaffold(
@@ -355,3 +393,75 @@ void main() {
     }
   }
 }
+
+enum _PanoTur { konum, uzak }
+
+/// Konum panolarını ekran görüntüsü için açar.
+class _PanoGosterici extends StatefulWidget {
+  const _PanoGosterici(this.tur);
+  final _PanoTur tur;
+  @override
+  State<_PanoGosterici> createState() => _PanoGostericiState();
+}
+
+class _PanoGostericiState extends State<_PanoGosterici> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.tur == _PanoTur.konum) {
+        konumPanosu(context, KonumDurum.izinYok, sunucuMesaji: 'Bu işletmede mesai QR\'ı için konum doğrulaması zorunlu.');
+      } else {
+        konumUyariPanosu(context,
+            ikon: Icons.wrong_location_rounded,
+            baslik: 'Mesai noktasına uzaksın (≈420 m)',
+            aciklama: 'QR yalnız işletmenin 150 m yakınında okutulabilir. İşletmeye geldiğinde yeniden okut; konumun yanlışsa açık alanda tekrar dene.',
+            tekrarYazi: 'Konumu yenile ve dene');
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(color: Colors.black87);
+}
+
+/// Ortak düğmelerin vitrini (açık/koyu karşılaştırma).
+class _DugmeVitrini extends StatefulWidget {
+  const _DugmeVitrini();
+  @override
+  State<_DugmeVitrini> createState() => _DugmeVitriniState();
+}
+
+class _DugmeVitriniState extends State<_DugmeVitrini> {
+  int _s = 0;
+  @override
+  Widget build(BuildContext context) => PaSayfa(
+        baslik: 'Düğmeler',
+        geri: false,
+        govde: Kaydir(altBosluk: 20, children: [
+          const GradDugme(yazi: 'Mesaiye başla', ikon: Icons.play_arrow_rounded, onTap: _bos),
+          const SizedBox(height: 12),
+          const GradDugme(yazi: 'Kaydediliyor', yukleniyor: true, onTap: _bos),
+          const SizedBox(height: 12),
+          const GradDugme(yazi: 'Pasif', ikon: Icons.lock_rounded),
+          const SizedBox(height: 12),
+          const YumusakDugme(yazi: 'Tekrar dene', ikon: Icons.refresh_rounded, onTap: _bos),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: YumusakDugme(yazi: 'Vazgeç', onTap: _bos, zemin: context.pa.ic, renk: context.pa.metin)),
+            const SizedBox(width: 10),
+            const Expanded(child: YumusakDugme(yazi: 'Geri çek', ikon: Icons.undo_rounded, onTap: _bos, zemin: Marka.gul, renk: Colors.white)),
+          ]),
+          const SizedBox(height: 12),
+          const PaMetinDugme(yazi: 'Vazgeç', onTap: _bos),
+          const SizedBox(height: 8),
+          const Row(children: [PaMetinDugme(yazi: 'Geçmiş', kucuk: true, sonIkon: Icons.chevron_right_rounded, onTap: _bos), SizedBox(width: 8), PaMetinDugme(yazi: 'Süzgeci kaldır', ikon: Icons.close_rounded, kucuk: true, onTap: _bos)]),
+          const SizedBox(height: 16),
+          PaSegment(secili: _s, ogeler: const ['Kişiler', 'Görevler', 'Noktalar'], sayilar: const [8, 3, null], onSec: (i) => setState(() => _s = i)),
+          const SizedBox(height: 16),
+          HataDurum(hata: ApiHata(null, 'Sunucuya ulaşılamıyor. İnternet bağlantısını kontrol edin.'), onTekrar: _bos),
+        ]),
+      );
+}
+
+void _bos() {}

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -11,6 +10,7 @@ import 'package:workmanager/workmanager.dart';
 import '../ortak/ortak.dart';
 import 'api.dart';
 import 'durum.dart';
+import 'hatirlatma.dart';
 
 /// BİLDİRİM MERKEZİ (Firebase'siz, 2026-10-27).
 ///
@@ -26,11 +26,13 @@ class BildirimMerkezi {
   static final liste = ValueNotifier<List<Map<String, dynamic>>>(const []);
   static Timer? _zamanlayici;
   static void Function(String url)? acildi;
+  static String? _bekleyenUrl;
+  static bool _acilisIslendi = false;
 
   static const _kanal = AndroidNotificationChannel(
     'personel',
     'Personel bildirimleri',
-    description: 'Görev, vardiya, izin ve mesai bildirimleri',
+    description: 'Görev, shift, izin ve mesai bildirimleri',
     importance: Importance.high,
   );
   static const _apns = MethodChannel('bambumpos/apns');
@@ -43,12 +45,18 @@ class BildirimMerkezi {
       ),
       onDidReceiveNotificationResponse: (r) {
         final url = r.payload;
-        if (url != null && url.isNotEmpty) acildi?.call(url);
+        if (url == null || url.isEmpty) return;
+        if (acildi != null) {
+          acildi!(url);
+        } else {
+          _bekleyenUrl = url; // kabuk henüz kurulmadı → basla() açar
+        }
       },
     );
     await _yerel
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_kanal);
+    await MesaiHatirlatma.tercihOku(Uyg.tercih);
 
     // Arka plan yoklaması YALNIZ Android: iOS'ta BGTaskScheduler işleyicisi uygulama
     // açılışı bitmeden kaydedilmezse iOS uygulamayı kapatıyordu (try/catch yakalayamaz).
@@ -71,13 +79,39 @@ class BildirimMerkezi {
 
   /// Oturum açıldıktan sonra: izin iste, yoklamayı başlat, iOS jetonunu kaydet.
   static Future<void> basla() async {
+    unawaited(_acilisBildirimi());
     await izinIste();
     unawaited(izinDurumu());
     await yokla(ilk: true);
     _zamanlayici?.cancel();
     _zamanlayici = Timer.periodic(const Duration(seconds: 20), (_) => yokla());
     unawaited(_apnsKaydet());
+    unawaited(hatirlatmaEsitle());
   }
+
+  /// Uygulama bir bildirime (ör. Shift hatırlatması → /qr-okut) dokunularak açıldıysa o ekrana git.
+  static Future<void> _acilisBildirimi() async {
+    var url = _bekleyenUrl;
+    _bekleyenUrl = null;
+    if (url == null && !_acilisIslendi) {
+      _acilisIslendi = true;
+      try {
+        final d = await _yerel.getNotificationAppLaunchDetails();
+        if (d?.didNotificationLaunchApp ?? false) url = d!.notificationResponse?.payload;
+      } catch (_) {}
+    }
+    if (url == null || url.isEmpty) return;
+    final u = url;
+    WidgetsBinding.instance.addPostFrameCallback((_) => acildi?.call(u));
+  }
+
+  /// Shift hatırlatmalarını (Android, yerel alarm) yeniden kurar.
+  /// `vardiyalar` = schedule yanıtındaki `shifts` (Shift ekranı verirse ağa gitmez).
+  static Future<void> hatirlatmaEsitle({List<Map>? vardiyalar}) =>
+      MesaiHatirlatma.esitle(eklenti: _yerel, p: Uyg.tercih, api: Uyg.api, vardiyalar: vardiyalar);
+
+  /// Bildirimler ekranındaki "Mesai hatırlatmaları" anahtarı.
+  static Future<void> hatirlatmaAyarla(bool v) => MesaiHatirlatma.ayarla(v, eklenti: _yerel, p: Uyg.tercih, api: Uyg.api);
 
   static void durdur() {
     _zamanlayici?.cancel();
@@ -129,6 +163,12 @@ class BildirimMerkezi {
       if (items.isNotEmpty) await p.setInt('son_bildirim_id', items.map((n) => (n['id'] as num).toInt()).reduce((a, b) => a > b ? a : b));
       if (!ilk && sonId > 0) {
         for (final n in yeniler.take(3)) {
+          if (MesaiHatirlatma.baslikMi(n['title'])) {
+            // Android: yerel alarm zaten çaldı (ve ön planda baloncuk gösterdi) → tekrar etme.
+            if (MesaiHatirlatma.yerelZamanlama && MesaiHatirlatma.acik.value) continue;
+            MesaiHatirlatma.uyar(n['title'].toString(), n['body']?.toString());
+            continue;
+          }
           bildir(n['title']?.toString() ?? 'Bildirim', mesaj: n['body']?.toString(), tur: BildirimTur.bilgi);
           HapticFeedback.mediumImpact();
         }
@@ -198,11 +238,14 @@ void arkaPlanGorevi() {
           iOS: DarwinInitializationSettings(),
         ),
       );
+      final hatirlatmaAcik = p.getBool(MesaiHatirlatma.tercihAnahtari) ?? true;
       var enBuyuk = sonId;
       for (final n in items) {
         final id = (n['id'] as num).toInt();
         if (id > enBuyuk) enBuyuk = id;
         if (id <= sonId || n['read'] == true || sonId == 0) continue;
+        // Shift hatırlatması: yerel alarm zaten sesli + titreşimli çaldı.
+        if (hatirlatmaAcik && Platform.isAndroid && MesaiHatirlatma.baslikMi(n['title'])) continue;
         await plugin.show(
           id: id,
           title: n['title']?.toString() ?? 'Bildirim',
@@ -215,6 +258,8 @@ void arkaPlanGorevi() {
         );
       }
       await p.setInt('son_bildirim_id', enBuyuk);
+      // Shift değişmiş olabilir: yerel hatırlatmaları tazele.
+      await MesaiHatirlatma.esitle(eklenti: plugin, p: p, api: api, onPlan: false);
     } catch (_) {
       // Oturum yok / ağ yok: sessiz.
     }

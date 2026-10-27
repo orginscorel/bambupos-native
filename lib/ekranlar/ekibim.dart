@@ -9,13 +9,16 @@ import '../core/durum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'gorevler.dart';
+import 'mesai_noktalari.dart';
 
 /// EKİBİM — yönetici modu. Yalnız `staff.view` / `staff.manage` /
 /// `tasks.assign` yetkisi olanlar görür (Uyg.yonetici).
 ///
 /// Kişiler sekmesi: durum sayaçları (dokununca süzer) + şubedeki personel
 /// (durum noktası, giriş saati, çalışılan, gecikme). Görevler sekmesi: şube
-/// görevleri (fotoğraflarıyla) + "Görev ver" formu (`tasks.assign`).
+/// görevleri (fotoğraflarıyla) — SALT OKUNUR: görev atama konsolda/yönetimde
+/// yapılır, Personel uygulaması yalnız görevin okunup yapıldığı yerdir.
+/// Mesai noktaları sekmesi: QR konum doğrulaması (mesai_noktalari.dart).
 /// Ekran açıkken 30 sn'de bir kendini yeniler.
 class EkibimEkrani extends StatefulWidget {
   const EkibimEkrani({super.key, this.ilkSekme = 0});
@@ -42,14 +45,11 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
   Map<String, dynamic>? _ekip;
   ApiHata? _ekipHata;
   List<Map<String, dynamic>>? _gorevler;
-  List<Map<String, dynamic>> _personel = const [];
   ApiHata? _gorevHata;
   int _gorevSekme = 0; // 0 aktif, 1 tamamlanan
 
   Timer? _yokla;
   bool _onde = true;
-
-  bool get _gorevVerebilir => Uyg.izin('tasks.assign');
 
   @override
   void initState() {
@@ -75,7 +75,12 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
     if (_onde) _yenile(sessiz: true);
   }
 
-  Future<void> _yenile({bool sessiz = false}) => Future.wait([_ekipYukle(sessiz), _gorevYukle(sessiz)]);
+  int _noktaTur = 0; // çekip yenileyince Mesai noktaları da yeniden yüklensin
+
+  Future<void> _yenile({bool sessiz = false}) {
+    if (!sessiz) setState(() => _noktaTur++);
+    return Future.wait([_ekipYukle(sessiz), _gorevYukle(sessiz)]);
+  }
 
   Future<void> _ekipYukle([bool sessiz = false]) async {
     try {
@@ -102,7 +107,6 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() {
         _gorevler = l(r['gorevler']);
-        _personel = l(r['personel']);
         _gorevHata = null;
       });
     } on ApiHata catch (e) {
@@ -145,27 +149,24 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
       baslik: 'Ekibim',
       altBaslik: _altBaslik,
       yenile: _yenile,
-      eylem: _gorevVerebilir
-          ? Basilir(
-              onTap: _gorevVer,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: .1), shape: BoxShape.circle),
-                child: const Icon(Icons.add_task_rounded, color: Colors.white, size: 22),
-              ),
-            )
-          : null,
       govde: Kaydir(altBosluk: 40, children: [
-        _Sekme(
+        PaSegment(
           secili: _sekme,
-          etiketler: ['Kişiler  ${_ekip == null ? '' : _i(_ozet, 'toplam')}', 'Görevler  ${_gorevler == null ? '' : _gorevler!.where((g) => g['status'] != 'done').length}'],
+          ogeler: const ['Kişiler', 'Görevler', 'Noktalar'],
+          sayilar: [_ekip == null ? null : _i(_ozet, 'toplam'), _gorevler?.where((g) => g['status'] != 'done').length, null],
           onSec: (i) => setState(() => _sekme = i),
         ),
         const SizedBox(height: 14),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
-          child: KeyedSubtree(key: ValueKey(_sekme), child: _sekme == 0 ? _kisilerSekmesi() : _gorevlerSekmesi()),
+          child: KeyedSubtree(
+            key: ValueKey(_sekme),
+            child: switch (_sekme) {
+              0 => _kisilerSekmesi(),
+              1 => _gorevlerSekmesi(),
+              _ => MesaiNoktalari(key: ValueKey('mn$_noktaTur')),
+            },
+          ),
         ),
       ]),
     );
@@ -190,12 +191,7 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
         if (_suzgec != null)
           Padding(
             padding: const EdgeInsets.only(top: 12),
-            child: TextButton.icon(
-              onPressed: () => setState(() => _suzgec = null),
-              icon: const Icon(Icons.close_rounded, size: 16),
-              label: const Text('Süzgeci kaldır'),
-              style: TextButton.styleFrom(foregroundColor: context.pa.birincil, textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-            ),
+            child: PaMetinDugme(yazi: 'Süzgeci kaldır', ikon: Icons.close_rounded, kucuk: true, onTap: () => setState(() => _suzgec = null)),
           ),
       ]),
       if (kisiler.isEmpty)
@@ -269,8 +265,8 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
 
     final bilgi = <String>[
       if (gi != null) 'Giriş ${_saat.format(gi)}${co != null ? ' – ${_saat.format(co)}' : ''}',
-      if (gi == null && vb != null) 'Vardiya ${_saat.format(vb)}${vs != null ? ' – ${_saat.format(vs)}' : ''}',
-      if (gi == null && vb == null && durum != 'izinli') 'Bugün vardiya yok',
+      if (gi == null && vb != null) 'Shift ${_saat.format(vb)}${vs != null ? ' – ${_saat.format(vs)}' : ''}',
+      if (gi == null && vb == null && durum != 'izinli') 'Bugün shift yok',
       if (durum == 'izinli' && gi == null && vb == null) 'İzinli',
     ];
 
@@ -362,14 +358,11 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
           kutu(_i(g, 'bugun_biten'), 'Bugün biten', Marka.zumrut.withValues(alpha: .14), r.koyu ? const Color(0xFF6EE7B7) : const Color(0xFF047857)),
         ]),
       ),
-      if (_gorevVerebilir) ...[
-        const SizedBox(height: 14),
-        GradDugme(yazi: 'Görev ver', ikon: Icons.add_task_rounded, onTap: _gorevVer),
-      ],
       const SizedBox(height: 14),
-      _Sekme(
+      PaSegment(
         secili: _gorevSekme,
-        etiketler: ['Aktif  ${tum.where((t) => t['status'] != 'done').length}', 'Tamamlanan  ${tum.where((t) => t['status'] == 'done').length}'],
+        ogeler: const ['Aktif', 'Tamamlanan'],
+        sayilar: [tum.where((t) => t['status'] != 'done').length, tum.where((t) => t['status'] == 'done').length],
         onSec: (i) => setState(() => _gorevSekme = i),
       ),
       const SizedBox(height: 14),
@@ -379,7 +372,7 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
         BosDurum(
           ikon: Icons.assignment_turned_in_rounded,
           baslik: _gorevSekme == 0 ? 'Açık görev yok' : 'Henüz tamamlanan yok',
-          aciklama: _gorevSekme == 0 && _gorevVerebilir ? '"Görev ver" ile ekibine görev atayabilirsin.' : null,
+          aciklama: _gorevSekme == 0 ? 'Görevler yönetim panelinden atanır.' : null,
         )
       else
         for (var i = 0; i < liste.length; i++)
@@ -391,287 +384,6 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
               child: GorevKarti(g: liste[i], atananGoster: true),
             ),
           ),
-    ]);
-  }
-
-  Future<void> _gorevVer() async {
-    if (!_gorevVerebilir) return;
-    final verildi = await panoAc<bool>(
-      context,
-      baslik: 'Görev ver',
-      alt: 'Atadığın kişiye bildirim gider.',
-      icerik: (_) => _GorevFormu(personel: _personel),
-    );
-    if (verildi == true) {
-      bildir('Görev verildi');
-      setState(() {
-        _sekme = 1;
-        _gorevSekme = 0;
-      });
-      await _yenile(sessiz: true);
-    }
-  }
-}
-
-/* ───────────── Kayan sekme (Görevlerim ekranıyla aynı) ───────────── */
-
-class _Sekme extends StatelessWidget {
-  const _Sekme({required this.secili, required this.etiketler, required this.onSec});
-  final int secili;
-  final List<String> etiketler;
-  final ValueChanged<int> onSec;
-
-  @override
-  Widget build(BuildContext context) {
-    final r = context.pa;
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: r.kart, borderRadius: BorderRadius.circular(18), border: Border.all(color: r.kenar), boxShadow: r.golge),
-      child: Stack(children: [
-        AnimatedAlign(
-          alignment: secili == 0 ? Alignment.centerLeft : Alignment.centerRight,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.elasticOut,
-          child: FractionallySizedBox(
-            widthFactor: .5,
-            child: Container(decoration: BoxDecoration(gradient: Marka.grad, borderRadius: BorderRadius.circular(14))),
-          ),
-        ),
-        Row(children: [
-          for (var i = 0; i < etiketler.length; i++)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  titret();
-                  onSec(i);
-                },
-                child: Center(
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 250),
-                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700, fontSize: 14, color: secili == i ? Colors.white : r.soluk),
-                    child: Text(etiketler[i].trim()),
-                  ),
-                ),
-              ),
-            ),
-        ]),
-      ]),
-    );
-  }
-}
-
-/* ───────────── Görev ver formu (pano içi) ───────────── */
-
-class _GorevFormu extends StatefulWidget {
-  const _GorevFormu({required this.personel});
-  final List<Map<String, dynamic>> personel;
-  @override
-  State<_GorevFormu> createState() => _GorevFormuState();
-}
-
-class _GorevFormuState extends State<_GorevFormu> {
-  static const _oncelikler = [('low', 'Düşük'), ('normal', 'Normal'), ('high', 'Yüksek')];
-  final _fmt = DateFormat('d MMMM y, EEEE HH:mm', 'tr_TR');
-  final _baslik = TextEditingController();
-  final _aciklama = TextEditingController();
-  int? _atanan; // null = herkese açık
-  String _oncelik = 'normal';
-  DateTime? _bitis;
-  bool _gonder = false;
-  final _hatalar = <String, String>{};
-
-  @override
-  void dispose() {
-    _baslik.dispose();
-    _aciklama.dispose();
-    super.dispose();
-  }
-
-  String get _atananAd {
-    if (_atanan == null) return 'Herkese açık';
-    final k = widget.personel.firstWhere((p) => (p['id'] as num?)?.toInt() == _atanan, orElse: () => const {});
-    return k['ad']?.toString() ?? 'Seçili kişi';
-  }
-
-  Future<void> _kisiSec() async {
-    final sec = await panoAc<Object>(
-      context,
-      baslik: 'Kime verilsin?',
-      icerik: (ctx) => SatirGrubu([
-        Satir(
-          ikon: Icons.groups_rounded,
-          baslik: 'Herkese açık',
-          alt: 'Şubede ilk üstlenen yapar',
-          ikonZemin: const Color(0xFFE0F2FE),
-          ikonRenk: const Color(0xFF0284C7),
-          sag: _atanan == null ? Icon(Icons.check_rounded, color: ctx.pa.birincil) : null,
-          onTap: () => Navigator.pop(ctx, 0),
-        ),
-        for (final p in widget.personel)
-          Satir(
-            ikon: Icons.person_rounded,
-            baslik: p['ad']?.toString() ?? '',
-            sag: (p['id'] as num?)?.toInt() == _atanan ? Icon(Icons.check_rounded, color: ctx.pa.birincil) : null,
-            onTap: () => Navigator.pop(ctx, (p['id'] as num).toInt()),
-          ),
-      ]),
-    );
-    if (sec is int) setState(() => _atanan = sec == 0 ? null : sec);
-  }
-
-  Future<void> _bitisSec() async {
-    final simdi = DateTime.now();
-    final gun = await showDatePicker(
-      context: context,
-      locale: const Locale('tr', 'TR'),
-      initialDate: _bitis ?? simdi,
-      firstDate: DateTime(simdi.year, simdi.month, simdi.day),
-      lastDate: DateTime(simdi.year + 1),
-    );
-    if (gun == null || !mounted) return;
-    final saat = await showTimePicker(
-      context: context,
-      initialTime: _bitis != null ? TimeOfDay.fromDateTime(_bitis!) : const TimeOfDay(hour: 18, minute: 0),
-    );
-    if (!mounted) return;
-    final s = saat ?? const TimeOfDay(hour: 23, minute: 59);
-    setState(() {
-      _bitis = DateTime(gun.year, gun.month, gun.day, s.hour, s.minute);
-      _hatalar.remove('bitis');
-    });
-  }
-
-  Future<void> _kaydet() async {
-    _hatalar.clear();
-    if (_baslik.text.trim().isEmpty) _hatalar['baslik'] = 'Görev başlığı gerekli.';
-    if (_bitis != null && _bitis!.isBefore(DateTime.now())) _hatalar['bitis'] = 'Bitiş zamanı geçmişte olamaz.';
-    if (_hatalar.isNotEmpty) {
-      setState(() {});
-      titret(1);
-      return;
-    }
-    setState(() => _gonder = true);
-    try {
-      await Uyg.api.post('/api/v1/portal/yonetici/gorev', {
-        'baslik': _baslik.text.trim(),
-        if (_aciklama.text.trim().isNotEmpty) 'aciklama': _aciklama.text.trim(),
-        'atanan_id': _atanan,
-        'oncelik': _oncelik,
-        if (_bitis != null) 'bitis': _bitis!.toUtc().toIso8601String(),
-      });
-      if (mounted) Navigator.pop(context, true);
-    } on ApiHata catch (e) {
-      final h = e.govde?['errors'];
-      if (h is Map) {
-        h.forEach((k, v) => _hatalar[k.toString()] = v is List && v.isNotEmpty ? v.first.toString() : v.toString());
-      } else {
-        bildir('Görev verilemedi', mesaj: e.mesaj, tur: BildirimTur.hata);
-      }
-      if (mounted) setState(() {});
-    } finally {
-      if (mounted) setState(() => _gonder = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final r = context.pa;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      TextField(
-        controller: _baslik,
-        textCapitalization: TextCapitalization.sentences,
-        maxLength: 160,
-        decoration: InputDecoration(labelText: 'Görev başlığı', errorText: _hatalar['baslik'], counterText: ''),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _aciklama,
-        textCapitalization: TextCapitalization.sentences,
-        maxLines: 3,
-        decoration: InputDecoration(labelText: 'Açıklama (isteğe bağlı)', errorText: _hatalar['aciklama'], alignLabelWithHint: true),
-      ),
-      const SizedBox(height: 12),
-      _secimAlani(
-        ikon: _atanan == null ? Icons.groups_rounded : Icons.person_rounded,
-        etiket: 'Kime',
-        deger: _atananAd,
-        hata: _hatalar['atanan_id'],
-        onTap: _kisiSec,
-      ),
-      const SizedBox(height: 14),
-      Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 8),
-        child: Text('Öncelik', style: TextStyle(color: r.soluk, fontWeight: FontWeight.w500, fontSize: 13)),
-      ),
-      Row(children: [
-        for (var i = 0; i < _oncelikler.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
-          Expanded(
-            child: Basilir(
-              onTap: () => setState(() => _oncelik = _oncelikler[i].$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                height: 46,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: _oncelik == _oncelikler[i].$1 ? Marka.grad : null,
-                  color: _oncelik == _oncelikler[i].$1 ? null : r.ic,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(_oncelikler[i].$2,
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: _oncelik == _oncelikler[i].$1 ? Colors.white : r.soluk)),
-              ),
-            ),
-          ),
-        ],
-      ]),
-      const SizedBox(height: 14),
-      _secimAlani(
-        ikon: Icons.event_rounded,
-        etiket: 'Bitiş',
-        deger: _bitis == null ? 'İsteğe bağlı' : _fmt.format(_bitis!),
-        bos: _bitis == null,
-        hata: _hatalar['bitis'],
-        onTap: _bitisSec,
-        temizle: _bitis == null ? null : () => setState(() => _bitis = null),
-      ),
-      const SizedBox(height: 18),
-      GradDugme(yazi: 'Görevi ver', ikon: Icons.send_rounded, yukleniyor: _gonder, onTap: _kaydet),
-    ]);
-  }
-
-  /// İzin formundaki tarih alanıyla aynı biçim.
-  Widget _secimAlani({required IconData ikon, required String etiket, required String deger, required VoidCallback onTap, String? hata, bool bos = false, VoidCallback? temizle}) {
-    final r = context.pa;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Basilir(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(color: r.ic, borderRadius: BorderRadius.circular(16), border: hata != null ? Border.all(color: Marka.gul) : null),
-          child: Row(children: [
-            Icon(ikon, color: r.birincil, size: 20),
-            const SizedBox(width: 10),
-            Text(etiket, style: TextStyle(color: r.soluk, fontWeight: FontWeight.w500)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(deger,
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: bos ? FontWeight.w500 : FontWeight.w700, color: bos ? r.silik : r.metin)),
-            ),
-            const SizedBox(width: 4),
-            if (temizle != null)
-              GestureDetector(onTap: temizle, child: Icon(Icons.close_rounded, color: r.silik, size: 20))
-            else
-              Icon(Icons.chevron_right_rounded, color: r.silik),
-          ]),
-        ),
-      ),
-      if (hata != null) Padding(padding: const EdgeInsets.only(left: 14, top: 4), child: Text(hata, style: const TextStyle(color: Marka.gul, fontSize: 12))),
     ]);
   }
 }

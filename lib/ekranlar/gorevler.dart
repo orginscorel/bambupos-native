@@ -302,44 +302,8 @@ class _Sekmeler extends StatelessWidget {
   final ValueChanged<int> onSec;
 
   @override
-  Widget build(BuildContext context) {
-    final r = context.pa;
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: r.kart, borderRadius: BorderRadius.circular(18), border: Border.all(color: r.kenar), boxShadow: r.golge),
-      child: Stack(children: [
-        AnimatedAlign(
-          alignment: secili == 0 ? Alignment.centerLeft : Alignment.centerRight,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.elasticOut,
-          child: FractionallySizedBox(
-            widthFactor: .5,
-            child: Container(decoration: BoxDecoration(gradient: Marka.grad, borderRadius: BorderRadius.circular(14))),
-          ),
-        ),
-        Row(children: [
-          for (final (i, etiket, n) in [(0, 'Aktif', aktif), (1, 'Tamamlanan', biten)])
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  titret();
-                  onSec(i);
-                },
-                child: Center(
-                  child: AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 250),
-                    style: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700, fontSize: 14, color: secili == i ? Colors.white : r.soluk),
-                    child: Text('$etiket  $n'),
-                  ),
-                ),
-              ),
-            ),
-        ]),
-      ]),
-    );
-  }
+  Widget build(BuildContext context) =>
+      PaSegment(secili: secili, ogeler: const ['Aktif', 'Tamamlanan'], sayilar: [aktif, biten], onSec: onSec);
 }
 
 /* ───────────── Görev kartı ───────────── */

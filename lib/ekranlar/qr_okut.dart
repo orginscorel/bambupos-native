@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../core/api.dart';
 import '../core/durum.dart';
+import '../core/konum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 
@@ -48,6 +49,66 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
   String? _islemTur;
   Map<String, dynamic>? _bitti;
 
+  // Konum (yalnız MESAİ QR'ı): ekran açılınca izin varsa sessizce önceden alınır.
+  Future<KonumSonuc> _konumOn = Future.value(const KonumSonuc(KonumDurum.alinamadi));
+
+  @override
+  void initState() {
+    super.initState();
+    _konumOn = Konum.al(izinIste: false);
+  }
+  KonumSonuc? _konum; // son GET'te kullanılan
+  bool _konumAliniyor = false;
+
+  /// Mesai QR'ı için konum: önceden alınan tazeyse onu kullanır, değilse
+  /// (gerekirse izin isteyerek) yeniden alır. Kamera arayüzü beklemez;
+  /// yalnız üstte "Konum alınıyor…" görünür.
+  Future<KonumSonuc> _konumHazirla({bool zorla = false}) async {
+    if (!zorla) {
+      final on = await _konumOn;
+      if (on.konum != null && DateTime.now().difference(on.zaman).inSeconds.abs() < 90) return on;
+    }
+    if (mounted) setState(() => _konumAliniyor = true);
+    try {
+      final k = await Konum.al();
+      _konumOn = Future.value(k);
+      return k;
+    } finally {
+      if (mounted) setState(() => _konumAliniyor = false);
+    }
+  }
+
+  /// Konumla ilgili sunucu yanıtlarını (428/422 konum_gerekli, 403 mesafe_m,
+  /// 409 çakışma) panoyla anlatır. true → işlendi; `tekrar` true ise yeniden dene.
+  Future<({bool islendi, bool tekrar})> _konumHatasi(ApiHata e) async {
+    final g = e.govde ?? const {};
+    if ((e.kod == 428 || e.kod == 422) && g['konum_gerekli'] == true) {
+      var durum = _konum?.durum ?? KonumDurum.alinamadi;
+      if (durum == KonumDurum.tamam) durum = KonumDurum.alinamadi; // gönderildi ama yetersiz
+      final tekrar = await konumPanosu(context, durum, sunucuMesaji: e.mesaj);
+      return (islendi: true, tekrar: tekrar);
+    }
+    if (e.kod == 403 && g['mesafe_m'] != null) {
+      final m = (g['mesafe_m'] as num?)?.round();
+      final yaricap = (g['yaricap_m'] as num?)?.round();
+      final tekrar = await konumUyariPanosu(
+        context,
+        ikon: Icons.wrong_location_rounded,
+        baslik: m == null ? 'Mesai noktasına uzaksın' : 'Mesai noktasına uzaksın (≈${_mesafe(m)})',
+        aciklama: '${yaricap != null ? 'QR yalnız işletmenin ${_mesafe(yaricap)} yakınında okutulabilir. ' : ''}İşletmeye geldiğinde yeniden okut; konumun yanlışsa açık alanda tekrar dene.',
+        tekrarYazi: 'Konumu yenile ve dene',
+      );
+      return (islendi: true, tekrar: tekrar);
+    }
+    if (e.kod == 409) {
+      await konumUyariPanosu(context, ikon: Icons.phonelink_lock_rounded, baslik: 'İşlem yapılamadı', aciklama: e.mesaj, renk: Marka.gul);
+      return (islendi: true, tekrar: false);
+    }
+    return (islendi: false, tekrar: false);
+  }
+
+  static String _mesafe(int m) => m >= 1000 ? '${(m / 1000).toStringAsFixed(m % 1000 == 0 ? 0 : 1).replaceAll('.', ',')} km' : '$m m';
+
   @override
   void dispose() {
     _kamera.dispose();
@@ -83,14 +144,25 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
     _token = m.group(1);
     _kod = m.group(2);
     try {
-      final r = await Uyg.api.get('/api/v1/portal/qr-mesai/$_token/$_kod') as Map;
-      _panoyuAc(Map<String, dynamic>.from(r));
-    } on ApiHata catch (e) {
-      bildir('QR geçerli değil', mesaj: e.mesaj, tur: BildirimTur.hata);
-      await Future<void>.delayed(const Duration(milliseconds: 1400));
-      if (mounted) setState(() => _isabet = false);
+      await _mesaiQrAc();
     } finally {
       _mesgul = false;
+    }
+  }
+
+  Future<void> _mesaiQrAc({bool konumuYenile = false}) async {
+    _konum = await _konumHazirla(zorla: konumuYenile);
+    if (!mounted) return;
+    try {
+      final r = await Uyg.api.get('/api/v1/portal/qr-mesai/$_token/$_kod', sorgu: _konum!.alanlar.isEmpty ? null : _konum!.alanlar) as Map;
+      _panoyuAc(Map<String, dynamic>.from(r));
+    } on ApiHata catch (e) {
+      final k = await _konumHatasi(e);
+      if (!mounted) return;
+      if (k.tekrar) return _mesaiQrAc(konumuYenile: true);
+      if (!k.islendi) bildir('QR geçerli değil', mesaj: e.mesaj, tur: BildirimTur.hata);
+      await Future<void>.delayed(Duration(milliseconds: k.islendi ? 300 : 1400));
+      if (mounted) setState(() => _isabet = false);
     }
   }
 
@@ -175,7 +247,7 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
       _islemTur = tur;
     });
     try {
-      final r = await Uyg.api.post('/api/v1/portal/qr-mesai/$_token/$_kod', {'eylem': eylem, 'mola_turu': ?tur}) as Map;
+      final r = await Uyg.api.post('/api/v1/portal/qr-mesai/$_token/$_kod', {'eylem': eylem, 'mola_turu': ?tur, ...?_konum?.alanlar}) as Map;
       _say?.cancel();
       HapticFeedback.heavyImpact();
       // Ana sayfa / Mesaim durumu HEMEN yenilesin (eskiden 60 sn yoklamayı bekliyordu)
@@ -188,7 +260,16 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
       await Future<void>.delayed(const Duration(milliseconds: 1700));
       _kapat();
     } on ApiHata catch (e) {
-      bildir('İşlem yapılamadı', mesaj: e.mesaj, tur: BildirimTur.hata);
+      final k = await _konumHatasi(e);
+      if (!k.islendi) bildir('İşlem yapılamadı', mesaj: e.mesaj, tur: BildirimTur.hata);
+      if (k.tekrar && mounted) {
+        _konum = await _konumHazirla(zorla: true);
+        if (mounted) {
+          setState(() => _islem = null);
+          await _calistir(eylem, tur);
+          return;
+        }
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -303,13 +384,42 @@ class _QrOkutEkraniState extends State<QrOkutEkrani> with SingleTickerProviderSt
           // Pano
           if (_pano != null) ...[
             Positioned.fill(child: GestureDetector(onTap: _islem == null ? _panoyuKapat : null, child: Container(color: Colors.transparent))),
-            Align(alignment: Alignment.bottomCenter, child: _Pano(veri: _pano!, kalan: _kalan, islem: _islem, islemTur: _islemTur, calistir: _calistir, yeniden: _panoyuKapat)),
+            Align(alignment: Alignment.bottomCenter, child: _Pano(veri: _pano!, konumGonderildi: _konum?.konum != null, kalan: _kalan, islem: _islem, islemTur: _islemTur, calistir: _calistir, yeniden: _panoyuKapat)),
           ],
           if (_girisAnahtar != null) ...[
             Positioned.fill(child: GestureDetector(onTap: _girisiKapat, child: Container(color: Colors.transparent))),
             Align(alignment: Alignment.bottomCenter, child: _GirisPano(isleniyor: _girisIsleniyor, onayla: _girisOnayla, vazgec: _girisiKapat)),
           ],
           if (_bitti != null) Positioned.fill(child: GestureDetector(onTap: _kapat, child: _Basari(veri: _bitti!))),
+          // "Konum alınıyor…" — kamerayı engellemeyen ince durum
+          Positioned(
+            left: 0,
+            right: 0,
+            top: ust + 70,
+            child: IgnorePointer(
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: _konumAliniyor
+                      ? Container(
+                          key: const ValueKey('konum'),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: .45),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withValues(alpha: .14)),
+                          ),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Yukleyici(boyut: 14),
+                            SizedBox(width: 8),
+                            Text('Konum alınıyor…', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12.5)),
+                          ]),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
           // Üst çubuk — EN ÜSTTE: pano arkasındaki dokunma katmanı ve başarı ekranı X'i örtmesin
           Positioned(
             left: 16,
@@ -451,8 +561,9 @@ class _KameraHatasi extends StatelessWidget {
 /* ───────────────────────── Alttan pano ───────────────────────── */
 
 class _Pano extends StatelessWidget {
-  const _Pano({required this.veri, required this.kalan, required this.islem, required this.islemTur, required this.calistir, required this.yeniden});
+  const _Pano({required this.veri, this.konumGonderildi = false, required this.kalan, required this.islem, required this.islemTur, required this.calistir, required this.yeniden});
   final Map<String, dynamic> veri;
+  final bool konumGonderildi;
   final int kalan;
   final String? islem;
   final String? islemTur;
@@ -554,6 +665,7 @@ class _Pano extends StatelessWidget {
             const SizedBox(width: 8),
             Text(!calisiyor ? 'Mesaide değilsin' : molada ? 'Moladasın' : 'Mesaidesin',
                 style: TextStyle(fontWeight: FontWeight.w700, color: !calisiyor ? r.soluk : molada ? const Color(0xFF7C3AED) : const Color(0xFF059669))),
+            if (konumGonderildi) ...[const SizedBox(width: 8), const _KonumCipi()],
             const Spacer(),
             SizedBox(
               width: 18,
@@ -600,6 +712,28 @@ class _Pano extends StatelessWidget {
             ),
         ]),
       ),
+    );
+  }
+}
+
+/// Panodaki "Konum doğrulandı ✓" çipi (konum gönderildiyse).
+class _KonumCipi extends StatelessWidget {
+  const _KonumCipi();
+  @override
+  Widget build(BuildContext context) {
+    final yesil = context.pa.koyu ? const Color(0xFF6EE7B7) : const Color(0xFF047857);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Marka.zumrut.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Marka.zumrut.withValues(alpha: .25)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.verified_rounded, size: 13, color: yesil),
+        const SizedBox(width: 4),
+        Text('Konum doğrulandı', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: yesil)),
+      ]),
     );
   }
 }
@@ -659,12 +793,30 @@ class _EylemKartiState extends State<_EylemKarti> with TickerProviderStateMixin 
         gradient: kilitli ? null : k.grad,
         color: kilitli ? r.ic : null,
         borderRadius: BorderRadius.circular(widget.ana ? 26 : 22),
-        border: kilitli ? Border.all(color: r.kenar, width: 1.5) : null,
-        boxShadow: kilitli ? null : const [BoxShadow(color: Color(0x880D0B2B), blurRadius: 34, offset: Offset(0, 18), spreadRadius: -20)],
+        border: Border.all(color: kilitli ? r.kenar : Colors.white.withValues(alpha: .2)),
+        boxShadow: kilitli
+            ? null
+            : [
+                BoxShadow(color: _gradOrta(k.grad).withValues(alpha: .5), blurRadius: 30, offset: const Offset(0, 16), spreadRadius: -16),
+                const BoxShadow(color: Color(0x330D0B2B), blurRadius: 4, offset: Offset(0, 2)),
+              ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(children: [
         if (!kilitli) ...[
+          // Üst cam parlaklığı (GradDugme ile aynı dil)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white.withValues(alpha: .18), Colors.white.withValues(alpha: 0)],
+                  stops: const [0, .55],
+                ),
+              ),
+            ),
+          ),
           Positioned(right: -40, top: -40, child: Container(width: 140, height: 140, decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [Colors.white.withValues(alpha: .22), Colors.white.withValues(alpha: 0)])))),
           AnimatedBuilder(
             animation: _parilti,
@@ -786,7 +938,7 @@ class _KisaMola extends StatelessWidget {
         decoration: BoxDecoration(
           color: r.kart,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: r.kenar, width: 1.5),
+          border: Border.all(color: r.kenar),
           boxShadow: const [BoxShadow(color: Color(0x331C1863), blurRadius: 22, offset: Offset(0, 10), spreadRadius: -14)],
         ),
         child: Row(children: [
@@ -996,9 +1148,11 @@ class _GirisPano extends StatelessWidget {
           const SizedBox(height: 16),
           GradDugme(yazi: 'Giriş yap', ikon: Icons.login_rounded, yukleniyor: isleniyor, onTap: onayla),
           const SizedBox(height: 6),
-          TextButton(onPressed: isleniyor ? null : vazgec, child: Text('Vazgeç', style: TextStyle(color: r.soluk, fontWeight: FontWeight.w600))),
+          PaMetinDugme(yazi: 'Vazgeç', onTap: isleniyor ? null : vazgec),
         ]),
       ),
     );
   }
 }
+
+Color _gradOrta(Gradient g) => g.colors.length > 1 ? g.colors[g.colors.length ~/ 2] : g.colors.first;

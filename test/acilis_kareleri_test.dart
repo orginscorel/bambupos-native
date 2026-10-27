@@ -1,7 +1,6 @@
 // Açılış animasyonunun kareleri: GORUNTU_DIZINI=... flutter test test/acilis_kareleri_test.dart
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bambumpos_personel/core/api.dart';

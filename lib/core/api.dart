@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 /// Sunucudan dönen hata. Mesaj DOĞRUDAN kullanıcıya gösterilir (Laravel
@@ -59,13 +60,26 @@ class Api {
       storage: FileStorage('${dizin.path}${Platform.pathSeparator}cerezler${Platform.pathSeparator}'),
     );
 
-    return _kur(tabanUrl, kullaniciAjani, jar, ekBasliklar);
+    return _kur(tabanUrl, kullaniciAjani, jar, {'X-BBP-Cihaz': await cihazKimligi(), ...ekBasliklar});
+  }
+
+  /// Bu kurulumun kalıcı rastgele kimliği (uuid v4). Her istekte
+  /// `X-BBP-Cihaz` başlığıyla gider; sunucu mesai QR'ında "aynı telefonla
+  /// iki personel" denetimi için kullanır. Uygulama silinince yenilenir.
+  static const cihazAnahtari = 'bbp_cihaz_kimligi';
+  static Future<String> cihazKimligi() async {
+    final t = await SharedPreferences.getInstance();
+    final eski = t.getString(cihazAnahtari);
+    if (eski != null && eski.length >= 16) return eski;
+    final yeni = const Uuid().v4();
+    await t.setString(cihazAnahtari, yeni);
+    return yeni;
   }
 
   /// Test: istekler gerçek ağa değil verilen bağdaştırıcıya gider.
   @visibleForTesting
   static Api bellekte(HttpClientAdapter bagdastirici, {String tabanUrl = varsayilanTaban}) =>
-      _kur(tabanUrl, 'BamBumPOS-Test', CookieJar()).._dio.httpClientAdapter = bagdastirici;
+      _kur(tabanUrl, 'BamBumPOS-Test', CookieJar(), const {'X-BBP-Cihaz': 'test-cihaz'}).._dio.httpClientAdapter = bagdastirici;
 
   static Api _kur(String tabanUrl, String kullaniciAjani, CookieJar jar, [Map<String, String> ekBasliklar = const {}]) {
     final dio = Dio(BaseOptions(

@@ -70,7 +70,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           const SizedBox(height: 18),
           if (Uyg.yonetici) ...[
             SatirGrubu([
-              Satir(ikon: Icons.groups_rounded, baslik: 'Ekibim', alt: 'Personel durumu ve görev verme', grad: true, onTap: () => git(context, const EkibimEkrani())),
+              Satir(ikon: Icons.groups_rounded, baslik: 'Ekibim', alt: 'Ekip, görevler ve mesai noktaları', grad: true, onTap: () => git(context, const EkibimEkrani())),
             ]),
             const SizedBox(height: 14),
           ],

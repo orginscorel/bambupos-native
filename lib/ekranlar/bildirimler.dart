@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/bildirim.dart';
+import '../core/hatirlatma.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'kabuk.dart';
@@ -56,7 +57,7 @@ class _BildirimlerEkraniState extends State<BildirimlerEkrani> with WidgetsBindi
     final ok = await BildirimMerkezi.izinIste();
     if (!mounted) return;
     if (ok) {
-      bildir('Anlık bildirimler açık', mesaj: 'Görev, vardiya ve mesai bildirimleri bu telefona gelecek.');
+      bildir('Anlık bildirimler açık', mesaj: 'Görev, shift ve mesai bildirimleri bu telefona gelecek.');
       return;
     }
     // Daha önce reddedildiyse telefon yeniden sormaz → iPhone'da ayarlar sayfasını aç
@@ -159,18 +160,30 @@ class _BildirimlerEkraniState extends State<BildirimlerEkrani> with WidgetsBindi
                 ),
               ]),
             ),
+            // Sesli Shift hatırlatmaları — yalnız Android (iPhone'da sunucu APNs ile çalar)
+            if (MesaiHatirlatma.yerelZamanlama) ...[
+              const SizedBox(height: 12),
+              ValueListenableBuilder<bool>(
+                valueListenable: MesaiHatirlatma.acik,
+                builder: (_, acik, _) => SatirGrubu([
+                  Satir(
+                    ikon: Icons.alarm_rounded,
+                    ikonZemin: const Color(0xFFE0F2FE),
+                    ikonRenk: const Color(0xFF0284C7),
+                    baslik: 'Mesai hatırlatmaları',
+                    alt: acik ? 'Sesli + titreşim · shift başı ve sonunda' : 'Kapalı · sesli + titreşimli hatırlatma',
+                    onTap: () => BildirimMerkezi.hatirlatmaAyarla(!acik),
+                    sag: Switch.adaptive(value: acik, activeTrackColor: Marka.mor, onChanged: BildirimMerkezi.hatirlatmaAyarla),
+                  ),
+                ]),
+              ),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 22, 4, 4),
               child: Row(children: [
                 Expanded(child: Text('Gelen kutusu', style: gosterim(18, renk: r.metin))),
                 if (okunmamis > 0)
-                  TextButton(
-                    onPressed: () {
-                      titret();
-                      BildirimMerkezi.hepsiOkundu();
-                    },
-                    child: Text('Tümünü okundu say', style: TextStyle(color: r.birincil, fontWeight: FontWeight.w700)),
-                  ),
+                  PaMetinDugme(yazi: 'Tümünü okundu say', ikon: Icons.done_all_rounded, kucuk: true, onTap: BildirimMerkezi.hepsiOkundu),
               ]),
             ),
             if (_yukleniyor && liste.isEmpty)
@@ -184,7 +197,7 @@ class _BildirimlerEkraniState extends State<BildirimlerEkrani> with WidgetsBindi
                 child: BosDurum(
                   ikon: Icons.notifications_none_rounded,
                   baslik: 'Bildirim yok',
-                  aciklama: 'Görev, vardiya ve izin bildirimlerin burada toplanır.',
+                  aciklama: 'Görev, shift ve izin bildirimlerin burada toplanır.',
                 ),
               )
             else

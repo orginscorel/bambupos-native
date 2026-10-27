@@ -117,63 +117,410 @@ class PaIkon extends StatelessWidget {
   }
 }
 
-/// Marka geçişli büyük düğme.
-class GradDugme extends StatelessWidget {
-  const GradDugme({super.key, required this.yazi, this.ikon, this.onTap, this.yukleniyor = false, this.yukseklik = 54, this.gradient = Marka.grad});
-  final String yazi;
-  final IconData? ikon;
+/* ───────────────────────── Düğmeler ───────────────────────── */
+
+/// Basılı durumunu çocuğa veren dokunma algılayıcı (Basilir'in kardeşi):
+/// ölçek + titreşim aynı, ek olarak `basili` ile gölge/zemin değişir.
+class _BasmaKatmani extends StatefulWidget {
+  const _BasmaKatmani({required this.builder, this.onTap, this.olcek = .97, this.soluk = true});
+  final Widget Function(BuildContext, bool basili) builder;
   final VoidCallback? onTap;
-  final bool yukleniyor;
-  final double yukseklik;
-  final Gradient gradient;
+  final double olcek;
+  final bool soluk;
+  @override
+  State<_BasmaKatmani> createState() => _BasmaKatmaniState();
+}
+
+class _BasmaKatmaniState extends State<_BasmaKatmani> {
+  bool _bas = false;
+  void _ayarla(bool v) {
+    if (_bas != v) setState(() => _bas = v);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Basilir(
-      onTap: yukleniyor ? null : onTap,
-      child: Container(
-        height: yukseklik,
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [BoxShadow(color: Color(0x885443D2), blurRadius: 22, offset: Offset(0, 12), spreadRadius: -12)],
-        ),
-        child: Center(
-          child: yukleniyor
-              ? const Yukleyici(boyut: 24)
-              : Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (ikon != null) ...[Icon(ikon, color: Colors.white, size: 20), const SizedBox(width: 8)],
-                  Text(yazi, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15.5)),
-                ]),
+    final aktif = widget.onTap != null;
+    return Semantics(
+      button: true,
+      enabled: aktif,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: aktif ? (_) => _ayarla(true) : null,
+        onTapCancel: aktif ? () => _ayarla(false) : null,
+        onTapUp: aktif ? (_) => _ayarla(false) : null,
+        onTap: aktif
+            ? () {
+                titret();
+                widget.onTap!();
+              }
+            : null,
+        child: AnimatedScale(
+          scale: _bas ? widget.olcek : 1,
+          duration: Duration(milliseconds: _bas ? 90 : 320),
+          curve: _bas ? Curves.easeOut : Curves.easeOutBack,
+          child: AnimatedOpacity(
+            opacity: aktif || !widget.soluk ? 1 : .5,
+            duration: const Duration(milliseconds: 200),
+            child: widget.builder(context, _bas),
+          ),
         ),
       ),
     );
   }
 }
 
-/// Yumuşak ikincil düğme.
+Color _gradOrta(Gradient g) => g.colors.length > 1 ? g.colors[g.colors.length ~/ 2] : g.colors.first;
+
+/// Marka geçişli ANA düğme: üstte ince parlaklık, 1 px açık iç kenar,
+/// renkli yumuşak ışıma (basınca içe çöker), ara sıra süzülen ışık şeridi.
+class GradDugme extends StatefulWidget {
+  const GradDugme({
+    super.key,
+    required this.yazi,
+    this.ikon,
+    this.onTap,
+    this.yukleniyor = false,
+    this.yukseklik = 54,
+    this.gradient = Marka.grad,
+    this.parilti = true,
+    this.sonIkon,
+  });
+  final String yazi;
+  final IconData? ikon;
+  final VoidCallback? onTap;
+  final bool yukleniyor;
+  final double yukseklik;
+  final Gradient gradient;
+  /// Yavaş ışık süzülmesi (tek AnimationController, yalnız boyama).
+  final bool parilti;
+  /// Yazının sağındaki simge (ör. ok).
+  final IconData? sonIkon;
+
+  @override
+  State<GradDugme> createState() => _GradDugmeState();
+}
+
+class _GradDugmeState extends State<GradDugme> with TickerProviderStateMixin {
+  AnimationController? _c;
+
+  bool get _parlasin => widget.parilti && widget.onTap != null && !widget.yukleniyor;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ayarla();
+  }
+
+  @override
+  void didUpdateWidget(GradDugme o) {
+    super.didUpdateWidget(o);
+    _ayarla();
+  }
+
+  void _ayarla() {
+    final iste = _parlasin && !(MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+    if (iste && _c == null) {
+      _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 5200))..repeat();
+    } else if (!iste && _c != null) {
+      _c!.dispose();
+      _c = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = context.pa;
+    final isik = _gradOrta(widget.gradient);
+    const rad = 18.0;
+    return _BasmaKatmani(
+      onTap: widget.yukleniyor ? null : widget.onTap,
+      soluk: !widget.yukleniyor,
+      builder: (_, basili) => AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        height: widget.yukseklik,
+        decoration: BoxDecoration(
+          gradient: widget.gradient,
+          borderRadius: BorderRadius.circular(rad),
+          boxShadow: [
+            BoxShadow(
+              color: isik.withValues(alpha: r.koyu ? .55 : .5),
+              blurRadius: basili ? 12 : 26,
+              offset: Offset(0, basili ? 5 : 12),
+              spreadRadius: basili ? -8 : -10,
+            ),
+            BoxShadow(color: Marka.lacivert0.withValues(alpha: r.koyu ? .5 : .14), blurRadius: basili ? 2 : 4, offset: Offset(0, basili ? 1 : 2)),
+          ],
+        ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(rad),
+          border: Border.all(color: Colors.white.withValues(alpha: .2)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(rad),
+          child: Stack(fit: StackFit.expand, children: [
+            // Üst parlaklık (cam hissi) + basınca hafif koyulaşma
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: basili
+                      ? [Colors.black.withValues(alpha: .06), Colors.black.withValues(alpha: .12)]
+                      : [Colors.white.withValues(alpha: .24), Colors.white.withValues(alpha: .04), Colors.black.withValues(alpha: .06)],
+                  stops: basili ? null : const [0, .5, 1],
+                ),
+              ),
+            ),
+            if (_c != null)
+              RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: _c!,
+                  builder: (_, _) {
+                    // Sürenin %70'i bekler, %30'unda soldan sağa süzülür.
+                    final t = _c!.value;
+                    final x = t < .7 ? -2.0 : -2.0 + (t - .7) / .3 * 4.0;
+                    return FractionalTranslation(
+                      translation: Offset(x * .5, 0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: const Alignment(-1, -.4),
+                            end: const Alignment(1, .4),
+                            colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .2), Colors.white.withValues(alpha: 0)],
+                            stops: const [.38, .5, .62],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            Center(
+              child: widget.yukleniyor
+                  ? const Yukleyici(boyut: 24)
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      // Dar yerlerde (iki düğme yan yana) kesilmek yerine hafifçe küçülür.
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (widget.ikon != null) ...[Icon(widget.ikon, color: Colors.white, size: 20), const SizedBox(width: 10)],
+                        Text(widget.yazi,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15.5,
+                                letterSpacing: .15,
+                                shadows: [Shadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 1))],
+                              )),
+                        if (widget.sonIkon != null) ...[const SizedBox(width: 8), Icon(widget.sonIkon, color: Colors.white, size: 18)],
+                      ]),
+                      ),
+                    ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// İkincil düğme: marka tonlu yüzey + saç teli kenar; basınca zemin koyulaşır.
+/// `zemin` doygun bir renk (ör. Marka.gul) ve `renk` beyaz verilirse dolu
+/// tehlike/onay düğmesi gibi davranır.
 class YumusakDugme extends StatelessWidget {
-  const YumusakDugme({super.key, required this.yazi, this.ikon, this.onTap, this.renk, this.zemin});
+  const YumusakDugme({super.key, required this.yazi, this.ikon, this.onTap, this.renk, this.zemin, this.yukseklik = 50, this.yukleniyor = false});
   final String yazi;
   final IconData? ikon;
   final VoidCallback? onTap;
   final Color? renk;
   final Color? zemin;
+  final double yukseklik;
+  final bool yukleniyor;
 
   @override
   Widget build(BuildContext context) {
     final r = context.pa;
-    return Basilir(
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: zemin ?? r.birincilYumusak, borderRadius: BorderRadius.circular(16)),
+    final on = renk ?? r.birincil;
+    final z = zemin ?? r.birincilYumusak;
+    // Dolu (doygun zemin + açık yazı) mı?
+    final dolu = on.computeLuminance() > .7 && z.computeLuminance() < .5 && z.a > .9;
+    final kenar = dolu ? Colors.white.withValues(alpha: .18) : on.withValues(alpha: r.koyu ? .24 : .16);
+    return _BasmaKatmani(
+      onTap: yukleniyor ? null : onTap,
+      soluk: !yukleniyor,
+      builder: (_, basili) => AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        height: yukseklik,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: basili ? Color.alphaBlend(on.withValues(alpha: dolu ? .0 : .08), z) : z,
+          gradient: dolu
+              ? LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color.lerp(z, Colors.white, basili ? 0 : .1)!, Color.lerp(z, Colors.black, basili ? .14 : .06)!],
+                )
+              : null,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kenar),
+          boxShadow: dolu && !basili ? [BoxShadow(color: z.withValues(alpha: .4), blurRadius: 18, offset: const Offset(0, 8), spreadRadius: -10)] : null,
+        ),
         child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-          if (ikon != null) ...[Icon(ikon, color: renk ?? r.birincil, size: 18), const SizedBox(width: 6)],
-          Text(yazi, style: TextStyle(color: renk ?? r.birincil, fontWeight: FontWeight.w700, fontSize: 14)),
+          if (yukleniyor)
+            Yukleyici(boyut: 20, renk: on)
+          else ...[
+            if (ikon != null) ...[Icon(ikon, color: on, size: 19), const SizedBox(width: 8)],
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(yazi, maxLines: 1, style: TextStyle(color: on, fontWeight: FontWeight.w600, fontSize: 14.5, letterSpacing: .1)),
+              ),
+            ),
+          ],
         ]),
       ),
+    );
+  }
+}
+
+/// Metin düğmesi ("Vazgeç", "Geçmiş" …). `kucuk` → başlık satırı içi
+/// kompakt tonlu düğme; değilse tam boy (48) sade düğme.
+class PaMetinDugme extends StatelessWidget {
+  const PaMetinDugme({super.key, required this.yazi, this.onTap, this.ikon, this.renk, this.kucuk = false, this.sonIkon});
+  final String yazi;
+  final VoidCallback? onTap;
+  final IconData? ikon;
+  final IconData? sonIkon;
+  final Color? renk;
+  final bool kucuk;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = context.pa;
+    final on = renk ?? (kucuk ? r.birincil : r.soluk);
+    return _BasmaKatmani(
+      onTap: onTap,
+      olcek: .95,
+      builder: (_, basili) => AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        height: kucuk ? 34 : 48,
+        padding: EdgeInsets.symmetric(horizontal: kucuk ? 12 : 16),
+        decoration: BoxDecoration(
+          color: kucuk ? (basili ? on.withValues(alpha: .18) : on.withValues(alpha: r.koyu ? .14 : .09)) : (basili ? r.ic : Colors.transparent),
+          borderRadius: BorderRadius.circular(kucuk ? 12 : 16),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+          if (ikon != null) ...[Icon(ikon, size: kucuk ? 15 : 18, color: on), SizedBox(width: kucuk ? 5 : 8)],
+          Text(yazi, style: TextStyle(color: on, fontWeight: FontWeight.w600, fontSize: kucuk ? 12.5 : 14.5)),
+          if (sonIkon != null) ...[const SizedBox(width: 3), Icon(sonIkon, size: kucuk ? 16 : 18, color: on)],
+        ]),
+      ),
+    );
+  }
+}
+
+/// Kayan sekme seçici (Görevlerim, Shift, Ekibim aynı biçim): saç teli
+/// kenarlı yüzey, ışımalı geçişli gösterge, isteğe bağlı sayı rozetleri.
+class PaSegment extends StatelessWidget {
+  const PaSegment({super.key, required this.secili, required this.ogeler, required this.onSec, this.sayilar, this.yukseklik = 52});
+  final int secili;
+  final List<String> ogeler;
+  final List<int?>? sayilar;
+  final ValueChanged<int> onSec;
+  final double yukseklik;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = context.pa;
+    return Container(
+      height: yukseklik,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: r.kart, borderRadius: BorderRadius.circular(18), border: Border.all(color: r.kenar), boxShadow: r.golge),
+      child: LayoutBuilder(builder: (_, k) {
+        final w = k.maxWidth / ogeler.length;
+        return Stack(children: [
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeOutBack,
+            left: w * secili,
+            top: 0,
+            bottom: 0,
+            width: w,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: Marka.grad,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: Marka.mor.withValues(alpha: .45), blurRadius: 14, offset: const Offset(0, 6), spreadRadius: -6)],
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withValues(alpha: .18)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.white.withValues(alpha: .2), Colors.white.withValues(alpha: 0)],
+                    stops: const [0, .6],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Row(children: [
+            for (var i = 0; i < ogeler.length; i++)
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  selected: secili == i,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (secili == i) return;
+                      titret();
+                      onSec(i);
+                    },
+                    child: Center(
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Flexible(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 220),
+                            style: TextStyle(fontFamily: 'Poppins', fontWeight: secili == i ? FontWeight.w700 : FontWeight.w600, fontSize: 13.5, color: secili == i ? Colors.white : r.soluk),
+                            child: Text(ogeler[i], maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                        if (sayilar != null && i < sayilar!.length && sayilar![i] != null) ...[
+                          const SizedBox(width: 6),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            constraints: const BoxConstraints(minWidth: 22),
+                            height: 20,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: secili == i ? Colors.white.withValues(alpha: .22) : r.ic,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text('${sayilar![i]}',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: secili == i ? Colors.white : r.soluk, fontFeatures: const [FontFeature.tabularFigures()])),
+                          ),
+                        ],
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+        ]);
+      }),
     );
   }
 }

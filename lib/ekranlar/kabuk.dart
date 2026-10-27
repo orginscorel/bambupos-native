@@ -92,7 +92,11 @@ class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
     // Uygulamaya dönünce yeni sürüm var mı tekrar bak (30 dk sınırı içinde).
-    if (s == AppLifecycleState.resumed) Guncelleme.bak();
+    if (s == AppLifecycleState.resumed) {
+      Guncelleme.bak();
+      // Shift planı değişmiş olabilir: sesli hatırlatmaları tazele (Android).
+      BildirimMerkezi.hatirlatmaEsitle();
+    }
   }
 
   @override
@@ -168,7 +172,7 @@ class PaAltCubuk extends StatelessWidget {
     (Icons.home_rounded, 'Ana sayfa'),
     (Icons.assignment_turned_in_rounded, 'Görevler'),
     (null, 'QR Okut'),
-    (Icons.calendar_month_rounded, 'Vardiyam'),
+    (Icons.calendar_month_rounded, 'Shift'),
     (Icons.person_rounded, 'Profil'),
   ];
 

@@ -430,7 +430,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
           Text(_saat(a), style: gosterim(11, agirlik: FontWeight.w600, renk: Colors.white54)),
           Expanded(
             child: Text(
-              kalan > 0 ? (p > 0 ? 'Vardiya bitişine ${dakikaYaz(kalan)}' : 'Vardiya başlamadı') : 'Vardiya tamamlandı',
+              kalan > 0 ? (p > 0 ? 'Shift bitişine ${dakikaYaz(kalan)}' : 'Shift başlamadı') : 'Shift tamamlandı',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white54, fontSize: 11),
             ),
@@ -462,7 +462,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _HizliKutu(ikon: Icons.calendar_month_rounded, yazi: 'Vardiyam', zemin: const Color(0xFFE0F2FE), renk: const Color(0xFF0284C7), onTap: () => Kabuk.sekme.value = 2),
+          child: _HizliKutu(ikon: Icons.calendar_month_rounded, yazi: 'Shift', zemin: const Color(0xFFE0F2FE), renk: const Color(0xFF0284C7), onTap: () => Kabuk.sekme.value = 2),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -893,7 +893,7 @@ class _HaftaKarti extends StatelessWidget {
               Sayac(deger: toplam, yaz: (v) => dakikaYaz(v), stil: gosterim(25, renk: r.metin)),
             ]),
           ),
-          TextButton(onPressed: () => git(context, const MesaimEkrani()), child: Text('Geçmiş', style: TextStyle(color: r.birincil, fontWeight: FontWeight.w700))),
+          PaMetinDugme(yazi: 'Geçmiş', kucuk: true, sonIkon: Icons.chevron_right_rounded, onTap: () => git(context, const MesaimEkrani())),
         ]),
         const SizedBox(height: 10),
         SizedBox(
@@ -956,7 +956,7 @@ class _EkipKarti extends StatelessWidget {
             Text('Ekibim', style: gosterim(16.5, renk: r.metin)),
             const SizedBox(height: 3),
             if (ozet == null)
-              Text('Personel durumu ve görev verme', style: TextStyle(color: r.soluk, fontSize: 12))
+              Text('Ekip, görevler ve mesai noktaları', style: TextStyle(color: r.soluk, fontSize: 12))
             else if (parcalar.isEmpty)
               Text('Şu an mesaide kimse yok', style: TextStyle(color: r.soluk, fontSize: 12))
             else

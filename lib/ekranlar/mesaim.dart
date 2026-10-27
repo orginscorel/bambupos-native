@@ -111,7 +111,7 @@ class _MesaimEkraniState extends State<MesaimEkrani> {
 
   @override
   Widget build(BuildContext context) {
-    final alt = _vardiyaYazi != null ? 'Bugünkü vardiya: $_vardiyaYazi' : DateFormat('d MMMM EEEE', 'tr_TR').format(_simdi);
+    final alt = _vardiyaYazi != null ? 'Bugünkü shift: $_vardiyaYazi' : DateFormat('d MMMM EEEE', 'tr_TR').format(_simdi);
     return PaSayfa(
       baslik: 'Mesaim',
       altBaslik: alt,
@@ -194,7 +194,7 @@ class _MesaimEkraniState extends State<MesaimEkrani> {
             child: Row(children: [
               Icon(Icons.timer_rounded, size: 18, color: kalan > 0 ? Marka.mavi : Marka.gul),
               const SizedBox(width: 8),
-              Text(kalan > 0 ? 'Bitişe ${dakikaYaz(kalan)} kaldı' : 'Vardiya süresi doldu',
+              Text(kalan > 0 ? 'Bitişe ${dakikaYaz(kalan)} kaldı' : 'Shift süresi doldu',
                   style: TextStyle(fontWeight: FontWeight.w700, color: kalan > 0 ? Marka.mavi : Marka.gul)),
             ]),
           ),
