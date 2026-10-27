@@ -97,3 +97,7 @@ jobs:
     needs: yayinla
     uses: ./.github/workflows/ios-imza.yml
     secrets: inherit
+  testflight:
+    needs: yayinla
+    uses: ./.github/workflows/testflight.yml
+    secrets: inherit
