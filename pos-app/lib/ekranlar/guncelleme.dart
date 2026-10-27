@@ -139,6 +139,59 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
     );
   }
 
+  /// MAC KENDİ KENDİNE GÜNCELLEME (2026-10-27 işletme talebi: "her güncellemede
+  /// Applications'a tekrar sürüklemek zorunda kalıyoruz").
+  /// DMG arka planda bağlanır, içindeki .app bulunur; küçük bir betik bu uygulama
+  /// kapanınca eski .app'i yenisiyle değiştirir (başarısızsa eskisini geri koyar),
+  /// karantina işaretini temizler, DMG'yi ayırır ve uygulamayı yeniden açar.
+  /// Uygulama klasörüne yazma izni yoksa macOS bir kez yönetici parolası sorar.
+  Future<void> _macKendiniGuncelle(File dmg) async {
+    final exe = File(Platform.resolvedExecutable); // …/BamBumPOS.app/Contents/MacOS/BamBumPOS
+    final app = exe.parent.parent.parent.path;
+    if (!app.endsWith('.app')) throw 'uygulama yolu bulunamadı';
+    final gecici = await Directory.systemTemp.createTemp('bbp-guncelle');
+    final mnt = '${gecici.path}/mnt';
+    final bagla = await Process.run('hdiutil', ['attach', '-nobrowse', '-noautoopen', '-noverify', '-mountpoint', mnt, dmg.path]);
+    if (bagla.exitCode != 0) throw 'DMG bağlanamadı';
+    final yeni = Directory(mnt)
+        .listSync(followLinks: false)
+        .whereType<Directory>()
+        .firstWhere((d) => d.path.endsWith('.app'), orElse: () => throw 'DMG içinde uygulama yok');
+    String q(String v) => "'${v.replaceAll("'", "'\\''")}'";
+    final betik = File('${gecici.path}/kur.sh');
+    await betik.writeAsString([
+      '#!/bin/bash',
+      '# BamBumPOS Mac güncelleyici — uygulama kapanınca çalışır.',
+      'APP=${q(app)}; YENI=${q(yeni.path)}; MNT=${q(mnt)}; GECICI=${q(gecici.path)}',
+      'while kill -0 $pid 2>/dev/null; do sleep 0.3; done',
+      r'rm -rf "$APP.eski"',
+      r'if mv "$APP" "$APP.eski" && ditto "$YENI" "$APP"; then',
+      r'  rm -rf "$APP.eski"',
+      'else',
+      r'  rm -rf "$APP"; mv "$APP.eski" "$APP"',
+      'fi',
+      r'xattr -dr com.apple.quarantine "$APP" 2>/dev/null',
+      r'hdiutil detach "$MNT" -quiet -force',
+      r'open "$APP"',
+      r'rm -rf "$GECICI"',
+      '',
+    ].join('\n'));
+    final yazilabilir = (await Process.run('test', ['-w', File(app).parent.path])).exitCode == 0 &&
+        (await Process.run('test', ['-w', app])).exitCode == 0;
+    if (mounted) setState(() => _mesaj = 'Güncelleme kuruluyor — uygulama birkaç saniye içinde yeniden açılacak');
+    if (yazilabilir) {
+      await Process.start('/bin/bash', [betik.path], mode: ProcessStartMode.detached);
+    } else {
+      await Process.start(
+        'osascript',
+        ['-e', 'do shell script "/bin/bash ${betik.path}" with administrator privileges with prompt "BamBumPOS güncellemesi kurulacak."'],
+        mode: ProcessStartMode.detached,
+      );
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    exit(0);
+  }
+
   Future<void> _masaustu(String adres) async {
     setState(() {
       _ilerleme = 0;
@@ -177,7 +230,14 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> {
       if (Platform.isWindows) {
         await Process.start(dosya.path, const [], mode: ProcessStartMode.detached);
       } else {
-        await Process.run('open', [dosya.path]);
+        // Mac: DMG'yi elle sürüklemek YOK — uygulama kendini değiştirip yeniden açılır.
+        // Olmazsa (beklenmedik DMG yapısı vb.) eski yol: DMG açılır.
+        try {
+          await _macKendiniGuncelle(dosya);
+        } catch (_) {
+          if (mounted) setState(() => _mesaj = 'Kurulum açılıyor — BamBumPOS\'u Uygulamalar klasörüne sürükleyin');
+          await Process.run('open', [dosya.path]);
+        }
       }
     } catch (e) {
       if (mounted) {
