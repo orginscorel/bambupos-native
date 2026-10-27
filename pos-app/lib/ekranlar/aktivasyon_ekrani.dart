@@ -30,6 +30,10 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
   String _durum = 'yukleniyor';
   String? _hata;
   bool _tamamlaniyor = false;
+
+  /// Tamamlama sunucuda reddedildiyse aynı kodla yeniden DENENMEZ (3 sn'lik
+  /// döngü 429'a düşüyordu); kullanıcı "Yeni kod" ile baştan başlar.
+  bool _tamamlaReddedildi = false;
   Timer? _sorgu;
   Timer? _saniye;
 
@@ -72,6 +76,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
     setState(() {
       _durum = 'yukleniyor';
       _hata = null;
+      _tamamlaReddedildi = false;
     });
     try {
       final r = (await context.api.post('/api/v1/cihaz-aktivasyon/baslat') as Map).cast<String, dynamic>();
@@ -111,7 +116,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
       if (!mounted) return;
       if (d == 'gecersiz') {
         await _yeniKod();
-      } else if (d == 'tanimlandi' || d == 'aktif') {
+      } else if ((d == 'tanimlandi' || d == 'aktif') && !_tamamlaReddedildi) {
         await _tamamla();
       } else if (_durum != d || _hata != null) {
         setState(() {
@@ -174,6 +179,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
       setState(() {
         _tamamlaniyor = false;
         _hata = e.mesaj;
+        if (!e.baglantiYok) _tamamlaReddedildi = true;
         // 423: başka cihaza kilitli / izin kaldırılmış — sorgu durur, yönetici çözmeli.
         if (e.kod == 423) {
           _sorgu?.cancel();

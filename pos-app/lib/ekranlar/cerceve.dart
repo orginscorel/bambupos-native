@@ -151,7 +151,7 @@ class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
         bottom: false,
         child: Container(
           height: 55,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: EdgeInsets.symmetric(horizontal: telefon ? 12 : 18),
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: Kabuk.line)),
           ),
@@ -166,8 +166,9 @@ class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
                 child: Row(
                   mainAxisSize: orta == null ? MainAxisSize.max : MainAxisSize.min,
                   children: [
-                    if (!telefon && (orta == null || g >= 1100)) ...[
-                      Container(width: 1, height: 30, margin: const EdgeInsets.only(left: 16, right: 14), color: Kabuk.line),
+                    // Telefonda da künye görünür (2026-10-27: "header'da görünmeyen bölüm var"); orta yuva varsa ona yer bırakılır.
+                    if (orta == null || g >= 1100) ...[
+                      Container(width: 1, height: 30, margin: EdgeInsets.only(left: telefon ? 10 : 16, right: telefon ? 10 : 14), color: Kabuk.line),
                       Flexible(
                         flex: 1,
                         child: Column(
@@ -185,7 +186,7 @@ class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
                                 altSatir!.toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Kabuk.soft, letterSpacing: .5),
+                                style: TextStyle(fontSize: telefon ? 10 : 11.5, fontWeight: FontWeight.w600, color: Kabuk.soft, letterSpacing: .5),
                               ),
                           ],
                         ),
@@ -666,29 +667,14 @@ class AltCubuk extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(top: BorderSide(color: Kabuk.line)),
           ),
-          padding: EdgeInsets.symmetric(horizontal: g <= 560 ? 14 : 18),
+          padding: EdgeInsets.symmetric(horizontal: telefon ? 0 : (g <= 560 ? 14 : 18)),
           child: telefon
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (kisayollar.isNotEmpty)
-                      SizedBox(
-                        height: 46,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: kisaSatir),
-                        ),
-                      ),
-                    SizedBox(
-                      height: kisayollar.isEmpty ? 49 : 52,
-                      child: Row(
-                        children: [
-                          Expanded(child: kim),
-                          sag,
-                        ],
-                      ),
-                    ),
-                  ],
+              ? _TelefonSeridi(
+                  kim: kim,
+                  kisayollar: kisayollar,
+                  tumu: tumu,
+                  sagMetin: sagMetin,
+                  cihazlar: [for (final c in cihazlar) _CihazSimgesi(c: c, telefon: true)],
                 )
               : SizedBox(
                   height: 49,
@@ -923,6 +909,117 @@ class KisiMenusuIci extends StatelessWidget {
       ],
     );
   }
+}
+
+/// TELEFON ALT ŞERİDİ (2026-10-27, web pos-kabuk.css "TELEFON DÜZENİ v2" ile
+/// aynı): üstte ince durum satırı (künye + cihaz simgeleri), altta başparmak
+/// bölgesinde sekme çubuğu (simge üstte, kısa ad altta) ve sağ uçta "Tümü".
+/// Eskiden kısayollar, künye, "Tümü" ve simgeler iki satıra sıkışıyordu.
+class _TelefonSeridi extends StatelessWidget {
+  const _TelefonSeridi({required this.kim, required this.kisayollar, required this.cihazlar, this.tumu, this.sagMetin});
+  final Widget kim;
+  final List<SeritKisayol> kisayollar;
+  final List<Widget> cihazlar;
+  final VoidCallback? tumu;
+  final String? sagMetin;
+
+  @override
+  Widget build(BuildContext context) {
+    final durum = Container(
+      height: 43,
+      padding: const EdgeInsets.only(left: 14, right: 8),
+      decoration: BoxDecoration(
+        color: Kabuk.sunken,
+        border: kisayollar.isEmpty && tumu == null ? null : Border(bottom: BorderSide(color: Kabuk.line)),
+      ),
+      child: Row(children: [
+        Expanded(child: kim),
+        if (sagMetin != null)
+          Flexible(child: Text(sagMetin!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: Kabuk.soft))),
+        ...cihazlar,
+      ]),
+    );
+    if (kisayollar.isEmpty && tumu == null) return durum;
+
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      durum,
+      SizedBox(
+        height: 62,
+        child: Row(children: [
+          Expanded(
+            child: LayoutBuilder(builder: (context, k) {
+              // Sığdıkça eşit sütun; sığmazsa 64 px'lik sekmeler kayar ve sağ uç solar.
+              final sigar = kisayollar.length * 64 <= k.maxWidth;
+              final gen = sigar && kisayollar.isNotEmpty ? (k.maxWidth / kisayollar.length).clamp(64.0, 104.0) : 64.0;
+              final satir = Row(mainAxisSize: MainAxisSize.min, children: [
+                for (final x in kisayollar) _Sekme(ad: x.kisa, ikon: x.ikon, renk: seritRengi(x.renk), secili: x.secili, bas: x.bas, genislik: gen),
+              ]);
+              final kay = SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: satir,
+              );
+              if (sigar) return Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: satir);
+              return ShaderMask(
+                shaderCallback: (r) => const LinearGradient(
+                  colors: [Colors.white, Colors.white, Colors.transparent],
+                  stops: [0, .9, 1],
+                ).createShader(r),
+                blendMode: BlendMode.dstIn,
+                child: kay,
+              );
+            }),
+          ),
+          if (tumu != null)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              decoration: BoxDecoration(border: Border(left: BorderSide(color: Kabuk.line))),
+              child: _Sekme(ad: 'Tümü', ikon: Icons.more_vert_rounded, renk: Kabuk.soft, secili: false, bas: tumu!, genislik: 66),
+            ),
+        ]),
+      ),
+    ]);
+  }
+}
+
+class _Sekme extends StatelessWidget {
+  const _Sekme({required this.ad, required this.ikon, required this.renk, required this.secili, required this.bas, required this.genislik});
+  final String ad;
+  final IconData ikon;
+  final Color renk;
+  final bool secili;
+  final VoidCallback bas;
+  final double genislik;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Material(
+          color: secili ? Kabuk.sunken : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: bas,
+            child: SizedBox(
+              width: genislik,
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                AnimatedScale(
+                  scale: secili ? 1.08 : 1,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(ikon, size: 22, color: renk),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  ad,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, height: 1.1, fontWeight: FontWeight.w700, color: secili ? Kabuk.brand : Kabuk.soft),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
 }
 
 class _KisayolDugmesi extends StatelessWidget {
