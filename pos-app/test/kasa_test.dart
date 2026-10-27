@@ -535,6 +535,31 @@ void main() {
       await _bitir(t, d);
     });
 
+    testWidgets('ekran klavyesi: açılışta seçili değil, dokununca açılır, yazar', (t) async {
+      final (d, s) = await ac(t);
+      await t.ensureVisible(find.byKey(const ValueKey('kalem-not-902')));
+      await t.tap(find.byKey(const ValueKey('kalem-not-902')));
+      await t.pumpAndSettle();
+      final alan = find.descendant(of: find.byKey(const ValueKey('kalem-notu-alan')), matching: find.byType(EditableText));
+      expect(t.widget<EditableText>(alan).focusNode.hasFocus, isFalse);
+      expect(find.text('Ekran klavyesi'), findsNothing);
+      await t.tap(alan);
+      await t.pumpAndSettle();
+      expect(find.text('Ekran klavyesi'), findsOneWidget);
+      for (final h in ['l', 'a', 'k', 't', 'o', 'z']) {
+        await t.tap(find.text(h).last);
+        await t.pump();
+      }
+      await t.tap(find.text('Tamam'));
+      await t.pumpAndSettle();
+      expect(find.text('Ekran klavyesi'), findsNothing);
+      await t.tap(find.text('Kaydet'));
+      await _bekle(t);
+      final r = s.istekler.lastWhere((r) => r.$2.endsWith('/note'));
+      expect(r.$3, {'note': 'laktoz', 'expected_version': 7});
+      await _bitir(t, d);
+    });
+
     testWidgets('Notu sil → note: null', (t) async {
       final (d, s) = await ac(t);
       await t.ensureVisible(find.byKey(const ValueKey('kalem-not-901')));

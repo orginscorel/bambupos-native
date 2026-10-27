@@ -6,6 +6,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
 import 'kasa_pencereleri.dart' show paraCoz;
+import 'ekran_klavyesi.dart';
 import 'ortak.dart';
 
 /// Adisyon ekranının pencereleri (web Detail.vue §4). Belge:
@@ -972,10 +973,12 @@ Future<({String? not})?> kalemNotuPenceresi(BuildContext context, Kalem k, int b
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, yenile) {
         final metin = c.text.trim();
-        // Ekran klavyesi: Ürün ara kutusuyla aynı — sistemin klavyesi (alana
-        // dokununca / açılışta odakla açılır). Pencere klavye kadar yukarı
-        // kayar (Dialog viewInsets); içerik kayar, Kaydet hep görünür.
-        return AlertDialog(
+        // Açılışta alan seçili GELMEZ; alana dokununca ekran klavyesi açılır
+        // (web ile aynı) ve pencere ekranın üstüne çıkar, Kaydet görünür kalır.
+        return ValueListenableBuilder<bool>(
+          valueListenable: EkranKlavyesi.acik,
+          builder: (ctx, klavye, _) => AlertDialog(
+          alignment: klavye ? Alignment.topCenter : null,
           scrollable: true,
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           title: Text(duzenle ? 'Notu düzenle' : 'Not ekle'),
@@ -1000,16 +1003,14 @@ Future<({String? not})?> kalemNotuPenceresi(BuildContext context, Kalem k, int b
                 ),
               ],
               const SizedBox(height: 12),
-              TextField(
+              KlavyeliAlan(
                 key: const ValueKey('kalem-notu-alan'),
                 controller: c,
-                autofocus: true,
                 minLines: 5,
                 maxLines: 5,
                 maxLength: 200,
-                keyboardType: TextInputType.multiline,
+                multiline: true,
                 textCapitalization: TextCapitalization.sentences,
-                scrollPadding: const EdgeInsets.only(bottom: 120),
                 style: const TextStyle(fontSize: 17, height: 1.4),
                 decoration: const InputDecoration(
                   hintText: 'İsteğe bağlı — ör. az pişmiş, mantar eklemeyin, laktozsuz süt',
@@ -1034,6 +1035,7 @@ Future<({String? not})?> kalemNotuPenceresi(BuildContext context, Kalem k, int b
               child: const Text('Kaydet'),
             ),
           ],
+        ),
         );
       },
     ),

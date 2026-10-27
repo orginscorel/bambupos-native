@@ -16,6 +16,7 @@ import 'adisyon_pencereleri.dart';
 import 'cerceve.dart';
 import 'kabuk.dart';
 import 'nedenler.dart';
+import 'ekran_klavyesi.dart';
 import 'ortak.dart';
 import 'urun_secimi.dart';
 
@@ -883,7 +884,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           constraints: const BoxConstraints(maxWidth: 560),
           child: SizedBox(
             height: 38,
-            child: TextField(
+            child: KlavyeliAlan(
               controller: _aramaDenetim,
               onChanged: (v) => setState(() => _arama = v.trim()),
               style: const TextStyle(fontSize: 14),

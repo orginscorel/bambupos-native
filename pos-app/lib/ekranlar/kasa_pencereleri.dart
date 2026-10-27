@@ -10,6 +10,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
 import 'nedenler.dart';
+import 'ekran_klavyesi.dart';
 import 'ortak.dart';
 
 /// Kasa ekranının pencereleri (web Cashier.vue §5). Şartname:
@@ -799,10 +800,12 @@ class _UrunSecPenceresiState extends State<_UrunSecPenceresi> {
   String _arama = '';
   Timer? _gecikme;
   late List<Urun> _liste = _suz();
+  final _aramaDenetim = TextEditingController();
 
   @override
   void dispose() {
     _gecikme?.cancel();
+    _aramaDenetim.dispose();
     super.dispose();
   }
 
@@ -879,8 +882,9 @@ class _UrunSecPenceresiState extends State<_UrunSecPenceresi> {
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: TextField(
+        child: KlavyeliAlan(
           key: const ValueKey('urun-ara'),
+          controller: _aramaDenetim,
           autofocus: !dar,
           textInputAction: TextInputAction.search,
           decoration: const InputDecoration(hintText: 'Ürün ara…', prefixIcon: Icon(Icons.search_rounded, size: 18), isDense: true),
