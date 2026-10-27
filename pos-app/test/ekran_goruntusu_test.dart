@@ -14,6 +14,7 @@ import 'package:bambumpos_pos/ekranlar/aktivasyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kabuk.dart';
 import 'package:bambumpos_pos/ekranlar/ortak.dart';
 import 'package:bambumpos_pos/ekranlar/pin_ekrani.dart';
+import 'package:bambumpos_pos/ekranlar/raporlar_ekrani.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -50,6 +51,11 @@ class _SahteSunucu implements HttpClientAdapter {
           ],
         }),
       _ when yol.startsWith('/api/v1/orders/') => _veri('adisyon'),
+      // Raporlar: gerçek uç şekilleriyle (ReportRegistry → {report, data}).
+      _ when yol.startsWith('/api/v1/reports/') => () {
+          final r = (jsonDecode(_veri('raporlar')) as Map)[yol.substring('/api/v1/reports/'.length)];
+          return r == null ? '{"data":{}}' : jsonEncode(r);
+        }(),
       _ => '{}',
     };
     return ResponseBody.fromString(govde, 200, headers: {
@@ -150,6 +156,22 @@ void main() {
       await t.pump(const Duration(seconds: 2));
       await _bekle(t);
       await _yaz(t, '9-bildirim-$ad');
+      await t.pumpWidget(const SizedBox());
+    }, skip: _dizin == null);
+  }
+  // Raporlar: açılışta (Özet + Bugün) bütün odaklar; uzun boy = sayfanın tamamı.
+  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('telefon-tam', const Size(412, 2300)), ('tablet-tam', const Size(1280, 1300))]) {
+    testWidgets('raporlar $ad', (t) async {
+      await _boyut(t, boyut);
+      final d = await _durum();
+      await t.pumpWidget(_uygulama(d, const Scaffold(body: SafeArea(child: RaporlarEkrani()))));
+      await _bekle(t);
+      await t.pump(const Duration(seconds: 1));
+      await _yaz(t, '10-raporlar-$ad');
+      await t.tap(find.text('Ciro').first);
+      await _bekle(t);
+      await t.pump(const Duration(seconds: 1));
+      await _yaz(t, '10-raporlar-ciro-$ad');
       await t.pumpWidget(const SizedBox());
     }, skip: _dizin == null);
   }
