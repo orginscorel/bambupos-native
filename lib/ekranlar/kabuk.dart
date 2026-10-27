@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/cupertino.dart';
@@ -157,104 +158,159 @@ class PaAltCubuk extends StatelessWidget {
     (Icons.person_rounded, 'Profil'),
   ];
 
+  /// Çubuğun içerik yüksekliği (güvenli alan HARİÇ).
+  static const yukseklik = 66.0;
+
   @override
   Widget build(BuildContext context) {
     final r = context.pa;
+    // ALTA YAPIŞIK (2026-10-27): eskiden yüzen kapsüldü ve güvenli alanın ÜSTÜNE
+    // ayrıca pay bırakılıyordu → altta boşluk kalıyordu. Artık çubuk ekranın
+    // altına oturur; iPhone ana ekran çizgisi payı çubuğun İÇİNDEDİR.
     final alt = MediaQuery.paddingOf(context).bottom;
+    final ic = alt > 0 ? alt : 6.0;
     // Görsel sıra: 0,1,[qr],2,3 → sekme indeksinden yuva indeksine.
     final yuva = secili < 2 ? secili : secili + 1;
-    const yukseklik = 72.0;
-    const yaricap = BorderRadius.all(Radius.circular(24));
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 0, 12, (alt > 0 ? alt : 10) + 4),
-      child: Center(
-        heightFactor: 1,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: SizedBox(
-            height: yukseklik,
-            // DÜZELTME (2026-10-27): seçili gösterge (AnimatedPositioned) eskiden
-            // LayoutBuilder'ın İÇİNDEYDİ → Stack konumu yok sayıyordu, gösterge tüm
-            // çubuğu lavanta-gri kaplıyordu. Artık LayoutBuilder dışta, Stack içte.
-            child: LayoutBuilder(builder: (_, k) {
-              final w = (k.maxWidth - 12) / 5;
-              final hapW = (w - 14).clamp(40.0, 64.0);
-              return Stack(clipBehavior: Clip.none, children: [
-                // Gölge (cam katmanından ayrı: ClipRRect gölgeyi keserdi)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: yaricap,
-                      boxShadow: r.koyu
-                          ? const [BoxShadow(color: Color(0xCC000000), blurRadius: 30, offset: Offset(0, 14), spreadRadius: -12)]
-                          : const [
-                              BoxShadow(color: Color(0x401C1863), blurRadius: 30, offset: Offset(0, 14), spreadRadius: -10),
-                              BoxShadow(color: Color(0x140F172A), blurRadius: 6, offset: Offset(0, 2)),
-                            ],
-                    ),
-                  ),
-                ),
-                // Cam zemin: arkadaki içerik bulanıklaşır, yazılar net kalır
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: yaricap,
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: r.kart.withValues(alpha: r.koyu ? .88 : .92),
-                          borderRadius: yaricap,
-                          border: Border.all(color: r.koyu ? const Color(0x33FFFFFF) : r.kenar),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Seçili sekme vurgusu — simgenin arkasında kayar
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 420),
-                  curve: Curves.easeOutBack,
-                  left: 6 + w * yuva + (w - hapW) / 2,
-                  top: 9,
-                  width: hapW,
-                  height: 32,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [
-                        Marka.morAcik.withValues(alpha: r.koyu ? .38 : .16),
-                        Marka.mavi.withValues(alpha: r.koyu ? .30 : .12),
-                      ]),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Row(children: [
-                    for (var i = 0; i < 5; i++)
-                      Expanded(
-                        child: i == 2
-                            ? _QrDugme(onTap: onQr, yazi: _ogeler[2].$2)
-                            : _Oge(
-                                ikon: _ogeler[i].$1!,
-                                yazi: _ogeler[i].$2,
-                                aktif: i == yuva,
-                                ev: i == 0,
-                                onTap: () {
-                                  titret();
-                                  onSec(i < 2 ? i : i - 1);
-                                },
-                              ),
-                      ),
-                  ]),
-                ),
-              ]);
-            }),
+    return SizedBox(
+      height: yukseklik + ic,
+      child: LayoutBuilder(builder: (_, k) {
+        final tamGenislik = k.maxWidth;
+        final icGenislik = math.min(tamGenislik, 520.0);
+        final sol = (tamGenislik - icGenislik) / 2;
+        final w = icGenislik / 5;
+        final hapW = (w - 16).clamp(40.0, 62.0);
+        final cx = tamGenislik / 2;
+        final kesim = _CubukKesim(cx: cx);
+        return Stack(clipBehavior: Clip.none, children: [
+          // Gölge — QR çentiğini de izler
+          Positioned.fill(child: CustomPaint(painter: _CubukGolge(kesim: kesim, koyu: r.koyu))),
+          // Cam zemin (çentikli şekil)
+          Positioned.fill(
+            child: ClipPath(
+              clipper: kesim,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                child: ColoredBox(color: r.kart.withValues(alpha: r.koyu ? .9 : .94)),
+              ),
+            ),
           ),
-        ),
-      ),
+          // Üst kenar çizgisi
+          Positioned.fill(child: CustomPaint(painter: _CubukKenar(kesim: kesim, renk: r.koyu ? const Color(0x33FFFFFF) : r.kenar))),
+          // Seçili sekme vurgusu — simgenin arkasında kayar
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeOutBack,
+            left: sol + w * yuva + (w - hapW) / 2,
+            top: 8,
+            width: hapW,
+            height: 32,
+            child: AnimatedOpacity(
+              opacity: yuva == 2 ? 0 : 1,
+              duration: const Duration(milliseconds: 200),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [
+                    Marka.morAcik.withValues(alpha: r.koyu ? .40 : .18),
+                    Marka.mavi.withValues(alpha: r.koyu ? .32 : .13),
+                  ]),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          // Sekmeler
+          Positioned(
+            left: sol,
+            width: icGenislik,
+            top: 0,
+            height: yukseklik,
+            child: Row(children: [
+              for (var i = 0; i < 5; i++)
+                Expanded(
+                  child: i == 2
+                      ? _QrYazi(yazi: _ogeler[2].$2, onTap: onQr)
+                      : _Oge(
+                          ikon: _ogeler[i].$1!,
+                          yazi: _ogeler[i].$2,
+                          aktif: i == yuva,
+                          ev: i == 0,
+                          onTap: () {
+                            titret();
+                            onSec(i < 2 ? i : i - 1);
+                          },
+                        ),
+                ),
+            ]),
+          ),
+          // Ortadaki QR düğmesi — çentiğe oturur, çubuktan yarı taşar
+          Positioned(
+            left: cx - _CubukKesim.dugme / 2,
+            top: _CubukKesim.merkezY - _CubukKesim.dugme / 2,
+            child: _QrDugme(onTap: onQr),
+          ),
+        ]);
+      }),
     );
   }
+}
+
+/// Çubuk şekli: üst köşeler yuvarlak, ortada QR düğmesi için yumuşak omuzlu çentik.
+class _CubukKesim extends CustomClipper<Path> {
+  _CubukKesim({required this.cx});
+  final double cx;
+
+  static const dugme = 62.0; // QR düğmesi çapı
+  static const merkezY = 2.0; // düğme merkezi (çubuk üst kenarına göre)
+  static const bosluk = 6.0; // düğme ile çentik arası
+
+  Path yol(Size s) {
+    final govde = Path()
+      ..addRRect(RRect.fromRectAndCorners(Offset.zero & s, topLeft: const Radius.circular(24), topRight: const Radius.circular(24)));
+    final centik = const CircularNotchedRectangle().getOuterPath(
+      Offset.zero & s,
+      Rect.fromCircle(center: Offset(cx, merkezY), radius: dugme / 2 + bosluk),
+    );
+    return Path.combine(PathOperation.intersect, govde, centik);
+  }
+
+  @override
+  Path getClip(Size size) => yol(size);
+
+  @override
+  bool shouldReclip(_CubukKesim old) => old.cx != cx;
+}
+
+class _CubukGolge extends CustomPainter {
+  _CubukGolge({required this.kesim, required this.koyu});
+  final _CubukKesim kesim;
+  final bool koyu;
+  @override
+  void paint(Canvas c, Size s) {
+    final p = kesim.yol(s);
+    c.drawShadow(p.shift(const Offset(0, -2)), koyu ? Colors.black : const Color(0xFF1C1863), koyu ? 14 : 10, false);
+  }
+
+  @override
+  bool shouldRepaint(_CubukGolge o) => o.koyu != koyu || o.kesim.cx != kesim.cx;
+}
+
+class _CubukKenar extends CustomPainter {
+  _CubukKenar({required this.kesim, required this.renk});
+  final _CubukKesim kesim;
+  final Color renk;
+  @override
+  void paint(Canvas c, Size s) {
+    c.drawPath(
+      kesim.yol(s),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = renk,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CubukKenar o) => o.renk != renk || o.kesim.cx != kesim.cx;
 }
 
 class _Oge extends StatelessWidget {
@@ -275,40 +331,60 @@ class _Oge extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 13),
-          child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
-            AnimatedScale(
-              scale: aktif ? 1.08 : 1,
+        child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+          const SizedBox(height: 12),
+          AnimatedSlide(
+            offset: Offset(0, aktif ? -.06 : 0),
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutBack,
+            child: AnimatedScale(
+              scale: aktif ? 1.1 : 1,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOutBack,
               child: ev
                   ? IconTheme(data: IconThemeData(color: renk), child: PaMark(boyut: 24, tek: !aktif))
                   : Icon(ikon, color: renk, size: 24),
             ),
-            const SizedBox(height: 9),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 200),
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 11,
-                height: 1.1,
-                fontWeight: aktif ? FontWeight.w700 : FontWeight.w500,
-                color: renk,
-              ),
-              child: Text(yazi, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),
-            ),
-          ]),
-        ),
+          ),
+          const SizedBox(height: 10),
+          AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
+            style: TextStyle(fontFamily: 'Poppins', fontSize: 11, height: 1.1, fontWeight: aktif ? FontWeight.w700 : FontWeight.w500, color: renk),
+            child: Text(yazi, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),
+          ),
+        ]),
       ),
     );
   }
 }
 
-class _QrDugme extends StatefulWidget {
-  const _QrDugme({required this.onTap, required this.yazi});
-  final VoidCallback onTap;
+/// QR yuvası: düğme ayrı katmanda; burada yalnız yazı + geniş dokunma alanı.
+class _QrYazi extends StatelessWidget {
+  const _QrYazi({required this.yazi, required this.onTap});
   final String yazi;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: yazi,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+            const SizedBox(height: 46),
+            Text(yazi,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: TextStyle(fontFamily: 'Poppins', fontSize: 11, height: 1.1, fontWeight: FontWeight.w700, color: context.pa.metin)),
+          ]),
+        ),
+      );
+}
+
+class _QrDugme extends StatefulWidget {
+  const _QrDugme({required this.onTap});
+  final VoidCallback onTap;
   @override
   State<_QrDugme> createState() => _QrDugmeState();
 }
@@ -323,64 +399,42 @@ class _QrDugmeState extends State<_QrDugme> with SingleTickerProviderStateMixin 
 
   @override
   Widget build(BuildContext context) {
-    final r = context.pa;
-    return Semantics(
-      button: true,
-      label: widget.yazi,
-      // Düğme çubuktan yukarı taşar; yazı diğer sekmelerin yazılarıyla aynı hizada (top 46).
-      child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
-        Positioned(
-          top: -24,
-          child: Basilir(
-            onTap: widget.onTap,
-            olcek: .88,
-            titresim: false,
-            child: SizedBox(
-              width: 62,
-              height: 62,
-              child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
-                AnimatedBuilder(
-                  animation: _c,
-                  builder: (_, _) {
-                    final t = Curves.easeOut.transform(_c.value);
-                    return Opacity(
-                      opacity: (1 - t) * .6,
-                      child: Container(
-                        width: 58 + 18 * t,
-                        height: 58 + 18 * t,
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20 + 5 * t), border: Border.all(color: Marka.mor, width: 2)),
-                      ),
-                    );
-                  },
+    const d = _CubukKesim.dugme;
+    return Basilir(
+      onTap: widget.onTap,
+      olcek: .88,
+      titresim: false,
+      child: SizedBox(
+        width: d,
+        height: d,
+        child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
+          // Nefes alan halka
+          AnimatedBuilder(
+            animation: _c,
+            builder: (_, _) {
+              final t = Curves.easeOut.transform(_c.value);
+              return Opacity(
+                opacity: (1 - t) * .55,
+                child: Container(
+                  width: d + 16 * t,
+                  height: d + 16 * t,
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Marka.mor, width: 2)),
                 ),
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    gradient: Marka.grad,
-                    borderRadius: BorderRadius.circular(20),
-                    // Cam zeminden ayrışsın: ince beyaz/koyu çerçeve
-                    border: Border.all(color: r.koyu ? r.zemin : Colors.white, width: 3),
-                    boxShadow: const [BoxShadow(color: Color(0xCC5443D2), blurRadius: 22, offset: Offset(0, 10), spreadRadius: -8)],
-                  ),
-                  child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 27),
-                ),
-              ]),
-            ),
+              );
+            },
           ),
-        ),
-        Positioned(
-          top: 46,
-          left: 0,
-          right: 0,
-          child: Text(widget.yazi,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.fade,
-              style: TextStyle(fontFamily: 'Poppins', fontSize: 11, height: 1.1, fontWeight: FontWeight.w700, color: r.metin)),
-        ),
-      ]),
+          Container(
+            width: d,
+            height: d,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: Marka.grad,
+              boxShadow: [BoxShadow(color: Color(0xCC5443D2), blurRadius: 20, offset: Offset(0, 10), spreadRadius: -6)],
+            ),
+            child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 28),
+          ),
+        ]),
+      ),
     );
   }
 }
