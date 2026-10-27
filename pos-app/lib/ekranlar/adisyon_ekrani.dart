@@ -11,6 +11,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/katalog_deposu.dart';
 import '../core/modeller.dart';
+import 'adet_kartlari.dart';
 import 'adisyon_pencereleri.dart';
 import 'cerceve.dart';
 import 'kabuk.dart';
@@ -123,8 +124,6 @@ IconData? _kategoriSimgesi(String? ad) => switch (ad) {
       _ => null,
     };
 
-typedef _Parca = ({String? saat, String? kisi, int adet, bool devir});
-
 class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserver {
   Adisyon? _a;
   bool _yukleniyor = true;
@@ -144,7 +143,8 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
   /// §5.6 seçim modeli.
   final Set<int> _secili = {};
-  final Map<int, Map<int, int>> _parca = {};
+  /// Kısmi seçim: satır → seçili adet sıraları (yoksa ve _secili'deyse tamamı).
+  final Map<int, Set<int>> _birim = {};
   int? _acikDokum;
 
   /// §2.6 hızlı ekleme kuyruğu + kart rozetleri.
@@ -241,7 +241,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
       // Artık olmayan (ya da taşınamaz) kalemler seçimden düşer.
       final gecerli = {for (final k in a.kalemler) if (_tasinabilir(k)) k.id};
       _secili.removeWhere((x) => !gecerli.contains(x));
-      _parca.removeWhere((x, _) => !gecerli.contains(x));
+      _birim.removeWhere((x, _) => !gecerli.contains(x));
     });
     // Arka plandayken boş adisyon atıldıysa ekranda kalmanın anlamı yok.
     if (_atildi && !a.acik && a.kalemler.isEmpty) _panoyaDon();
@@ -456,30 +456,19 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
   /* ═════════════ Seçim (§5.6) ═════════════ */
 
-  List<_Parca> _parcalar(Kalem k) {
-    final d = (k.ham['dokum'] as List? ?? const []).whereType<Map>().toList();
-    if (d.isEmpty) return [(saat: null, kisi: null, adet: k.adet, devir: true)];
-    return [
-      for (final p in d)
-        (saat: p['saat']?.toString(), kisi: p['kisi']?.toString(), adet: tamSayi(p['adet'], 1), devir: p['devir'] == true),
-    ];
-  }
-
   int _topluAdedi(Kalem k) {
-    final p = _parca[k.id];
-    if (p == null) return _secili.contains(k.id) ? k.adet : 0;
-    return p.values.fold<int>(0, (t, x) => t + x).clamp(0, k.adet);
+    final b = _birim[k.id];
+    if (b == null) return _secili.contains(k.id) ? k.adet : 0;
+    return b.length.clamp(0, k.adet);
   }
 
-  int _parcaSecili(Kalem k, int i, List<_Parca> ps) {
-    final p = _parca[k.id];
-    if (p == null) return _secili.contains(k.id) ? ps[i].adet : 0;
-    return p[i] ?? 0;
-  }
+  /// Seçili adet sıraları (adet kartlarındaki kutular).
+  Set<int> _seciliBirimler(Kalem k) =>
+      _birim[k.id] ?? (_secili.contains(k.id) ? {for (var i = 0; i < k.adet; i++) i} : const <int>{});
 
   void _anaKutu(Kalem k) => setState(() {
         final tam = _secili.contains(k.id) && _topluAdedi(k) >= k.adet;
-        _parca.remove(k.id);
+        _birim.remove(k.id);
         if (tam) {
           _secili.remove(k.id);
         } else {
@@ -487,16 +476,19 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
         }
       });
 
-  void _parcaAyarla(Kalem k, int i, int adet) => setState(() {
-        final ps = _parcalar(k);
-        final kayit = _parca[k.id] ?? {for (var j = 0; j < ps.length; j++) j: _secili.contains(k.id) ? ps[j].adet : 0};
-        kayit[i] = adet.clamp(0, ps[i].adet);
-        final toplam = kayit.values.fold<int>(0, (t, x) => t + x);
-        if (toplam <= 0) {
-          _parca.remove(k.id);
+  /// Tek adedi seç / bırak: taşıma / ikram / iptalde adet = seçili kart sayısı.
+  void _birimDegistir(Kalem k, int i) => setState(() {
+        final s = {..._seciliBirimler(k)};
+        if (!s.remove(i)) s.add(i);
+        s.removeWhere((x) => x < 0 || x >= k.adet);
+        if (s.isEmpty) {
+          _birim.remove(k.id);
           _secili.remove(k.id);
+        } else if (s.length >= k.adet) {
+          _birim.remove(k.id);
+          _secili.add(k.id);
         } else {
-          _parca[k.id] = kayit;
+          _birim[k.id] = s;
           _secili.add(k.id);
         }
       });
@@ -504,10 +496,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   void _secimiTemizle([int? kalemId]) => setState(() {
         if (kalemId == null) {
           _secili.clear();
-          _parca.clear();
+          _birim.clear();
         } else {
           _secili.remove(kalemId);
-          _parca.remove(kalemId);
+          _birim.remove(kalemId);
         }
       });
 
@@ -1475,6 +1467,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 8), textStyle: const TextStyle(fontSize: 12)),
                 onPressed: () => setState(() {
+                  _birim.clear();
                   _secili
                     ..clear()
                     ..addAll(ks.where(_tasinabilir).map((k) => k.id));
@@ -1495,7 +1488,6 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     final kismi = _secili.contains(k.id) && topluAdet > 0 && topluAdet < k.adet;
     final bekleyen = _bekleyen(k);
     final acik = _acikDokum == k.id;
-    final parcalar = acik ? _parcalar(k) : const <_Parca>[];
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -1555,12 +1547,16 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
             Text('${para(k.birimFiyat)} / adet', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
           ]),
         ]),
+        // Adet kartları (web sipariş detayı / Kasa ile aynı): her adet ayrı
+        // kart — kutu · saat · ürün · siparişi giren · birim fiyat.
         if (acik)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Column(children: [
-              for (var i = 0; i < parcalar.length; i++) _parcaKarti(k, i, parcalar, secilebilir),
-            ]),
+          AdetKartlari(
+            key: ValueKey('adisyon-adetler-${k.id}'),
+            kalem: k,
+            secili: secilebilir ? _seciliBirimler(k) : const {},
+            degistir: secilebilir ? (i) => _birimDegistir(k, i) : null,
+            anahtar: 'adisyon-birim',
+            solBosluk: secilebilir ? 34 : 0,
           ),
         Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -1623,60 +1619,6 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           child: SizedBox(width: 32, height: 32, child: Icon(ikon, size: 16, color: bas == null ? Renk.cizgiKoyu : Renk.yazi)),
         ),
       );
-
-  Widget _parcaKarti(Kalem k, int i, List<_Parca> ps, bool secilebilir) {
-    final p = ps[i];
-    final secili = _parcaSecili(k, i, ps);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: secili > 0 ? Renk.markaAcik.carp(.4) : Renk.yuzey,
-        borderRadius: koseYuvarlak,
-        border: Border.all(color: secili > 0 ? Renk.marka : Renk.cizgi),
-      ),
-      child: Row(children: [
-        if (secilebilir) ...[
-          Tooltip(
-            message: 'Bu partiyi seç (${p.adet} adet)',
-            child: SizedBox(
-              width: 24,
-              child: Checkbox(
-                value: secili > 0,
-                visualDensity: VisualDensity.compact,
-                onChanged: (_) => _parcaAyarla(k, i, secili > 0 ? 0 : p.adet),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-        ],
-        Icon(Icons.schedule_rounded, size: 16, color: Renk.ikinci),
-        const SizedBox(width: 4),
-        Text(p.saat == null ? '—' : saatMetni(p.saat), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${p.adet > 1 ? '${p.adet}× ' : ''}${k.ad}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-            Row(children: [
-              Icon(Icons.person_outline_rounded, size: 12, color: Renk.soluk),
-              const SizedBox(width: 3),
-              Flexible(
-                child: Text(p.kisi ?? (p.devir ? 'devir / aktarım' : '—'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
-              ),
-            ]),
-          ]),
-        ),
-        if (p.adet > 1 && secili > 0 && secilebilir)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            _kucukDugme(Icons.remove_rounded, () => _parcaAyarla(k, i, secili - 1), 'Seçili adedi azalt'),
-            SizedBox(width: 24, child: Text('$secili', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
-            _kucukDugme(Icons.add_rounded, secili < p.adet ? () => _parcaAyarla(k, i, secili + 1) : null, 'Seçili adedi artır'),
-          ]),
-        const SizedBox(width: 6),
-        Text(para(p.adet * k.birimFiyat), style: const TextStyle(fontWeight: FontWeight.w600)),
-      ]),
-    );
-  }
 
   Widget _tutarDokumu(Adisyon a) {
     final indirim = tamSayi(a.ham['discount_minor']);

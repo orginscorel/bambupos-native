@@ -116,8 +116,10 @@ class _UsbListesiState extends State<_UsbListesi> {
         for (final c in l) ...[
           _UsbSatiri(
             cihaz: c,
-            tanimli: a.usbTanimli.contains(c.anahtar),
+            tanimli: a.usbTanimliMi(c),
+            gizli: !a.usbTanimliMi(c) && a.usbGizliMi(c),
             mesgul: _mesgul.contains(c.anahtar),
+            goster: () => _is(c.anahtar, () => a.usbGizle(c, gizli: false)),
             izin: () => _is(c.anahtar, () async {
               final ok = await a.usbIzinIste(c);
               if (!ok && context.mounted) context.bildir2('İzin verilmedi', 'USB cihazına erişmek için izin gerekir.', hata: true);
@@ -170,14 +172,20 @@ class _UsbSatiri extends StatelessWidget {
   const _UsbSatiri({
     required this.cihaz,
     required this.tanimli,
+    required this.gizli,
     required this.mesgul,
+    required this.goster,
     required this.izin,
     required this.test,
     required this.ekle,
   });
   final UsbCihaz cihaz;
   final bool tanimli;
+
+  /// "Bunu gösterme" denmiş: soluk görünür, "Gizlendi" + "Göster".
+  final bool gizli;
   final bool mesgul;
+  final VoidCallback goster;
   final VoidCallback izin;
   final VoidCallback test;
   final void Function(String tur) ekle;
@@ -198,7 +206,7 @@ class _UsbSatiri extends StatelessWidget {
     ].join(' · ');
     final dugmeStili = OutlinedButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 12));
 
-    return Container(
+    final kutu = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Renk.yuzey, border: Border.all(color: Renk.cizgi), borderRadius: BorderRadius.circular(8)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -225,10 +233,30 @@ class _UsbSatiri extends StatelessWidget {
               ),
             ]),
           ),
+          if (gizli)
+            Container(
+              key: ValueKey('usb-gizlendi-${c.anahtar}'),
+              margin: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: Renk.ic, border: Border.all(color: Renk.cizgi), borderRadius: BorderRadius.circular(8)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.visibility_off_outlined, size: 14, color: Renk.soluk),
+                const SizedBox(width: 4),
+                Text('Gizlendi', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.soluk)),
+              ]),
+            ),
           if (mesgul) const Padding(padding: EdgeInsets.all(6), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
         ]),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
+          if (gizli)
+            OutlinedButton.icon(
+              key: ValueKey('usb-goster-${c.anahtar}'),
+              style: dugmeStili,
+              onPressed: mesgul ? null : goster,
+              icon: const Icon(Icons.visibility_outlined, size: 16),
+              label: const Text('Göster'),
+            ),
           if (c.izinGerekli) OutlinedButton(style: dugmeStili, onPressed: mesgul ? null : izin, child: const Text('İzin ver')),
           if (c.tur != 'pos' && (c.yazdirilabilir || c.izinGerekli))
             OutlinedButton(style: dugmeStili, onPressed: mesgul ? null : test, child: const Text('Test yazdır')),
@@ -239,11 +267,14 @@ class _UsbSatiri extends StatelessWidget {
         ]),
       ]),
     );
+    // Gizlenen cihaz soluk: listede durur, şeritte çıkmaz.
+    return gizli ? Opacity(opacity: .6, child: kutu) : kutu;
   }
 }
 
 /// "Yeni USB yazıcı bulundu: … — Ekle" şeridi (güncelleme şeridiyle aynı
-/// görünüm). Kapatılan cihaz için bir daha çıkmaz.
+/// görünüm). Eklenen ya da "Bunu gösterme" denen cihaz bir daha çıkmaz
+/// (gizlenenler USB cihazlar panelinde ve İşletme Yönetimi'nde görünür).
 class UsbBulunduSeridi extends StatelessWidget {
   const UsbBulunduSeridi({super.key, required this.ajan});
   final YazdirmaAjani ajan;
@@ -276,14 +307,17 @@ class UsbBulunduSeridi extends StatelessWidget {
                 ),
               ),
               FilledButton(
+                key: const ValueKey('usb-serit-ekle'),
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 34)),
                 onPressed: () => usbEkle(context, ajan, c, tur: c.tur, sor: false),
                 child: const Text('Ekle'),
               ),
-              IconButton(
-                tooltip: 'Bir daha gösterme',
-                onPressed: () => ajan.usbGizle(c.anahtar),
-                icon: const Icon(Icons.close_rounded, size: 18),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                key: const ValueKey('usb-serit-gizle'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                onPressed: () => ajan.usbGizle(c),
+                child: const Text('Bunu gösterme'),
               ),
             ]),
           ),

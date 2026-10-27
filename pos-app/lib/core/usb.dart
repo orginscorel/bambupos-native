@@ -64,6 +64,11 @@ class UsbCihaz {
 
   String? get vidPid => vid == null || pid == null ? null : '$vid:$pid';
 
+  /// Kimlikler (1.2.22): anahtar + `vp:<vid>:<pid>`. Eklenen / gizlenen cihaz
+  /// bunlarla hatırlanır; anahtar metni değişse de (Windows kuyruğu ↔ ham
+  /// aygıt, yeniden takma) aynı cihaz yeniden önerilmez.
+  Set<String> get kimlikler => {anahtar, if (vidPid case final vp?) 'vp:$vp'};
+
   Map<String, dynamic> sunucuyaJson() => {
         'baglanti': 'usb',
         'anahtar': anahtar,

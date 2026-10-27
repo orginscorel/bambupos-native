@@ -232,7 +232,7 @@ SeritCihaz _usbOgesi(YazdirmaAjani a, VoidCallback ac) {
   SeritCihaz olustur() {
     final l = a.usbCihazlar;
     final izin = l.where((c) => c.izinGerekli).length;
-    final yeni = l.where((c) => c.tur != 'bilinmiyor' && !a.usbTanimli.contains(c.anahtar)).length;
+    final yeni = l.where((c) => c.tur != 'bilinmiyor' && !a.usbBilinen(c)).length;
     return SeritCihaz(
       ad: 'USB cihazlar',
       ikon: Icons.usb_rounded,

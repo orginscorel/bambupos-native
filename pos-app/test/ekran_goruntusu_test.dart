@@ -421,30 +421,38 @@ void main() {
   }
   // Kasa masaüstü (1.2.20): Windows kasa bilgisayarı; pencere ölçüsü görev
   // çubuğu ve başlık çubuğu düşülmüş. Üst / alt şerit yerine aynı yükseklikte boşluk.
-  for (final (ad, boyut) in [('1366x728', const Size(1366, 728)), ('1280x680', const Size(1280, 680)), ('1920x1040', const Size(1920, 1040))]) {
+  // 1.2.22: GERÇEK kabukta (üst çubuk + alt şerit dahil) masaüstü pencere
+  // ölçüleri (Windows görev çubuğu / başlık düşülmüş; macOS Retina mantıksal).
+  for (final (ad, boyut) in [
+    ('1093x614', const Size(1093, 614)), // 1366×768 ekran, Windows %125 ölçek
+    ('1280x680', const Size(1280, 680)),
+    ('1366x728', const Size(1366, 728)),
+    ('1440x860', const Size(1440, 860)),
+    ('1600x860', const Size(1600, 860)),
+    ('1680x1000', const Size(1680, 1000)),
+    ('1920x1040', const Size(1920, 1040)),
+    ('2000x1140', const Size(2000, 1140)),
+  ]) {
     for (final yontem in ['Nakit', 'Kredi kartı']) {
-      testWidgets('kasa masaüstü $ad $yontem', (t) async {
+      testWidgets('kasa masaüstü kabuk $ad $yontem', (t) async {
         debugDefaultTargetPlatformOverride = TargetPlatform.windows;
         await _boyut(t, boyut);
         final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
+        final cihaz = Map<String, dynamic>.from(ham['cihaz'] as Map)..['istasyon'] = 'kasa';
         final d = await _durum(oturumDegis: {
+          'cihaz': cihaz,
           'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'payments.refund', 'orders.discount', 'orders.update', 'orders.comp', 'orders.view'],
         }, ek: _kasaVerisi(cokKalem: true, ethernetPos: true));
         await t.runAsync(d.oturumuYenile);
-        await t.pumpWidget(_uygulama(
-            d,
-            const Scaffold(
-              appBar: PreferredSize(preferredSize: Size.fromHeight(56), child: ColoredBox(color: Color(0xFFE5EAF1))),
-              body: SafeArea(child: KasaEkrani()),
-              bottomNavigationBar: SizedBox(height: 49, child: ColoredBox(color: Color(0xFFE5EAF1))),
-            )));
+        await t.pumpWidget(_uygulama(d, const Kabuk()));
         await _bekle(t);
         await t.tap(find.text('Bahçe 2').first);
         await _bekle(t);
-        await t.tap(find.text(yontem).last, warnIfMissed: false);
+        final kisa = yontem == 'Nakit' ? 'nakit' : 'kart';
+        await _yaz(t, 'kasa-kabuk-$ad-0-secimsiz');
+        await t.tap(find.byKey(ValueKey(yontem == 'Nakit' ? 'kasa-yontem-cash' : 'kasa-yontem-credit_card')).first, warnIfMissed: false);
         await _bekle(t);
-        await _yaz(t, 'kasa-masaustu-$ad-${yontem == 'Nakit' ? 'nakit' : 'kart'}');
-        // 4× çay açılır, iki adet seçilir (adet kartları, sıkı düzen).
+        await _yaz(t, 'kasa-kabuk-$ad-$kisa');
         if (yontem == 'Nakit') {
           await t.tap(find.text('Çay').first);
           await _bekle(t);
@@ -452,7 +460,7 @@ void main() {
           await t.pump();
           await t.tap(find.byKey(const ValueKey('kasa-birim-901-2')));
           await _bekle(t);
-          await _yaz(t, 'kasa-masaustu-$ad-cay-iki');
+          await _yaz(t, 'kasa-kabuk-$ad-cay-iki');
         }
         await t.pumpWidget(const SizedBox());
         d.ajan?.dispose();
@@ -461,6 +469,39 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
       }, skip: _dizin == null);
     }
+  }
+
+  // Adisyon: çok adetli satıra dokununca adet kartları (web gibi), iki adet seçili.
+  for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon)]) {
+    testWidgets('adisyon adet kartları $ad', (t) async {
+      await _boyut(t, boyut);
+      final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
+      final d = await _durum(oturumDegis: {
+        'yetkiler': [...(ham['yetkiler'] as List), 'payments.take', 'orders.update'],
+      }, ek: _kasaVerisi());
+      await t.runAsync(d.oturumuYenile);
+      await t.pumpWidget(_uygulama(d, const AdisyonEkrani(adisyonId: 300)));
+      await _bekle(t);
+      final hedef = find.text('4× Çay', findRichText: true).first;
+      await t.ensureVisible(hedef);
+      await t.drag(hedef, const Offset(0, 120), warnIfMissed: false);
+      await _bekle(t);
+      await t.tap(hedef);
+      await _bekle(t);
+      final b0 = find.byKey(const ValueKey('adisyon-birim-901-0'));
+      if (b0.evaluate().isNotEmpty) {
+        await t.ensureVisible(b0);
+        await t.tap(b0);
+        await t.pump();
+        await t.tap(find.byKey(const ValueKey('adisyon-birim-901-2')));
+        await _bekle(t);
+      }
+      await _yaz(t, '4-adisyon-adetler-$ad');
+      await t.pumpWidget(const SizedBox());
+      d.ajan?.dispose();
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await t.pump(const Duration(seconds: 30));
+    }, skip: _dizin == null);
   }
 
   for (final (ad, boyut) in [('tablet', tablet), ('telefon', telefon), ('dikey', dikey)]) {

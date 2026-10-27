@@ -7,6 +7,7 @@ import 'package:bambumpos_pos/app/tema.dart';
 import 'package:bambumpos_pos/core/api.dart';
 import 'package:bambumpos_pos/core/durum.dart';
 import 'package:bambumpos_pos/core/modeller.dart';
+import 'package:bambumpos_pos/ekranlar/adisyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kasa_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/ortak.dart';
 import 'package:dio/dio.dart';
@@ -104,7 +105,8 @@ Map<String, (int, String)> _kasaYanitlari() {
   };
 }
 
-Future<(UygulamaDurumu, _Sunucu)> _kur(WidgetTester t, {required bool manuel, Map<String, (int, String)> ek = const {}, Size boyut = const Size(1280, 800)}) async {
+Future<(UygulamaDurumu, _Sunucu)> _kur(WidgetTester t,
+    {required bool manuel, Map<String, (int, String)> ek = const {}, Size boyut = const Size(1280, 800), Widget? ekran}) async {
   // Test yazı tipi (Ahem) her harfi kare çizer; dar kartlardaki taşma
   // uyarıları gerçek cihazda yoktur — bu testin konusu değil.
   final onceki = FlutterError.onError;
@@ -130,10 +132,11 @@ Future<(UygulamaDurumu, _Sunucu)> _kur(WidgetTester t, {required bool manuel, Ma
       locale: const Locale('tr', 'TR'),
       supportedLocales: const [Locale('tr', 'TR')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: const Scaffold(body: KasaEkrani()),
+      home: Scaffold(body: ekran ?? const KasaEkrani()),
     ),
   ));
   await _bekle(t);
+  if (ekran != null) return (d, sunucu);
   await t.tap(find.text('Bahçe 2').first);
   await _bekle(t);
   return (d, sunucu);
@@ -449,6 +452,29 @@ void main() {
       {'id': 902, 'qty': 1},
     ]);
     expect(g['amount_minor'], 9000);
+    await _bitir(t, d);
+  });
+
+  testWidgets('adisyon: çok adetli satır adet kartlarıyla açılır, seçim adet sayısıdır (± / 1-2-3 kutusu yok)', (t) async {
+    final (d, _) = await _kur(t, manuel: false, boyut: const Size(1280, 1800), ekran: const AdisyonEkrani(adisyonId: 300));
+    final satir = find.text('4× Çay', findRichText: true).first;
+    await t.ensureVisible(satir);
+    await t.tap(satir);
+    await t.pump();
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(ValueKey('adisyon-birim-901-$i')), findsOneWidget);
+    }
+    expect(find.text('Muhammet Ali Yeni'), findsNWidgets(2));
+    expect(find.byTooltip('Seçili adedi artır'), findsNothing);
+    await t.ensureVisible(find.byKey(const ValueKey('adisyon-birim-901-0')));
+    await t.tap(find.byKey(const ValueKey('adisyon-birim-901-0')));
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('adisyon-birim-901-3')));
+    await t.pump();
+    expect(find.textContaining('2 adet seçili'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('adisyon-birim-901-3')));
+    await t.pump();
+    expect(find.textContaining('1 adet seçili'), findsOneWidget);
     await _bitir(t, d);
   });
 }

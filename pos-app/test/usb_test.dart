@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:bambumpos_pos/core/ajan.dart';
+import 'package:bambumpos_pos/core/api.dart';
 import 'package:bambumpos_pos/core/pos_cihaz.dart';
 import 'package:bambumpos_pos/core/usb.dart';
 import 'package:bambumpos_pos/core/usb_android.dart';
 import 'package:bambumpos_pos/core/usb_macos.dart';
 import 'package:bambumpos_pos/core/usb_windows.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _SahteSoket implements Socket {
   bool kapandi = false;
@@ -15,6 +20,16 @@ class _SahteSoket implements Socket {
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
+
+class _BosSunucu implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async => ResponseBody.fromString('{}', 200);
+  @override
+  void close({bool force = false}) {}
+}
+
+UsbCihaz _cihaz(String anahtar, String tur, {String? vid, String? pid}) =>
+    UsbCihaz(anahtar: anahtar, tur: tur, ad: anahtar, platform: 'windows', vid: vid, pid: pid);
 
 void main() {
   group('USB sınıflandırma', () {
@@ -232,6 +247,49 @@ void main() {
       expect(deneme, 1);
       expect(o.durum('192.168.1.2', 59000), isFalse);
       expect(o.tazeMi('192.168.1.2', 59000), isTrue);
+    });
+  });
+
+  group('USB şeridi (1.2.22)', () {
+    late YazdirmaAjani a;
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      a = YazdirmaAjani(Api.bellekte(_BosSunucu()), 'test');
+    });
+
+    test('tanımlı kuyruğun aynı vid:pid ham aygıtı yeniden önerilmez', () {
+      a.usbCihazlar = [
+        _cihaz('win:EPSON TM-T20', 'yazici', vid: '04b8', pid: '0202'),
+        _cihaz('usb:04b8:0202:1', 'yazici', vid: '04b8', pid: '0202'),
+        _cihaz('usb:0b00:0084:1', 'pos', vid: '0b00', pid: '0084'),
+      ];
+      a.usbTanimli = {'win:EPSON TM-T20'};
+      expect(a.usbYeniCihaz?.anahtar, 'usb:0b00:0084:1');
+    });
+
+    test('sunucudaki usb_gizli ve yerel eklenen kimlik şeritte çıkmaz', () {
+      a.usbCihazlar = [_cihaz('usb:0b00:0084:1', 'pos', vid: '0b00', pid: '0084')];
+      a.usbGizliSunucu = {'usb:0b00:0084:1'};
+      expect(a.usbYeniCihaz, isNull);
+      a.usbGizliSunucu = {};
+      // Anahtar metni değişse de (ör. :1 → seri) vid:pid kimliği eşleşir.
+      a.usbYerelTanimli = {'vp:0b00:0084'};
+      a.usbCihazlar = [_cihaz('usb:0b00:0084:SN42', 'pos', vid: '0b00', pid: '0084')];
+      expect(a.usbYeniCihaz, isNull);
+    });
+
+    test('Bunu gösterme → gizli (sunucu yoksa da), Göster → geri gelir', () async {
+      final c = _cihaz('win:XP-80C', 'yazici');
+      a.usbCihazlar = [c];
+      expect(a.usbYeniCihaz, isNotNull);
+      await a.usbGizle(c);
+      expect(a.usbYeniCihaz, isNull);
+      expect(a.usbGizliMi(c), isTrue);
+      final p = await SharedPreferences.getInstance();
+      expect(p.getStringList('usb_gizlenen'), contains('win:XP-80C'));
+      await a.usbGizle(c, gizli: false);
+      expect(a.usbGizliMi(c), isFalse);
+      expect(a.usbYeniCihaz?.anahtar, 'win:XP-80C');
     });
   });
 }

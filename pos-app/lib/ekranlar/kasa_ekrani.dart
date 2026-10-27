@@ -11,6 +11,7 @@ import '../core/bicim.dart';
 import '../core/katalog_deposu.dart';
 import '../core/modeller.dart';
 import '../core/pos_cihaz.dart';
+import 'adet_kartlari.dart';
 import 'adisyon_pencereleri.dart';
 import 'kasa_pencereleri.dart';
 import 'ortak.dart';
@@ -701,21 +702,6 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     _secim.satirDegistir(k);
   }
 
-  /// Satırın adet adet dökümü: sunucunun `dokum` parçaları (saat · kişi ·
-  /// adet) tek tek adetlere açılır; döküm yoksa saat/kişi bilgisiz adetler.
-  static List<({String? saat, String? kisi, bool devir})> _birimDokumu(Kalem k) {
-    final d = (k.ham['dokum'] as List? ?? const []).whereType<Map>();
-    final l = <({String? saat, String? kisi, bool devir})>[
-      for (final p in d)
-        for (var j = 0; j < tamSayi(p['adet'], 1); j++) (saat: p['saat']?.toString(), kisi: p['kisi']?.toString(), devir: p['devir'] == true),
-    ];
-    if (l.length > k.adet) return l.sublist(0, k.adet);
-    while (l.length < k.adet) {
-      l.add((saat: null, kisi: null, devir: false));
-    }
-    return l;
-  }
-
   /// "Tutara yaz": elle değiştirilmiş tutarı seçime geri döndürür.
   void _seciminiYaz() => _secimDegisti();
 
@@ -1392,7 +1378,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ? _borcOdemeBolmesi(g)
           : RepaintBoundary(child: ListenableBuilder(listenable: _odemeTetik, builder: (_, _) => _odemeBolmesi(g)));
       if (genis) {
-        final sag = g >= 1536 ? 440.0 : 380.0;
+        // Masaüstü (1.2.22): sağ döküm genişliğin ~%40'ı (420–640 px);
+        // tablet eski sabit genişlikte.
+        final sag = _masaustu ? (g * .40).clamp(420.0, 640.0) : (g >= 1536 ? 440.0 : 380.0);
         govde = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: odeme),
           Container(width: 1, color: Renk.cizgi),
@@ -1983,7 +1971,45 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           bas: () => _fisYazdir('payment'),
         ),
     ];
-    final araclar = Container(
+    // Masaüstü (1.2.22): eşit genişlikte, aynı boyda düğmeler (simge üstte,
+    // kısa ad altta); dar panelde Fiş ⋮ menüsüne geçer, yazı kırpılmaz.
+    final masaustuArac = genis && _masaustu;
+    final araclar = masaustuArac
+        ? LayoutBuilder(builder: (c0, k) {
+            final fisMenude = k.maxWidth < 540 && araclarListesi.any((w) => w.key == const ValueKey('kasa-fis'));
+            final l = [
+              for (final w in araclarListesi)
+                if (!(fisMenude && w.key == const ValueKey('kasa-fis'))) w.dikey(sik ? 46 : 54),
+            ];
+            return Container(
+              key: const ValueKey('kasa-araclar'),
+              padding: EdgeInsets.fromLTRB(12, sik ? 6 : 8, 12, sik ? 6 : 8),
+              decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
+              child: Row(children: [
+                for (final (i, w) in l.indexed) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  Expanded(child: w),
+                ],
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 44,
+                  child: Builder(
+                    builder: (c) => _AracDugmesi(
+                      key: const ValueKey('kasa-diger'),
+                      yukseklik: sik ? 46 : 54,
+                      ikon: Icons.more_vert_rounded,
+                      ipucu: 'Diğer işlemler',
+                      renk: Renk.ikinci,
+                      zemin: Renk.ic,
+                      kenar: Renk.cizgi,
+                      bas: () => _digerMenu(c, indirimVar: indirimVar, servisVar: servisVar, fis: fisMenude),
+                    ),
+                  ),
+                ),
+              ]),
+            );
+          })
+        : Container(
       key: const ValueKey('kasa-araclar'),
       padding: EdgeInsets.fromLTRB(12, sik ? 5 : 8, 12, sik ? 5 : 8),
       decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
@@ -2159,7 +2185,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _digerMenu(BuildContext c, {required bool indirimVar, required bool servisVar}) async {
+  Future<void> _digerMenu(BuildContext c, {required bool indirimVar, required bool servisVar, bool fis = false}) async {
     final s = _secili!;
     final kutu = c.findRenderObject() as RenderBox;
     final p = kutu.localToGlobal(Offset.zero);
@@ -2174,6 +2200,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           position: RelativeRect.fromLTRB(p.dx - 240, p.dy + kutu.size.height, 16, 0),
           shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
           items: [
+            if (fis && s.odenen > 0) oge('fis', Icons.receipt_long_outlined, 'Ödeme fişi yazdır'),
             oge('yazici', Icons.print_outlined, 'Fiş yazıcısı · ${_yaziciAdi ?? 'seçilmedi'}'),
             oge('onBill', Icons.preview_outlined, 'Hesap fişini önizle'),
             if (s.odenen > 0) oge('onPay', Icons.preview_outlined, 'Ödeme fişini önizle'),
@@ -2184,6 +2211,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ],
         ));
     switch (secim) {
+      case 'fis':
+        _fisYazdir('payment');
       case 'yazici':
         _yaziciSec();
       case 'onBill':
@@ -2495,107 +2524,14 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// Çok adetli satır açılınca: her adet ayrı kart — kutu · saat · ürün ·
   /// siparişi giren · birim fiyat (web sipariş detayındaki parça dökümü).
   /// Ödenmiş adetler "Ödendi" görünür, seçilemez.
-  Widget _birimKartlari(Kalem k) {
-    final sik = _sikSag;
-    final dokum = _birimDokumu(k);
-    final ilk = k.adet - k.odenmemisAdet;
-    final secili = _secim.birimler(k.id);
-    final dokumVar = (k.ham['dokum'] as List? ?? const []).isNotEmpty;
-    Widget kart(int i) {
-      final b = dokum[i];
-      final odendi = i < ilk;
-      final sec = !odendi && secili.contains(i);
-      final kisi = b.kisi ?? (dokumVar && b.devir ? 'devir / aktarım' : '—');
-      return Padding(
-        padding: EdgeInsets.only(top: sik ? 4 : 6),
-        child: Material(
-          color: sec ? Renk.markaAcik.carp(.6) : (odendi ? Renk.ic : Renk.yuzey),
-          shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: sec ? Renk.marka : Renk.cizgi)),
-          child: InkWell(
-            key: ValueKey('kasa-birim-${k.id}-$i'),
-            customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
-            onTap: odendi
-                ? null
-                : () {
-                    HapticFeedback.selectionClick();
-                    _secim.birimDegistir(k, i);
-                  },
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(4, sik ? 3 : 6, 12, sik ? 3 : 6),
-              child: Row(children: [
-                SizedBox(
-                  width: 32,
-                  child: odendi
-                      ? Tooltip(message: 'Ödendi', child: Icon(Icons.check_circle_rounded, size: 20, color: Renk.basari))
-                      : Center(
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: sec ? Renk.marka : Renk.yuzey,
-                              borderRadius: BorderRadius.circular(5),
-                              border: Border.all(color: sec ? Renk.marka : Renk.cizgiKoyu, width: 1.5),
-                            ),
-                            child: sec ? Icon(Icons.check_rounded, size: 14, color: Renk.durumUstu) : null,
-                          ),
-                        ),
-                ),
-                const SizedBox(width: 4),
-                Icon(Icons.schedule_rounded, size: 15, color: Renk.ikinci),
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: 44,
-                  child: Text(b.saat == null ? '—' : saatMetni(b.saat),
-                      style: TextStyle(fontSize: sik ? 13.5 : 14.5, fontWeight: FontWeight.w800, color: odendi ? Renk.soluk : Renk.yazi, fontFeatures: const [FontFeature.tabularFigures()])),
-                ),
-                Container(width: 1, height: sik ? 22 : 32, margin: EdgeInsets.symmetric(horizontal: sik ? 8 : 10), color: Renk.cizgi),
-                Expanded(
-                  child: sik
-                      ? LayoutBuilder(
-                          builder: (_, k2) => Row(children: [
-                          ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: k2.maxWidth * .45),
-                            child: Text(k.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
-                          ),
-                          const SizedBox(width: 10),
-                          Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
-                          const SizedBox(width: 3),
-                          Expanded(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci))),
-                        ]))
-                      : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(k.ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
-                          Row(children: [
-                            Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
-                            const SizedBox(width: 3),
-                            Flexible(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci))),
-                          ]),
-                        ]),
-                ),
-                const SizedBox(width: 8),
-                Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text(para(k.birimFiyat),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        decoration: odendi ? TextDecoration.lineThrough : null,
-                        decorationColor: Renk.soluk,
-                        color: odendi ? Renk.soluk : Renk.yazi,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      )),
-                  if (odendi) Text('Ödendi', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.basari)),
-                ]),
-              ]),
-            ),
-          ),
-        ),
+  Widget _birimKartlari(Kalem k) => AdetKartlari(
+        kalem: k,
+        secili: _secim.birimler(k.id),
+        odenmis: k.adet - k.odenmemisAdet,
+        degistir: (i) => _secim.birimDegistir(k, i),
+        sik: _sikSag,
+        anahtar: 'kasa-birim',
       );
-    }
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(38, 0, 0, sik ? 4 : 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (var i = 0; i < k.adet; i++) kart(i)]),
-    );
-  }
 
   Widget _duzeltCubugu(Kalem k) => Container(
         margin: const EdgeInsets.only(top: 6, left: 38),
@@ -2758,22 +2694,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   Widget _odemeBolmesiIc(double g, double? h) {
     final s = _secili!;
     final genis = g >= 1024;
-    final sik = h != null && h < 920;
+    // Masaüstü (1.2.22): tuş takımı ile ödeme yöntemleri yan yana, boyları
+    // pencereye göre; tahsil düğmesi altta sabit. Kısa pencerede sık.
+    final sik = h != null && h < 700;
     _sikSol = sik;
     _masaustuSol = h != null;
-    if (h != null) {
-      // Sabit öğelerin yaklaşık yüksekliği; kalan pay tuş takımına (4 sıra).
-      final odemeVar = _odemeler.any((p) => p['kind'] == 'payment' && p['status'] == 'succeeded');
-      final sabit = (sik ? 255.0 : 380.0) +
-          (_yontem == 'cash' ? 46 : 0) +
-          (odemeVar ? 40 : 0) +
-          (_terminalYontemi ? 80 : 0) +
-          (_bahsisAcik ? 80 : 0) +
-          ((kasaYontemleri.length / 4).ceil() * (sik ? 46.0 : 70.0));
-      _tusYuksekligi = ((h - sabit) / 4 - 4).clamp(38.0, 56.0);
-    } else {
-      _tusYuksekligi = 54;
-    }
+    _tusYuksekligi = 54;
     final ara = sik ? 6.0 : 10.0;
     if (s.kalan == 0) {
       return SingleChildScrollView(
@@ -2849,6 +2775,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
 
     final presetler = _nakitPresetleri(s.kalan);
+    if (genis && h != null) return _masaustuSolBolme(baslik: baslik, tutarKutusu: tutarKutusu, verilenKutusu: verilenKutusu, presetler: presetler, nakit: nakit);
 
     final ogeler = <Widget>[
       baslik,
@@ -2928,17 +2855,158 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     ];
 
     final icerik = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: ogeler);
-    if (genis && h != null) {
-      // Masaüstü: içerik sığmazsa yalnız üst kısım kayar; tahsil düğmesi her zaman görünür.
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(16, sik ? 10 : 16, 16, 8), child: icerik)),
-        Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, sik ? 10 : 16),
-          child: _odemeDugmesi(yukseklik: sik ? 50 : 56, buyuk: true),
-        ),
-      ]);
-    }
     return genis ? SingleChildScrollView(padding: const EdgeInsets.all(16), child: icerik) : Padding(padding: const EdgeInsets.all(12), child: icerik);
+  }
+
+  /// Masaüstü sol bölme: üstte başlık + tutar kutuları; ortada tuş takımı
+  /// (≈%55) ile ödeme yöntemleri (≈%45) yan yana, pencere boyuna göre
+  /// büyür / küçülür; en altta tahsil düğmesi HER ZAMAN görünür.
+  Widget _masaustuSolBolme({
+    required Widget baslik,
+    required Widget tutarKutusu,
+    required Widget verilenKutusu,
+    required List<int> presetler,
+    required bool nakit,
+  }) {
+    final sik = _sikSol;
+    final ara = sik ? 8.0 : 12.0;
+    final odemeVar = _odemeler.any((p) => p['kind'] == 'payment' && p['status'] == 'succeeded');
+    final orta = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(flex: 55, child: _numpad(borc: false, doldur: true)),
+      const SizedBox(width: 14),
+      Expanded(
+        flex: 45,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(3, 2, 3, 4),
+            child: _bolumBasligi(Icons.wallet_outlined, 'Ödeme yöntemi',
+                sag: _yontem == null ? Text('seçilmedi', style: TextStyle(fontSize: 12, color: Renk.uyari, fontWeight: FontWeight.w600)) : null),
+          ),
+          Expanded(child: _yontemSutunlari()),
+        ]),
+      ),
+    ]);
+    return Padding(
+      key: const ValueKey('kasa-masaustu-sol'),
+      padding: EdgeInsets.fromLTRB(16, sik ? 8 : 14, 16, sik ? 10 : 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        baslik,
+        SizedBox(height: sik ? 6 : 10),
+        if (nakit)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: tutarKutusu), const SizedBox(width: 10), Expanded(child: verilenKutusu)])
+        else
+          tutarKutusu,
+        if (nakit) ...[
+          SizedBox(height: sik ? 4 : 8),
+          SizedBox(
+            height: sik ? 30 : 34,
+            child: Row(children: [
+              for (final p in presetler) ...[
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: Size(0, sik ? 30 : 34), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                  onPressed: () => setState(() {
+                    _verilen = paraGirdisi(p);
+                    _hedef = 'tendered';
+                  }),
+                  child: Text(para(p)),
+                ),
+                const SizedBox(width: 6),
+              ],
+              const Spacer(),
+              Checkbox(value: _yuvarla, visualDensity: VisualDensity.compact, onChanged: (v) => setState(() => _yuvarla = v ?? false)),
+              Text('Kalanı ${tamSayi(25)} kuruşa yuvarla', style: const TextStyle(fontSize: 12.5)),
+            ]),
+          ),
+        ],
+        SizedBox(height: ara),
+        // Orta bölüm boşluğu doldurur; çok uzun pencerede tuşlar dev olmasın
+        // diye en çok 600 px (kalan boşluk üst-alt eşit dağılır).
+        Expanded(
+          child: LayoutBuilder(
+            builder: (_, k) => Center(child: SizedBox(height: k.maxHeight.clamp(0.0, 600.0), child: orta)),
+          ),
+        ),
+        if (_terminalYontemi) ...[SizedBox(height: ara), _posKutusu()],
+        if (_bahsisAcik) ...[
+          SizedBox(height: ara),
+          FormAlani(
+            etiket: 'Bahşiş (₺)',
+            ipucu: 'Adisyona işlemez; Z raporunda ayrı izlenir',
+            child: TextField(
+              controller: _bahsis,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(hintText: '0,00'),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ],
+        if (odemeVar) ...[
+          SizedBox(height: ara),
+          _odemelerAcik
+              ? ConstrainedBox(constraints: const BoxConstraints(maxHeight: 180), child: SingleChildScrollView(child: _yapilanOdemeler()))
+              : _yapilanOdemelerOzeti(),
+        ],
+        SizedBox(height: ara),
+        _odemeDugmesi(yukseklik: sik ? 50 : 58, buyuk: true),
+      ]),
+    );
+  }
+
+  /// Masaüstü ödeme yöntemleri: iki sütun, satırlar eşit boyda; her biri
+  /// çerçeveli düğme (renkli simge kutusu + ad), seçili olan renkli.
+  Widget _yontemSutunlari() {
+    final l = kasaYontemleri;
+    final satir = (l.length / 2).ceil();
+    Widget dugme(int i) {
+      if (i >= l.length) return const SizedBox.shrink();
+      final y = l[i];
+      final secili = _yontem == y.$1;
+      final t = yontemTonu(y.$1);
+      return Material(
+        color: secili ? t.zemin : Renk.yuzey,
+        shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? t.kenar : Renk.cizgiKoyu, width: secili ? 2 : 1)),
+        child: InkWell(
+          key: ValueKey('kasa-yontem-${y.$1}'),
+          customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+          onTap: () => setState(() => _yontem = y.$1),
+          child: LayoutBuilder(builder: (_, k) {
+            // Uzun pencerede düğme büyür: simge ve yazı da büyür.
+            final iri = k.maxHeight >= 84;
+            // Çok kısa pencerede (ör. %125 ölçekli 1366×768): ince, tek satır.
+            final ince = k.maxHeight < 46;
+            final ad = Text(y.$2,
+                maxLines: ince ? 1 : 2,
+                overflow: ince ? TextOverflow.visible : TextOverflow.ellipsis,
+                style: TextStyle(fontSize: iri ? 16 : (ince ? 13 : 14), height: 1.15, fontWeight: FontWeight.w600, color: secili ? t.yazi : Renk.yazi));
+            final kutu = iri ? 44.0 : (ince ? 26.0 : 34.0);
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: iri ? 14 : (ince ? 6 : 10)),
+              child: Row(children: [
+                Container(
+                  width: kutu,
+                  height: kutu,
+                  decoration: BoxDecoration(color: secili ? Renk.yuzey : t.zemin, borderRadius: koseYuvarlak),
+                  child: Icon(yontemSimgesi(y.$1, y.$3), size: iri ? 24 : (ince ? 16 : 20), color: t.ikon),
+                ),
+                SizedBox(width: iri ? 12 : (ince ? 6 : 10)),
+                Expanded(child: ince ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: ad) : ad),
+                if (secili) Icon(Icons.check_circle_rounded, size: iri ? 20 : (ince ? 16 : 18), color: t.yazi),
+              ]),
+            );
+          }),
+        ),
+      );
+    }
+
+    return Column(children: [
+      for (var r = 0; r < satir; r++)
+        Expanded(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: Padding(padding: const EdgeInsets.all(3), child: dugme(r * 2))),
+            Expanded(child: Padding(padding: const EdgeInsets.all(3), child: dugme(r * 2 + 1))),
+          ]),
+        ),
+    ]);
   }
 
   Widget _bolumBasligi(IconData ikon, String ad, {Widget? sag}) => Row(children: [
@@ -2992,8 +3060,43 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
-  Widget _numpad({required bool borc}) {
-    Widget tus(String etiket, VoidCallback bas, {bool hizli = false, bool sil = false, String? ipucu}) => Expanded(
+  Widget _numpad({required bool borc, bool doldur = false}) {
+    // Masaüstü: tuşlar bölmenin boyunu doldurur, yazı sığmazsa küçülür.
+    Widget dolanTus(String etiket, VoidCallback bas, {bool hizli = false, bool sil = false, String? ipucu}) => Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: Tooltip(
+              message: ipucu ?? '',
+              child: Material(
+                color: hizli ? Renk.markaAcik : Renk.ic,
+                shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: hizli ? Renk.markaKenar : Renk.cizgi)),
+                child: InkWell(
+                  borderRadius: koseYuvarlak,
+                  onTap: bas,
+                  child: LayoutBuilder(
+                    // Uzun pencerede tuş büyür, yazı da (orantılı) büyür.
+                    builder: (_, k) => Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Center(child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(etiket,
+                            style: TextStyle(
+                              fontSize: (hizli || sil ? .66 : 1) * (k.maxHeight * .34).clamp(22.0, 34.0),
+                              fontWeight: FontWeight.w600,
+                              color: sil ? Renk.hata : (hizli ? Renk.marka : Renk.yazi),
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            )),
+                      )),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+    Widget tus(String etiket, VoidCallback bas, {bool hizli = false, bool sil = false, String? ipucu}) => doldur
+        ? dolanTus(etiket, bas, hizli: hizli, sil: sil, ipucu: ipucu)
+        : Expanded(
           child: Padding(
             padding: EdgeInsets.all(_sikSol ? 2 : 3),
             child: Tooltip(
@@ -3025,7 +3128,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final hizli1 = borc ? () => _borcHizli(1) : () => _hizliTutar(1);
     final hizli2 = borc ? () => _borcHizli(1 / 2) : () => _hizliTutar(1 / 2);
     final hizli3 = borc ? () => _borcHizli(1 / 3) : () => _hizliTutar(1 / 3);
-    return Column(children: [
+    final satirlar = [
       Row(children: [tus('1', () => rakam('1')), tus('2', () => rakam('2')), tus('3', () => rakam('3')), tus('Tamamı', hizli1, hizli: true)]),
       Row(children: [tus('4', () => rakam('4')), tus('5', () => rakam('5')), tus('6', () => rakam('6')), tus('1/2', hizli2, hizli: true)]),
       Row(children: [tus('7', () => rakam('7')), tus('8', () => rakam('8')), tus('9', () => rakam('9')), tus('1/3', hizli3, hizli: true)]),
@@ -3035,7 +3138,13 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         tus(',', () => rakam(',')),
         borc ? tus('Temizle', _borcTemizle, hizli: true, ipucu: 'Seçili kutuyu temizle') : tus('1/n', _bolPenceresi, hizli: true, ipucu: 'Kalanı n kişiye böl'),
       ]),
-    ]);
+    ];
+    if (doldur) {
+      return Column(children: [
+        for (final r in satirlar) Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: r.children)),
+      ]);
+    }
+    return Column(children: satirlar);
   }
 
   Widget _yontemIzgarasi() {
@@ -3953,8 +4062,24 @@ class _Etiket extends StatelessWidget {
 /// Araç çubuğu düğmesi: renkli zemin + simge (+ isteğe bağlı yazı), 36 px.
 class _AracDugmesi extends StatelessWidget {
   const _AracDugmesi(
-      {super.key, required this.ikon, this.ad, required this.ipucu, required this.renk, required this.zemin, required this.kenar, required this.bas, this.sik = false});
+      {super.key,
+      required this.ikon,
+      this.ad,
+      required this.ipucu,
+      required this.renk,
+      required this.zemin,
+      required this.kenar,
+      required this.bas,
+      this.sik = false,
+      this.yukseklik = 52});
   final IconData ikon;
+
+  /// Simge üstte, ad altta düzende düğme boyu.
+  final double yukseklik;
+
+  /// Aynı düğme, simge üstte / ad altta, verilen boyda (masaüstü satırı).
+  _AracDugmesi dikey(double h) =>
+      _AracDugmesi(key: key, ikon: ikon, ad: ad, ipucu: ipucu, renk: renk, zemin: zemin, kenar: kenar, bas: bas, yukseklik: h);
 
   /// Kısa masaüstü ekranı: simge + ad yan yana, ince düğme.
   final bool sik;
@@ -3994,15 +4119,15 @@ class _AracDugmesi extends StatelessWidget {
                     ]),
                   )
                 : SizedBox(
-              height: 52,
+              height: yukseklik,
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(ikon, size: 20, color: renk),
+                Icon(ikon, size: yukseklik >= 54 ? 21 : 20, color: renk),
                 if (ad != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(3, 3, 3, 0),
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(ad!, maxLines: 1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: renk, height: 1.1)),
+                      child: Text(ad!, maxLines: 1, style: TextStyle(fontSize: yukseklik >= 54 ? 12.5 : 12, fontWeight: FontWeight.w600, color: renk, height: 1.1)),
                     ),
                   ),
               ]),

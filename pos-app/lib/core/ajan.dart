@@ -59,7 +59,15 @@ class YazdirmaAjani extends ChangeNotifier {
   /// Sunucuda yazıcı / POS olarak tanımlı USB anahtarları.
   Set<String> usbTanimli = {};
 
-  /// "Yeni USB cihaz bulundu" şeridinde kapatılanlar (tekrar sorulmaz).
+  /// Sunucuda "bunu gösterme" denmiş anahtarlar (İşletme Yönetimi'nde görünür).
+  Set<String> usbGizliSunucu = {};
+
+  /// Bu cihazda eklenen cihazların kimlikleri (yerel yedek: eski sunucu
+  /// listeyi döndürmese de şerit yeniden çıkmaz).
+  Set<String> usbYerelTanimli = {};
+
+  /// "Bunu gösterme" denenlerin kimlikleri (yerel yedek; sunucu çağrısı
+  /// başarısız olsa da gizli kalır).
   Set<String> usbGizlenen = {};
   DateTime? usbSonTarama;
   String? usbHata;
@@ -71,6 +79,7 @@ class YazdirmaAjani extends ChangeNotifier {
   String? _usbSonImza;
   DateTime? _usbSonBildirim;
   static const _gizlenenAnahtari = 'usb_gizlenen';
+  static const _yerelTanimliAnahtari = 'usb_tanimli_yerel';
 
   /// POS cihazı üreticileri (Build.MANUFACTURER / BRAND / MODEL içinde aranır).
   static const _posUreticileri = [
@@ -291,7 +300,9 @@ class YazdirmaAjani extends ChangeNotifier {
   void _usbBaslat() {
     if (!_usb.destekli || _kapandi) return;
     SharedPreferences.getInstance().then((p) {
-      usbGizlenen = (p.getStringList(_gizlenenAnahtari) ?? const []).toSet();
+      usbGizlenen = {...usbGizlenen, ...?p.getStringList(_gizlenenAnahtari)};
+      usbYerelTanimli = {...usbYerelTanimli, ...?p.getStringList(_yerelTanimliAnahtari)};
+      notifyListeners();
     }).ignore();
     // Android: takma / çıkarma anında; masaüstünde olay yok → dakikada bir
     // ucuz denetim (Windows: ayrı isolate'te kuyruk + SetupAPI, ~ms; macOS:
@@ -380,10 +391,17 @@ class YazdirmaAjani extends ChangeNotifier {
           if (m['tanimli'] == true || m['benimsendi'] == true) '${m['anahtar']}',
       };
     }
+    final gizli = r['usb_gizli'] is List ? {for (final a in r['usb_gizli'] as List) '$a'} : null;
+    var degisti = false;
     if (yeni != null && !setEquals(yeni, usbTanimli)) {
       usbTanimli = yeni;
-      notifyListeners();
+      degisti = true;
     }
+    if (gizli != null && !setEquals(gizli, usbGizliSunucu)) {
+      usbGizliSunucu = gizli;
+      degisti = true;
+    }
+    if (degisti) notifyListeners();
   }
 
   /// Android izin penceresi; verilirse liste yenilenir.
@@ -410,33 +428,82 @@ class YazdirmaAjani extends ChangeNotifier {
     try {
       // Önce güncel listeyi bildir: sunucu anahtarı tanısın.
       await _usbBildir();
-      await _api.post('/api/v1/print/agent/usb/benimse', {
+      final r = await _api.post('/api/v1/print/agent/usb/benimse', {
         'anahtar': c.anahtar,
         if (ad != null && ad.trim().isNotEmpty) 'ad': ad.trim(),
         'istasyon': ?istasyon,
         'tur': tur ?? c.tur,
       }, _baslik);
+      _tanimlilariOku(r);
       usbTanimli = {...usbTanimli, c.anahtar};
-      notifyListeners();
+      _yerelEkle(_yerelTanimliAnahtari, c.kimlikler, tanimli: true);
       return null;
     } on ApiHata catch (e) {
       return e.mesaj;
     }
   }
 
-  /// Şeritte gösterilecek yeni cihaz (tanımsız, kapatılmamış yazıcı / POS).
+  /// Sunucuda (ya da bu cihazda eklenerek) tanımlı mı? Liste satırı için.
+  bool usbTanimliMi(UsbCihaz c) => usbTanimli.contains(c.anahtar) || usbYerelTanimli.contains(c.anahtar);
+
+  /// "Bunu gösterme" denmiş mi (sunucu ya da yerel)?
+  bool usbGizliMi(UsbCihaz c) => usbGizliSunucu.contains(c.anahtar) || c.kimlikler.any(usbGizlenen.contains);
+
+  /// Şeritte önerilmez: tanımlı, gizli ya da aynı vid:pid'li bir kardeşi
+  /// tanımlı / gizli (Windows'ta aynı yazıcı hem kuyruk `win:<ad>` hem ham
+  /// aygıt `usb:..` olarak görünebilir; anahtar metni değişebilir).
+  bool usbBilinen(UsbCihaz c) {
+    if (usbTanimliMi(c) || usbGizliMi(c)) return true;
+    if (c.kimlikler.any(usbYerelTanimli.contains)) return true;
+    final vp = c.vidPid;
+    if (vp == null) return false;
+    return usbCihazlar.any((k) =>
+        k.anahtar != c.anahtar && k.vidPid == vp && (usbTanimli.contains(k.anahtar) || usbGizliSunucu.contains(k.anahtar)));
+  }
+
+  /// Şeritte gösterilecek yeni cihaz (tanımsız, gizlenmemiş yazıcı / POS).
   UsbCihaz? get usbYeniCihaz {
     for (final c in usbCihazlar) {
-      if ((c.tur == 'yazici' || c.tur == 'pos') && !usbTanimli.contains(c.anahtar) && !usbGizlenen.contains(c.anahtar)) return c;
+      if ((c.tur == 'yazici' || c.tur == 'pos') && !usbBilinen(c)) return c;
     }
     return null;
   }
 
-  void usbGizle(String anahtar) {
-    usbGizlenen = {...usbGizlenen, anahtar};
+  /// "Bunu gösterme" ([gizli] true) ya da "Göster" (false). Önce yerelde
+  /// uygulanır (sunucu çağrısı başarısız olsa / eski sunucu da olsa kalıcı),
+  /// sonra sunucuya bildirilir: İşletme Yönetimi'nde gizlenenler görünür.
+  Future<void> usbGizle(UsbCihaz c, {bool gizli = true}) async {
+    if (gizli) {
+      usbGizliSunucu = {...usbGizliSunucu, c.anahtar};
+      _yerelEkle(_gizlenenAnahtari, c.kimlikler);
+    } else {
+      usbGizliSunucu = {...usbGizliSunucu}..remove(c.anahtar);
+      usbGizlenen = {...usbGizlenen}..removeAll(c.kimlikler);
+      notifyListeners();
+      _yerelYaz(_gizlenenAnahtari, usbGizlenen);
+    }
+    if (_jeton == null) return;
+    try {
+      // Yanıt güncel usb_tanimli / usb_gizli listelerini taşır.
+      _tanimlilariOku(await _api.post('/api/v1/print/agent/usb/gizle', {'anahtar': c.anahtar, 'gizli': gizli}, _baslik));
+    } catch (_) {
+      // Yerel kayıt yeterli; sunucu bir sonraki gizlemede / gösterimde eşitlenir.
+    }
+  }
+
+  void _yerelEkle(String anahtar, Set<String> kimlikler, {bool tanimli = false}) {
+    if (tanimli) {
+      usbYerelTanimli = {...usbYerelTanimli, ...kimlikler};
+    } else {
+      usbGizlenen = {...usbGizlenen, ...kimlikler};
+    }
     notifyListeners();
-    final l = usbGizlenen.toList();
-    SharedPreferences.getInstance().then((p) => p.setStringList(_gizlenenAnahtari, l.length > 200 ? l.sublist(l.length - 200) : l)).ignore();
+    _yerelYaz(anahtar, tanimli ? usbYerelTanimli : usbGizlenen);
+  }
+
+  static void _yerelYaz(String anahtar, Set<String> deger) {
+    final l = deger.toList();
+    SharedPreferences.getInstance().then((p) => p.setStringList(anahtar, l.length > 200 ? l.sublist(l.length - 200) : l)).ignore();
   }
 
   static String _yaziciAdi(int port) => switch (port) {
