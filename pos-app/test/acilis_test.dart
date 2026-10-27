@@ -2,7 +2,6 @@
 // ikisi de olunca kalkar ve alttaki ekran dokunulabilir kalır.
 //   GORUNTU_DIZINI=/yol flutter test test/acilis_test.dart  → kareleri PNG yazar.
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bambumpos_pos/ekranlar/acilis.dart';
