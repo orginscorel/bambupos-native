@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/api.dart';
 import '../core/durum.dart';
+import '../core/guncelleme.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
 import 'bildirimler.dart';
@@ -104,6 +105,10 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           ]),
           const BolumBasligi('Görünüm'),
           const _TemaSecici(),
+          const SizedBox(height: 14),
+          SatirGrubu([
+            Satir(ikon: Icons.system_update_rounded, baslik: 'Uygulama güncellemesi', alt: _surum.isEmpty ? null : 'Yüklü sürüm $_surum', sag: const GuncellemeSatiriDurum(), onTap: guncellemeDenetle),
+          ]),
           const SizedBox(height: 14),
           SatirGrubu([
             Satir(ikon: Icons.logout_rounded, baslik: 'Çıkış yap', baslikRenk: const Color(0xFFDC2626), ikonZemin: const Color(0xFFFEE2E2), ikonRenk: const Color(0xFFDC2626), onTap: _cikis),

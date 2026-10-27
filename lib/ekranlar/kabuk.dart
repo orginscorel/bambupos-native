@@ -72,7 +72,7 @@ class Kabuk extends StatefulWidget {
   State<Kabuk> createState() => _KabukState();
 }
 
-class _KabukState extends State<Kabuk> {
+class _KabukState extends State<Kabuk> with WidgetsBindingObserver {
   final _ziyaret = <int>{0};
 
   @override
@@ -81,15 +81,23 @@ class _KabukState extends State<Kabuk> {
     Kabuk.sekme.value = 0;
     BildirimMerkezi.acildi = adreseGit;
     BildirimMerkezi.basla();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 3), () {
-        if (mounted) Guncelleme.bak(context);
+        if (mounted) Guncelleme.bak();
       });
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    // Uygulamaya dönünce yeni sürüm var mı tekrar bak (30 dk sınırı içinde).
+    if (s == AppLifecycleState.resumed) Guncelleme.bak();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     BildirimMerkezi.durdur();
     super.dispose();
   }
@@ -129,6 +137,12 @@ class _KabukState extends State<Kabuk> {
                       : const SizedBox(),
                 ),
               ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: PaAltCubuk.yukseklik + math.max(MediaQuery.paddingOf(context).bottom, 6.0) + 14,
+              child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: const GuncellemeKarti())),
+            ),
           ]),
           bottomNavigationBar: PaAltCubuk(secili: s, onSec: (i) => Kabuk.sekme.value = i, onQr: _qr),
         );

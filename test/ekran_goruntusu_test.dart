@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 
 import 'package:bambumpos_personel/core/api.dart';
 import 'package:bambumpos_personel/core/durum.dart';
+import 'package:bambumpos_personel/core/guncelleme.dart';
 import 'package:bambumpos_personel/core/tema.dart';
 import 'package:bambumpos_personel/ekranlar/ana_sayfa.dart';
 import 'package:bambumpos_personel/ekranlar/bildirimler.dart';
@@ -255,6 +256,18 @@ void main() {
   ekranlar['00-menu-ana'] = () => menulu(const AnaSayfa(), 0);
   ekranlar['00-menu-gorevler'] = () => menulu(const GorevlerEkrani(), 1);
   ekranlar['00-menu-profil'] = () => menulu(const ProfilEkrani(), 3);
+  // Güncelleme kartı: alt menünün üstünde
+  ekranlar['00-menu-guncelleme'] = () {
+    Guncelleme.bulunan.value = const GuncellemeBilgi('1.0.6', 'https://x', 'Uygulama içi güncelleme yenilendi: alt menünün üstünde kart çıkar.');
+    return Scaffold(
+      extendBody: true,
+      body: Stack(children: [
+        const AnaSayfa(),
+        Positioned(left: 12, right: 12, bottom: PaAltCubuk.yukseklik + 34 + 14, child: const GuncellemeKarti()),
+      ]),
+      bottomNavigationBar: PaAltCubuk(secili: 0, onSec: (_) {}, onQr: () {}),
+    );
+  };
   final secilen = Platform.environment['EKRAN'];
 
   for (final b in boyutlar.entries) {
