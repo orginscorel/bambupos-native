@@ -163,13 +163,14 @@ class _DahaFazlaEkraniState extends State<DahaFazlaEkrani> {
                 onTap: _temaSec,
               ),
             ),
-            Satir(
-              baslik: 'Uygulama güncellemesi',
-              alt: (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ? 'iPhone\'da App Store / TestFlight üzerinden' : 'Sürüm $_surum',
-              ikon: Icons.system_update_rounded,
-              onTap: guncellemeDenetle,
-              sag: const GuncellemeSatiriDurum(),
-            ),
+            if (!Guncelleme.magazaKurulumu)
+              Satir(
+                baslik: 'Uygulama güncellemesi',
+                alt: (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ? 'iPhone\'da App Store / TestFlight üzerinden' : 'Sürüm $_surum',
+                ikon: Icons.system_update_rounded,
+                onTap: guncellemeDenetle,
+                sag: const GuncellemeSatiriDurum(),
+              ),
           ]),
         ),
         const SizedBox(height: 16),
