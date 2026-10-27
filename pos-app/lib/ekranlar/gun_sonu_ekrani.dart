@@ -622,7 +622,7 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
           if (_basiliyor) ...[const SizedBox(width: 8), yukleniyor],
         ]),
         if (acikDon != null) Align(alignment: Alignment.centerLeft, child: acikDon),
-        ?yaziciSecici,
+        if (yaziciSecici case final bbDeger?) bbDeger,
         for (final d in dugmeler)
           if (d.$2) d.$1(true),
         for (var i = 0; i < digerleri.length; i += 2)
@@ -645,7 +645,7 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             baslik,
             SizedBox(width: math.min(420.0, ic - 110), child: secici),
-            ?acikDon,
+            if (acikDon case final bbDeger?) bbDeger,
             if (_basiliyor) yukleniyor,
           ]),
           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [

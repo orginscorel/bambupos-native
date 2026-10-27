@@ -796,7 +796,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (bitti, _) {
+      onPopInvoked: (bitti) {
         if (bitti) return;
         _bosIseAt();
         _ayrildi = true;
@@ -841,9 +841,9 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     final telefon = MediaQuery.sizeOf(context).width < 640;
     Widget dugme(String etiket, IconData ikon, VoidCallback? bas, {bool ikincil = false}) {
       final stil = ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(0, 34)),
-        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12)),
-        textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        minimumSize: const MaterialStatePropertyAll(Size(0, 34)),
+        padding: const MaterialStatePropertyAll(EdgeInsets.symmetric(horizontal: 12)),
+        textStyle: const MaterialStatePropertyAll(TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
       );
       final ic = telefon ? Icon(ikon, size: 16) : Row(mainAxisSize: MainAxisSize.min, children: [Icon(ikon, size: 14), const SizedBox(width: 6), Text(etiket)]);
       return Padding(
@@ -1164,7 +1164,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                 color: Renk.markaAcik,
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text('ÜRÜN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Renk.marka.withValues(alpha: .8), letterSpacing: .4)),
+                  Text('ÜRÜN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Renk.marka.withOpacity(.8), letterSpacing: .4)),
                   Text('$urunAdedi', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Renk.marka)),
                 ]),
               ),
@@ -1378,7 +1378,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     final cikarMi = tek != null && tek.durum == 'placed' && _topluAdedi(tek) >= tek.adet;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: BoxDecoration(color: Renk.markaAcik, border: Border(bottom: BorderSide(color: Renk.marka.withValues(alpha: .3)))),
+      decoration: BoxDecoration(color: Renk.markaAcik, border: Border(bottom: BorderSide(color: Renk.marka.withOpacity(.3)))),
       child: Row(children: [
         Expanded(
           child: Text('$adet adet seçili${secim.length > 1 ? ' · ${secim.length} üründen' : ''} · ${para(tutar)}',
@@ -1395,7 +1395,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(0, 32),
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              side: BorderSide(color: Renk.marka.withValues(alpha: .4)),
+              side: BorderSide(color: Renk.marka.withOpacity(.4)),
               backgroundColor: Renk.yuzey,
             ),
             onPressed: () async {
@@ -1444,7 +1444,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: acik ? Renk.markaAcik.carp(.6) : Renk.ic,
-        border: Border(bottom: BorderSide(color: acik ? Renk.marka.withValues(alpha: .3) : Renk.cizgi)),
+        border: Border(bottom: BorderSide(color: acik ? Renk.marka.withOpacity(.3) : Renk.cizgi)),
       ),
       child: Row(children: [
         Text('$no. parti', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: acik ? Renk.marka : Renk.yazi)),
@@ -1458,7 +1458,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: ad != null ? Renk.marka.withValues(alpha: .4) : Renk.cizgiKoyu),
+                border: Border.all(color: ad != null ? Renk.marka.withOpacity(.4) : Renk.cizgiKoyu),
               ),
               child: Text(ad ?? '+ isim',
                   maxLines: 1,
@@ -1711,7 +1711,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     return ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: a.olaylar.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
+      separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (_, i) {
         final e = a.olaylar[i];
         final tur = '${e['type'] ?? ''}';
@@ -1876,7 +1876,7 @@ class _UrunKarti extends StatelessWidget {
     Widget monogram(double boy) {
       final r = _renk;
       return Container(
-        color: r?.withValues(alpha: .18) ?? Renk.ic,
+        color: r?.withOpacity(.18) ?? Renk.ic,
         alignment: Alignment.center,
         child: Text(ilkHarf, style: TextStyle(fontSize: boy, fontWeight: FontWeight.w900, color: r ?? Renk.soluk)),
       );
@@ -1906,13 +1906,13 @@ class _UrunKarti extends StatelessWidget {
             fit: fit,
             memCacheWidth: (400 * oran).round().clamp(200, 800),
             fadeInDuration: const Duration(milliseconds: 120),
-            errorWidget: (_, _, _) => monogram(20),
+            errorWidget: (_, __, ___) => monogram(20),
           );
       icerik = LayoutBuilder(builder: (context, kutu) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SizedBox(
           height: bantYuksekligi(kutu.maxWidth),
           child: Stack(fit: StackFit.expand, children: [
-            Container(color: Renk.ic.withValues(alpha: .7)),
+            Container(color: Renk.ic.withOpacity(.7)),
             if (gorsel == null)
               monogram(20)
             else ...[
@@ -1927,7 +1927,7 @@ class _UrunKarti extends StatelessWidget {
                 fadeInDuration: const Duration(milliseconds: 120),
                 color: const Color.fromRGBO(255, 255, 255, .7),
                 colorBlendMode: BlendMode.modulate,
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
               ),
               resim(BoxFit.contain),
             ],
@@ -1948,7 +1948,7 @@ class _UrunKarti extends StatelessWidget {
             child: LayoutBuilder(builder: (context, k) {
               final dar = k.maxWidth < 170;
               final fiyat = Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.sell_outlined, size: dar ? 15 : 14, color: Renk.marka.withValues(alpha: .7)),
+                Icon(Icons.sell_outlined, size: dar ? 15 : 14, color: Renk.marka.withOpacity(.7)),
                 const SizedBox(width: 3),
                 Flexible(
                   child: FittedBox(

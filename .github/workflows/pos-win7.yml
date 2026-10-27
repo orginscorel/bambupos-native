@@ -1,0 +1,160 @@
+name: POS uygulaması — Windows 7 SP1 x64 (eski Windows, Flutter 3.19.6)
+
+# YALNIZ pos-win7 dalında çalışır. main dalındaki Windows 10/11 akışına
+# (pos-app.yml) dokunmaz; GitHub Release / TestFlight / bambumpos.com
+# yayını YAPMAZ — çıktı yalnızca "windows7" adlı Actions artifact'ıdır.
+#
+# Neden ayrı dal: Flutter 3.22 ile Windows 7/8 desteği kalktı; Windows 7'yi
+# resmen destekleyen son sürüm Flutter 3.19 (Dart 3.3). Bu dalda kod ve
+# paketler 3.19.6'ya uyarlandı, motor YAMALANMAZ (main'deki yamala.py
+# yöntemi kullanılmaz).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pos-win7]
+    paths: ['pos-app/**', '.github/workflows/pos-win7.yml']
+
+concurrency:
+  group: pos-win7-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.19.6'
+
+defaults:
+  run:
+    working-directory: pos-app
+
+jobs:
+  denetim:
+    name: Analiz + test (Flutter 3.19.6)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+  windows7:
+    name: Windows 7 SP1 x64 ZIP
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Sürüm
+        id: surum
+        shell: bash
+        run: echo "surum=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//' | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      - name: Paketle (C++ / Universal CRT / d3dcompiler uygulama klasörüne)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paket = "build\win7\BamBumPOS"
+          New-Item -ItemType Directory -Force "build\win7" | Out-Null
+          Copy-Item "build\windows\x64\runner\Release" $paket -Recurse
+
+          # Visual C++ 2015-2022 x64 (vcruntime140*.dll, msvcp140*.dll ...)
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Recurse -Directory -Filter "Microsoft.VC*.CRT" |
+            Where-Object { $_.FullName -match '\\MSVC\\[0-9.]+\\x64\\Microsoft\.VC[0-9]+\.CRT$' } |
+            Sort-Object FullName | Select-Object -Last 1
+          if (-not $crt) { throw "VC++ CRT redist bulunamadı" }
+          Write-Host "VC++ CRT: $($crt.FullName)"
+          Copy-Item "$($crt.FullName)\*.dll" $paket
+
+          # Universal CRT (Windows 7'de KB2999226 yoksa da çalışsın: app-local)
+          $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\Redist"
+          $ucrt = Get-ChildItem $kits -Recurse -Filter ucrtbase.dll |
+            Where-Object { $_.FullName -match '\\ucrt\\DLLs\\x64\\ucrtbase\.dll$' } |
+            Sort-Object FullName | Select-Object -Last 1
+          if (-not $ucrt) { throw "Universal CRT redist bulunamadı" }
+          Write-Host "UCRT: $($ucrt.DirectoryName)"
+          Copy-Item "$($ucrt.DirectoryName)\*.dll" $paket
+
+          # d3dcompiler_47.dll (ANGLE / Direct3D 11; Windows 7'de KB4019990 olmadan yok)
+          $d3d = Get-ChildItem $kits -Recurse -Filter d3dcompiler_47.dll |
+            Where-Object { $_.FullName -match '\\x64\\d3dcompiler_47\.dll$' } |
+            Sort-Object FullName | Select-Object -Last 1
+          if ($d3d) { Write-Host "d3dcompiler: $($d3d.FullName)"; Copy-Item $d3d.FullName $paket }
+          else { Write-Warning "d3dcompiler_47.dll bulunamadı (Windows 7'de KB4019990 gerekebilir)" }
+
+          Copy-Item "windows7\baslat.bat", "windows7\OKU-BENI-Windows7.txt" $paket
+          Get-ChildItem $paket | Format-Table Name, Length -AutoSize | Out-String -Width 200 | Write-Host
+
+      - name: İçe aktarma denetimi (Windows 7'de olmayan DLL / işlev)
+        id: ice
+        shell: pwsh
+        run: |
+          $env:PYTHONUTF8 = '1'
+          python -m pip install --quiet pefile
+          python -I windows7\w7_denetim.py "build\win7\BamBumPOS" "build\win7\BamBumPOS\w7-denetim.txt"
+          $kod = $LASTEXITCODE
+          "kod=$kod" >> $env:GITHUB_OUTPUT
+          if ($kod -ne 0) { Write-Host "::error::Windows 7 içe aktarma denetiminde HATA var (w7-denetim.txt)" }
+          exit 0
+
+      - name: Açılış sınaması (Windows Server 2022 üzerinde) + baslangic.log
+        shell: pwsh
+        run: |
+          $exe = "build\win7\BamBumPOS\BamBumPOS.exe"
+          $p = Start-Process $exe -PassThru
+          Start-Sleep 25
+          $ayakta = -not $p.HasExited
+          if ($ayakta) { Stop-Process $p -Force } else { Write-Host "çıkış kodu $($p.ExitCode)" }
+          Write-Host "Ayakta: $ayakta"
+          $log = Join-Path $env:LOCALAPPDATA "BamBumPOS\logs\baslangic.log"
+          Write-Host "---- $log ----"
+          if (Test-Path $log) { Get-Content $log -Encoding UTF8 | Write-Host } else { Write-Host "(günlük yok)" }
+          New-Item -ItemType Directory -Force "cikti" | Out-Null
+          if (Test-Path $log) { Copy-Item $log "cikti\ci-baslangic.log" }
+          if (-not $ayakta) { throw "Uygulama runner üzerinde açılmadı" }
+
+      - name: ZIP
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build\win7\BamBumPOS\BamBumPOS.exe")) { throw "paket yok" }
+          $surum = "${{ steps.surum.outputs.surum }}"
+          New-Item -ItemType Directory -Force "cikti" | Out-Null
+          Compress-Archive -Path "build\win7\BamBumPOS" -DestinationPath "cikti\BamBumPOS-POS-$surum-Windows7-x64.zip"
+          Get-ChildItem cikti | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows7
+          path: |
+            pos-app/cikti/*.zip
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows7-tani
+          path: |
+            pos-app/cikti/ci-baslangic.log
+            pos-app/build/win7/BamBumPOS/w7-denetim.txt
+          if-no-files-found: ignore
+
+      - name: Denetim sonucu
+        if: steps.ice.outputs.kod != '0'
+        shell: pwsh
+        run: throw "Windows 7 içe aktarma denetimi geçmedi — w7-denetim.txt'ye bakın"

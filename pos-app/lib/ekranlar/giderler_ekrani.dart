@@ -749,7 +749,7 @@ class _Secim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: secili ? Color.alphaBlend(Kabuk.brand.withValues(alpha: .10), Renk.yuzey) : Renk.yuzey,
+        color: secili ? Color.alphaBlend(Kabuk.brand.withOpacity(.10), Renk.yuzey) : Renk.yuzey,
         shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? Kabuk.brand : Kabuk.line)),
         child: InkWell(
           borderRadius: koseYuvarlak,
@@ -782,7 +782,7 @@ class _OdemeSimgesi extends StatelessWidget {
     return Container(
       width: 36,
       height: 36,
-      decoration: BoxDecoration(color: ton.withValues(alpha: .14), borderRadius: koseYuvarlak),
+      decoration: BoxDecoration(color: ton.withOpacity(.14), borderRadius: koseYuvarlak),
       child: Icon(ikon, size: 20, color: ton),
     );
   }

@@ -156,19 +156,18 @@ class _UrunSecimiState extends State<_UrunSecimi> {
           if (u.varyantlar.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text('Boyut / Porsiyon', style: TextStyle(fontWeight: FontWeight.w600)),
-            RadioGroup<int>(
-              groupValue: _varyant,
-              onChanged: (x) => setState(() => _varyant = x),
-              child: Column(children: [
-                for (final v in u.varyantlar)
-                  RadioListTile<int>(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: v.id,
-                    title: Text('${v.ad} — ${para(v.fiyat)}'),
-                  ),
-              ]),
-            ),
+            // Flutter 3.19: RadioGroup yok; seçim her satırda (aynı davranış).
+            Column(children: [
+              for (final v in u.varyantlar)
+                RadioListTile<int>(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: v.id,
+                  groupValue: _varyant,
+                  onChanged: (x) => setState(() => _varyant = x),
+                  title: Text('${v.ad} — ${para(v.fiyat)}'),
+                ),
+            ]),
           ],
           for (final g in u.gruplar.where((g) => g.secenekler.isNotEmpty)) ...[
             const SizedBox(height: 14),

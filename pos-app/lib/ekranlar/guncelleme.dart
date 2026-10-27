@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app/tema.dart';
 import '../core/api.dart';
-import '../core/eski_windows.dart';
 import 'ortak.dart';
 
 /// UYGULAMA İÇİ GÜNCELLEME (mağaza dışı dağıtım).
@@ -69,8 +68,10 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> with WidgetsBinding
   static String get _platform => switch (defaultTargetPlatform) {
         TargetPlatform.android => 'android',
         TargetPlatform.iOS => 'ios',
-        // Windows 7 / 8.1: ayrı paket (uyumluluk katmanlı).
-        TargetPlatform.windows => eskiWindows ? 'windows7' : 'windows',
+        // pos-win7 dalı (Flutter 3.19 eski Windows derlemesi): hangi Windows'ta
+        // açılırsa açılsın kendi kanalından güncellenir; surum.json'da bu
+        // anahtar yoksa güncelleme önerilmez (Windows 10/11 paketine geçmez).
+        TargetPlatform.windows => 'windows7_legacy',
         TargetPlatform.macOS => 'macos',
         _ => 'diger',
       };
@@ -142,10 +143,8 @@ class _GuncellemeSeridiState extends State<GuncellemeSeridi> with WidgetsBinding
               _ilerleme = (double.tryParse(e.value ?? '') ?? 0) / 100;
               _mesaj = 'İndiriliyor… %${e.value ?? 0}';
             case OtaStatus.INSTALLING:
-            case OtaStatus.INSTALLATION_DONE:
               _ilerleme = 1;
               _mesaj = 'Kurulum ekranı açılıyor — “Güncelle”ye dokunun';
-            case OtaStatus.INSTALLATION_ERROR:
             case OtaStatus.DOWNLOAD_ERROR:
             case OtaStatus.CHECKSUM_ERROR:
             case OtaStatus.INTERNAL_ERROR:

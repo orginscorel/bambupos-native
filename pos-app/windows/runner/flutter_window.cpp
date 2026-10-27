@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include "baslangic_log.h"
 #include "flutter/generated_plugin_registrant.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -11,6 +12,7 @@ FlutterWindow::~FlutterWindow() {}
 
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
+    BaslangicLog(L"Win32Window::OnCreate başarısız");
     return false;
   }
 
@@ -22,12 +24,18 @@ bool FlutterWindow::OnCreate() {
       frame.right - frame.left, frame.bottom - frame.top, project_);
   // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+    BaslangicLog(std::wstring(L"Flutter denetleyicisi kurulamadı: motor=") +
+                 (flutter_controller_->engine() ? L"var" : L"YOK") + L" görünüm=" +
+                 (flutter_controller_->view() ? L"var" : L"YOK") +
+                 L" (data\\app.so / icudtl.dat eksik ya da grafik başlatılamadı)");
     return false;
   }
+  BaslangicLog(L"Flutter motoru çalışıyor; eklentiler kaydediliyor");
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
+    BaslangicLog(L"İlk kare çizildi; pencere gösteriliyor");
     this->Show();
   });
 

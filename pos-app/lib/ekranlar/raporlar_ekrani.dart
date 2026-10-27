@@ -2104,7 +2104,7 @@ class _UcluHucre extends StatelessWidget {
               if (o.$5 != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: (o.$4 ?? Kabuk.soft).withValues(alpha: .12), borderRadius: BorderRadius.circular(6)),
+                  decoration: BoxDecoration(color: (o.$4 ?? Kabuk.soft).withOpacity(.12), borderRadius: BorderRadius.circular(6)),
                   child: Text(o.$5!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: o.$4 ?? Kabuk.soft)),
                 ),
             ]),
@@ -2301,14 +2301,14 @@ class _Tablo extends StatelessWidget {
                 itemBuilder: (_, i) => veriSatiri(satirlar[i]),
               ),
             ),
-            ?ust,
+            if (ust case final bbDeger?) bbDeger,
           ]),
         );
       } else {
         govde = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           baslik,
           for (var i = 0; i < satirlar.length; i++) veriSatiri(satirlar[i], son: i == satirlar.length - 1),
-          ?ust,
+          if (ust case final bbDeger?) bbDeger,
         ]);
       }
       return sigar ? govde : SingleChildScrollView(scrollDirection: Axis.horizontal, child: govde);
@@ -2449,7 +2449,7 @@ class _KolonRessami extends CustomPainter {
         final double r = math.min(4.0, math.min(bw / 2, h));
         c.drawRRect(
           RRect.fromRectAndCorners(Rect.fromLTWH(x, ust + plotH - h, bw, h), topLeft: Radius.circular(r), topRight: Radius.circular(r)),
-          Paint()..color = renk.withValues(alpha: vurgu == null || vurgu == i ? 1 : .45),
+          Paint()..color = renk.withOpacity(vurgu == null || vurgu == i ? 1 : .45),
         );
       }
       if (i % adim == 0) {
@@ -2568,7 +2568,7 @@ class _YiginRessami extends CustomPainter {
       final bw = math.max(1.0, dilimler[i].$1 / toplam * w);
       c.drawRRect(
         RRect.fromRectAndRadius(Rect.fromLTWH(x, 4, bw, s.height - 8), const Radius.circular(3)),
-        Paint()..color = dilimler[i].$2.withValues(alpha: vurgu == null || vurgu == i ? 1 : .45),
+        Paint()..color = dilimler[i].$2.withOpacity(vurgu == null || vurgu == i ? 1 : .45),
       );
       x += bw + 2;
     }

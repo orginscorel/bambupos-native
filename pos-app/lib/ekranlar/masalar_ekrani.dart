@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../app/hareket.dart';
 import '../app/tema.dart';
@@ -112,9 +111,9 @@ class _MasalarEkraniState extends State<MasalarEkrani> {
     try {
       final r = await context.api.get('/api/v1/venue/tables', sorgu: {
         'page': _sayfa,
-        'area_id': ?_fAlan,
-        'status': ?_fDurum,
-        'active': ?_fAktif,
+        if (_fAlan case final bbDeger?) 'area_id': bbDeger,
+        if (_fDurum case final bbDeger?) 'status': bbDeger,
+        if (_fAktif case final bbDeger?) 'active': bbDeger,
         if (_ara.text.trim().isNotEmpty) 'q': _ara.text.trim(),
       });
       final t = (r as Map)['tables'] as Map;
@@ -233,7 +232,9 @@ class _MasalarEkraniState extends State<MasalarEkrani> {
       final dosya = File('${dizin.path}${Platform.pathSeparator}$ad');
       await dosya.writeAsBytes(bayt, flush: true);
       if (Platform.isAndroid || Platform.isIOS) {
-        await SharePlus.instance.share(ShareParams(files: [XFile(dosya.path, mimeType: bicim == 'png' ? 'image/png' : 'image/svg+xml')], title: ad));
+        // pos-win7 dalı: share_plus yok (Windows eklentisi WinRT ister,
+        // Windows 7'de uygulama hiç açılmaz). Bu dal yalnız Windows derler.
+        if (mounted) context.bildir2('QR indirildi', dosya.path);
       } else if (mounted) {
         context.bildir2('QR indirildi', dosya.path);
       }
@@ -661,7 +662,7 @@ class _MasalarEkraniState extends State<MasalarEkrani> {
                 color: dolu ? Renk.hataZemin : Renk.basariZemin,
                 border: Border(bottom: BorderSide(color: dolu ? Renk.hataKenar : Renk.basariKenar)),
               ),
-              child: Icon(_sekilSimge(m['shape']?.toString()), size: 34, color: renk.withValues(alpha: .7)),
+              child: Icon(_sekilSimge(m['shape']?.toString()), size: 34, color: renk.withOpacity(.7)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),

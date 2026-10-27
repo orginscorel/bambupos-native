@@ -23,7 +23,7 @@ class _SahteSoket implements Socket {
 
 class _BosSunucu implements HttpClientAdapter {
   @override
-  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async => ResponseBody.fromString('{}', 200);
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? __) async => ResponseBody.fromString('{}', 200);
   @override
   void close({bool force = false}) {}
 }
@@ -226,16 +226,16 @@ void main() {
       expect(soket.kapandi, isTrue);
       expect(
           await posTcpErisilebilir('192.168.1.2', 59000, const Duration(seconds: 1),
-              baglan: (_, _, _) async => throw const SocketException('Connection refused')),
+              baglan: (_, __, ___) async => throw const SocketException('Connection refused')),
           isFalse);
       expect(
-          await posTcpErisilebilir('192.168.1.2', 59000, const Duration(milliseconds: 50), baglan: (_, _, _) => Completer<Socket>().future),
+          await posTcpErisilebilir('192.168.1.2', 59000, const Duration(milliseconds: 50), baglan: (_, __, ___) => Completer<Socket>().future),
           isFalse);
     });
 
     test('önbellek: aynı anda tek deneme, sonuç saklanır', () async {
       var deneme = 0;
-      final o = PosErisimOnbellegi(baglan: (_, _, _) async {
+      final o = PosErisimOnbellegi(baglan: (_, __, ___) async {
         deneme++;
         throw const SocketException('yok');
       });

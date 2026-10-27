@@ -413,7 +413,7 @@ class _BorclarEkraniState extends State<BorclarEkrani> {
             onTap: () => _detayAc(id, r),
             child: Text('${r['name'] ?? ''}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           ),
-          ?rozet,
+          if (rozet case final bbDeger?) bbDeger,
         ]),
         Text(tel == null || tel.isEmpty ? '—' : tel, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
       ]),
@@ -490,7 +490,7 @@ class _TarihliListeState extends State<_TarihliListe> {
     try {
       final r = await widget.api.get(
         _tahsilat ? '/api/v1/receivables/tahsilatlar' : '/api/v1/reports/borca-yazilanlar',
-        sorgu: {'from': ?_bas, 'to': ?_bit},
+        sorgu: {if (_bas case final bbDeger?) 'from': bbDeger, if (_bit case final bbDeger?) 'to': bbDeger},
       );
       if (!mounted) return;
       final m = r is Map ? r.cast<String, dynamic>() : <String, dynamic>{};
@@ -613,7 +613,7 @@ class _TarihliListeState extends State<_TarihliListe> {
           for (final c in kutular)
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Renk.ic.withValues(alpha: .5), borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+              decoration: BoxDecoration(color: Renk.ic.withOpacity(.5), borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
               child: c,
             ),
         ];

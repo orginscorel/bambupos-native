@@ -83,26 +83,26 @@ Future<T?> syPencere<T>(
 /// Kabuk düğmeleri (36–40 px, köşe 8, birincil = brand zemin).
 Widget syDugme(String metin, VoidCallback? bas, {bool birincil = false, IconData? ikon, double yukseklik = 38, Color? renk}) {
   final stil = ButtonStyle(
-    minimumSize: WidgetStatePropertyAll(Size(0, yukseklik)),
-    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
-    shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: koseYuvarlak)),
-    textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+    minimumSize: MaterialStatePropertyAll(Size(0, yukseklik)),
+    padding: const MaterialStatePropertyAll(EdgeInsets.symmetric(horizontal: 14)),
+    shape: MaterialStatePropertyAll(RoundedRectangleBorder(borderRadius: koseYuvarlak)),
+    textStyle: const MaterialStatePropertyAll(TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
   );
   final ic = ikon == null
       ? Text(metin)
       : Row(mainAxisSize: MainAxisSize.min, children: [Icon(ikon, size: 16), const SizedBox(width: 6), Text(metin)]);
   if (birincil) {
     return FilledButton(
-      style: stil.copyWith(backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.disabled) ? (renk ?? Kabuk.brand).withValues(alpha: .5) : (renk ?? Kabuk.brand)), foregroundColor: const WidgetStatePropertyAll(Colors.white)),
+      style: stil.copyWith(backgroundColor: MaterialStateProperty.resolveWith((s) => s.contains(MaterialState.disabled) ? (renk ?? Kabuk.brand).withOpacity(.5) : (renk ?? Kabuk.brand)), foregroundColor: const MaterialStatePropertyAll(Colors.white)),
       onPressed: bas,
       child: ic,
     );
   }
   return OutlinedButton(
     style: stil.copyWith(
-      foregroundColor: WidgetStatePropertyAll(renk ?? Kabuk.ink),
-      side: WidgetStatePropertyAll(BorderSide(color: Kabuk.line)),
-      backgroundColor: WidgetStatePropertyAll(Renk.yuzey),
+      foregroundColor: MaterialStatePropertyAll(renk ?? Kabuk.ink),
+      side: MaterialStatePropertyAll(BorderSide(color: Kabuk.line)),
+      backgroundColor: MaterialStatePropertyAll(Renk.yuzey),
     ),
     onPressed: bas,
     child: ic,
@@ -377,7 +377,7 @@ class _KasaKapanisiEkraniState extends State<KasaKapanisiEkrani> {
     final evet = await syPencere<bool>(
       context,
       baslik: 'Gider geri alınsın mı?',
-      govde: (_, _) => Text(
+      govde: (_, __) => Text(
         '“${(h['reason'] ?? '').toString().isEmpty ? 'Gider' : h['reason']}” · ${para(tamSayi(h['amount_minor']))} ters kayıtla geri alınır; orijinal kayıt silinmez, izi kalır.',
         style: TextStyle(fontSize: 14, color: Kabuk.ink),
       ),
@@ -455,8 +455,8 @@ class _KasaKapanisiEkraniState extends State<KasaKapanisiEkrani> {
     final kartM = kart.isEmpty ? null : tlMinor(kart);
     final mobilM = mobil.isEmpty ? null : tlMinor(mobil);
     setState(() {
-      _deger.updateAll((_, _) => '');
-      _adet.updateAll((_, _) => '');
+      _deger.updateAll((_, __) => '');
+      _adet.updateAll((_, __) => '');
       _nakitAcik = false;
       _odak = 'nakit';
     });
@@ -479,7 +479,7 @@ class _KasaKapanisiEkraniState extends State<KasaKapanisiEkrani> {
     syPencere<void>(
       context,
       baslik: 'Kasa kapandı · Z#${ses['z_number'] ?? ''}',
-      govde: (_, _) => Table(
+      govde: (_, __) => Table(
         columnWidths: const {0: FlexColumnWidth(1.2)},
         border: TableBorder(horizontalInside: BorderSide(color: Kabuk.line), bottom: BorderSide(color: Kabuk.line)),
         children: [
@@ -777,7 +777,7 @@ class _KasaKapanisiEkraniState extends State<KasaKapanisiEkrani> {
       child: FilledButton(
         style: FilledButton.styleFrom(
           backgroundColor: Kabuk.brand,
-          disabledBackgroundColor: Kabuk.brand.withValues(alpha: .5),
+          disabledBackgroundColor: Kabuk.brand.withOpacity(.5),
           disabledForegroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: koseYuvarlak),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),

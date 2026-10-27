@@ -37,7 +37,7 @@ class _SahteSunucu implements HttpClientAdapter {
   final Map<String, String> ek;
 
   @override
-  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async {
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? __) async {
     final yol = o.uri.path;
     final govde = ek[yol] ?? switch (yol) {
       '/api/v1/uygulama/oturum' => oturum,

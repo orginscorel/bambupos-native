@@ -49,3 +49,6 @@ app.*.map.json
 
 # Dağıtım çıktıları ve imza
 /cikti/
+
+# pos-win7 (Flutter 3.19 aracı üretir)
+.flutter-plugins

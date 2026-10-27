@@ -69,7 +69,7 @@ class _NedenSeciciState extends State<NedenSecici> {
       ]),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
-        initialValue: _secili,
+        value: _secili,
         isExpanded: true,
         hint: const Text('Sebep seçin'),
         items: [

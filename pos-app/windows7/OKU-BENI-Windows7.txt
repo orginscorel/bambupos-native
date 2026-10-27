@@ -1,0 +1,40 @@
+﻿BamBumPOS POS — Windows 7 SP1 x64 sürümü (taşınabilir ZIP)
+===========================================================
+
+Bu paket Windows 7 SP1 64 bit için AYRI derlenmiştir (Flutter 3.19.6 —
+Windows 7'yi resmen destekleyen son Flutter). Windows 10/11'de normal
+"Windows" paketini kullanın.
+
+KURULUM
+  1. ZIP'i bir klasöre çıkarın (ör. C:\BamBumPOS). ZIP'in içinden ÇALIŞTIRMAYIN.
+  2. BamBumPOS.exe'yi açın. Masaüstü kısayolunu exe'ye sağ tık → Gönder →
+     Masaüstü ile oluşturabilirsiniz.
+
+GEREKLİ WINDOWS GÜNCELLEMELERİ
+  • Service Pack 1 (zorunlu)
+  • KB2670838 — Windows 7 Platform Update (Direct3D 11.1; Flutter çizimi
+    için gerekli; yoksa uygulama açılmayabilir ya da yazılımla yavaş çizer)
+  • KB2533623 (ya da KB3063858) — güvenli DLL yükleme (önerilir)
+  • Ekran kartı sürücüsü güncel olmalı (Direct3D 11 / DirectX 11 desteği)
+  Uygulama klasöründe zaten bulunanlar (ayrıca kurmanız GEREKMEZ):
+  • Visual C++ 2015-2022 x64 çalışma kütüphaneleri (vcruntime140*.dll, msvcp140*.dll)
+  • Universal C Runtime (ucrtbase.dll + api-ms-win-crt-*.dll; KB2999226 yerine)
+  • d3dcompiler_47.dll (KB4019990 yerine)
+
+AÇILMIYORSA
+  • baslat.bat'ı çift tıklayın: Windows sürümü, güncellemeler, eksik dosyalar
+    ve uygulamanın çıkış kodu ekrana ve günlüğe yazılır.
+  • Günlükler: %LOCALAPPDATA%\BamBumPOS\logs\
+      baslangic.log        açılış adımları (native + Dart), hatalar
+      baslat-denetim.txt   baslat.bat raporu
+      cokus-*.dmp          çökme dökümü (varsa)
+    Bu dosyaları destek ekibine gönderin.
+  • w7-denetim.txt: derleme sırasında yapılan içe aktarma (DLL/işlev) denetimi.
+
+BU SÜRÜMDEKİ FARKLAR (Windows 10/11 paketine göre)
+  • Windows sistem bildirimi (toast) yok — Windows 7'de bu altyapı yok.
+    Uygulama içi bildirim baloncukları, bip sesi ve görev çubuğu yanıp
+    sönmesi çalışır.
+  • Otomatik güncelleme "windows7_legacy" kanalını izler; bu kanal
+    yayımlanmadıkça güncelleme önerilmez.
+  • Görünüm ve tüm kasa / adisyon / yazıcı / USB / kart POS işlevleri aynıdır.

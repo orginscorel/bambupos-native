@@ -159,7 +159,7 @@ class _Sahne extends StatelessWidget {
                   bas: .78,
                   child: Text(
                     'Satış noktası · Masa · Mutfak · Kasa',
-                    style: TextStyle(fontFamily: yaziTipi, color: Colors.white.withValues(alpha: .62), fontSize: 13.5, letterSpacing: .4),
+                    style: TextStyle(fontFamily: yaziTipi, color: Colors.white.withOpacity(.62), fontSize: 13.5, letterSpacing: .4),
                   ),
                 ),
               ]),
@@ -176,11 +176,11 @@ class _Sahne extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     hazir ? 'Hazır' : 'Bağlanıyor…',
-                    style: TextStyle(fontFamily: yaziTipi, color: Colors.white.withValues(alpha: .7), fontSize: 12.5, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontFamily: yaziTipi, color: Colors.white.withOpacity(.7), fontSize: 12.5, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 2),
                   Text('Sürüm $surum',
-                      style: TextStyle(fontFamily: yaziTipi, color: Colors.white.withValues(alpha: .38), fontSize: 11)),
+                      style: TextStyle(fontFamily: yaziTipi, color: Colors.white.withOpacity(.38), fontSize: 11)),
                 ]),
               ),
             ),
@@ -221,7 +221,7 @@ class _Yazi extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: giris,
-      builder: (_, _) => Row(mainAxisSize: MainAxisSize.min, children: [
+      builder: (_, __) => Row(mainAxisSize: MainAxisSize.min, children: [
         for (var i = 0; i < _harfler.length; i++)
           Builder(builder: (_) {
             final bas = .52 + i * .035;
@@ -283,14 +283,14 @@ class _IsaretRessami extends CustomPainter {
       final p2 = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
-        ..color = const Color(0xFF7DD3FC).withValues(alpha: .45 * halka);
+        ..color = const Color(0xFF7DD3FC).withOpacity(.45 * halka);
       final bas2 = -d * 2 * math.pi; // tam tur: döngü başa sarınca sıçramaz
       for (var i = 0; i < 3; i++) {
         canvas.drawArc(Rect.fromCircle(center: m, radius: r2), bas2 + i * 2 * math.pi / 3, .9 * halka, false, p2);
       }
       // Yörüngedeki küçük nokta.
       final a = d * 2 * math.pi + 2 * math.pi * .72 * halka;
-      canvas.drawCircle(m + Offset(math.cos(a), math.sin(a)) * r1, 3.2, Paint()..color = Colors.white.withValues(alpha: halka));
+      canvas.drawCircle(m + Offset(math.cos(a), math.sin(a)) * r1, 3.2, Paint()..color = Colors.white.withOpacity(halka));
     }
 
     // ── Parıltı (nabız).
@@ -302,7 +302,7 @@ class _IsaretRessami extends CustomPainter {
         kenar * (.75 + .06 * nabiz),
         Paint()
           ..shader = ui.Gradient.radial(m, kenar * .8, [
-            const Color(0xFF5443D2).withValues(alpha: .55 * kare),
+            const Color(0xFF5443D2).withOpacity(.55 * kare),
             const Color(0x005443D2),
           ]),
       );
@@ -319,7 +319,7 @@ class _IsaretRessami extends CustomPainter {
     canvas.translate(-256, -256);
 
     final kareRect = RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 512, 512), const Radius.circular(72));
-    canvas.drawRRect(kareRect, Paint()..color = const Color(0xFF5443D2).withValues(alpha: kare));
+    canvas.drawRRect(kareRect, Paint()..color = const Color(0xFF5443D2).withOpacity(kare));
 
     // ── Hücreler ve çubuklar sırayla çizilir.
     final cizgi = Paint()
@@ -418,7 +418,7 @@ class _ZeminRessami extends CustomPainter {
       ui.PointMode.points,
       _izgara,
       Paint()
-        ..color = Colors.white.withValues(alpha: .05 * g)
+        ..color = Colors.white.withOpacity(.05 * g)
         ..strokeWidth = 1.8
         ..strokeCap = StrokeCap.round,
     );
@@ -429,7 +429,7 @@ class _ZeminRessami extends CustomPainter {
       final ilerle = (z.y - _saat.elapsedMilliseconds / 1000 * .045 * z.hiz) % 1.0;
       final p = Offset(z.x * size.width, ilerle * size.height);
       final parla = .25 + .35 * (.5 + .5 * math.sin((d + z.faz) * 2 * math.pi));
-      canvas.drawCircle(p, z.boy, Paint()..color = Colors.white.withValues(alpha: parla * g));
+      canvas.drawCircle(p, z.boy, Paint()..color = Colors.white.withOpacity(parla * g));
     }
   }
 
@@ -445,7 +445,7 @@ class _CubukRessami extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final oluk = RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(size.height));
-    canvas.drawRRect(oluk, Paint()..color = Colors.white.withValues(alpha: .14));
+    canvas.drawRRect(oluk, Paint()..color = Colors.white.withOpacity(.14));
     canvas.save();
     canvas.clipRRect(oluk);
     final t = Curves.easeInOutSine.transform((dongu.value * 2) % 1.0);

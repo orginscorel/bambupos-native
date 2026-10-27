@@ -223,7 +223,7 @@ class _BorcNedeniState extends State<_BorcNedeni> {
         ]),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          initialValue: _secili,
+          value: _secili,
           isExpanded: true,
           hint: const Text('Sebep seçin'),
           items: [
@@ -334,7 +334,7 @@ Future<BorcaYazSonucu?> borcaYazPenceresi(
             : FormAlani(
                 etiket: 'Şahıs (müşteri)',
                 child: DropdownButtonFormField<int>(
-                  initialValue: cariler.any((c) => tamSayi(c['id']) == secili) ? secili : null,
+                  value: cariler.any((c) => tamSayi(c['id']) == secili) ? secili : null,
                   isExpanded: true,
                   hint: const Text('Seçin…'),
                   items: [
@@ -403,7 +403,7 @@ Future<(String, String, num)?> servisBedeliPenceresi(BuildContext context, {requ
       FormAlani(
         etiket: 'Tür',
         child: DropdownButtonFormField<String>(
-          initialValue: tur,
+          value: tur,
           items: const [
             DropdownMenuItem(value: 'percent', child: Text('Yüzde (%)')),
             DropdownMenuItem(value: 'amount', child: Text('Sabit tutar (₺)')),
@@ -664,7 +664,7 @@ Future<({int? yazici, bool deneme})?> yaziciPenceresi(BuildContext context,
         Text('Tanımlı yazıcı yok. Ayarlar > Yazıcılar bölümünden ekleyin.', style: TextStyle(fontSize: 13, color: Renk.uyari))
       else
         DropdownButtonFormField<int>(
-          initialValue: s ?? 0,
+          value: s ?? 0,
           isExpanded: true,
           items: [
             const DropdownMenuItem(value: 0, child: Text('Yazıcı seçilmedi')),
@@ -967,8 +967,8 @@ class _UrunSatiri extends StatelessWidget {
                     memCacheWidth: px,
                     memCacheHeight: px,
                     fadeInDuration: const Duration(milliseconds: 150),
-                    placeholder: (_, _) => yer,
-                    errorWidget: (_, _, _) => yer,
+                    placeholder: (_, __) => yer,
+                    errorWidget: (_, __, ___) => yer,
                   ),
           ),
           const SizedBox(width: 12),

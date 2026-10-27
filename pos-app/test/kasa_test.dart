@@ -504,14 +504,15 @@ void main() {
     Future<(UygulamaDurumu, _Sunucu)> ac(WidgetTester t, {Map<String, (int, String)>? y}) =>
         _kur(t, manuel: false, boyut: const Size(1280, 1800), ekran: const AdisyonEkrani(adisyonId: 300), ek: y ?? _notYanitlari());
 
+    // pos-win7: Flutter 3.19'da TextButton.icon bir alt sınıf (byType tam tür arar).
     testWidgets('not görünür; düğme yalnız gönderilmemiş adet varken', (t) async {
       final (d, _) = await ac(t);
       expect(find.text('Not: az şekerli'), findsOneWidget);
       expect(find.text('Not: laktosuz süt'), findsOneWidget);
       expect(find.byKey(const ValueKey('kalem-not-901')), findsOneWidget);
-      expect(find.widgetWithText(TextButton, 'Notu düzenle'), findsOneWidget);
+      expect(find.ancestor(of: find.text('Notu düzenle'), matching: find.byWidgetPredicate((w) => w is TextButton)), findsOneWidget);
       expect(find.byKey(const ValueKey('kalem-not-902')), findsOneWidget);
-      expect(find.widgetWithText(TextButton, 'Not ekle'), findsOneWidget);
+      expect(find.ancestor(of: find.text('Not ekle'), matching: find.byWidgetPredicate((w) => w is TextButton)), findsOneWidget);
       // Kahve tamamen gönderildi: salt okunur.
       expect(find.byKey(const ValueKey('kalem-not-903')), findsNothing);
       await _bitir(t, d);

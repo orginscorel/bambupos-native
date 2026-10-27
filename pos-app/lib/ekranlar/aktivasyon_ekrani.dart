@@ -211,7 +211,7 @@ class _AktivasyonEkraniState extends State<AktivasyonEkrani> {
                 decoration: BoxDecoration(
                   color: Renk.markaAcik,
                   borderRadius: koseYuvarlak,
-                  border: Border.all(color: Renk.marka.withValues(alpha: .25)),
+                  border: Border.all(color: Renk.marka.withOpacity(.25)),
                 ),
                 child: Text(h,
                     style: TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: Renk.marka, letterSpacing: 0)),

@@ -25,7 +25,7 @@ extension DurumErisimi on BuildContext {
   /// da ekranın üstünde tam sayfa başka bir ekran (adisyon, ayrıntı) açıksa
   /// HAYIR: görünmeyen ekran için ağ + çizim + pil harcanmaz. Üstteki sayfa
   /// kapanınca ekran zaten kendini tazeler / bir sonraki turda yakalar.
-  bool get yoklamaUygun => uygulamaOnde() && TickerMode.getValuesNotifier(this).value.enabled;
+  bool get yoklamaUygun => uygulamaOnde() && TickerMode.getNotifier(this).value;
 
   void bildir(String mesaj, {bool hata = false}) {
     final m = ScaffoldMessenger.maybeOf(this);
@@ -247,11 +247,11 @@ Future<T?> cekmeceAc<T>(BuildContext context, {required String baslik, required 
     barrierLabel: baslik,
     barrierColor: const Color(0x8C0F172A),
     transitionDuration: const Duration(milliseconds: 180),
-    pageBuilder: (ctx, _, _) => Align(
+    pageBuilder: (ctx, _, __) => Align(
       alignment: Alignment.centerRight,
       child: SizedBox(width: genislik, height: double.infinity, child: cerceve(ctx)),
     ),
-    transitionBuilder: (_, a, _, child) => SlideTransition(
+    transitionBuilder: (_, a, __, child) => SlideTransition(
       position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
       child: child,
     ),
@@ -292,7 +292,7 @@ class Secici<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<T>(
-        initialValue: secenekler.any((s) => s.$1 == deger) ? deger : null,
+        value: secenekler.any((s) => s.$1 == deger) ? deger : null,
         isExpanded: true,
         hint: yerTutucu == null ? null : Text(yerTutucu!, style: TextStyle(color: Renk.soluk, fontSize: 14)),
         borderRadius: koseYuvarlak,

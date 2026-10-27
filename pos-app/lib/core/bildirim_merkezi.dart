@@ -7,7 +7,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
-import 'eski_windows.dart';
 import 'ses.dart';
 
 /// Ekranda kayan bildirim (web toast'ı).
@@ -188,21 +187,19 @@ class BildirimMerkezi extends ChangeNotifier {
 
   Future<void> _sistemKur() async {
     if (_sistemHazir) return;
-    // Windows 7 / 8.1'de sistem bildirimi altyapısı (WinRT) yok.
-    if (Platform.isWindows && eskiWindows) return;
-    if (!(Platform.isAndroid || Platform.isIOS || Platform.isMacOS || Platform.isWindows)) return;
+    // pos-win7 dalı: Windows 7 / 8.1'de sistem bildirimi altyapısı (WinRT
+    // toast) yok; flutter_local_notifications'ın Flutter 3.19'la çalışan
+    // sürümünde Windows desteği de yok. Windows'ta bildirim = uygulama içi
+    // baloncuk + bip + görev çubuğu yanıp sönmesi (BildirimSesi.dikkatCek).
+    if (Platform.isWindows) return;
+    if (!(Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) return;
     try {
       const darwin = DarwinInitializationSettings(requestAlertPermission: true, requestSoundPermission: true, requestBadgePermission: false);
       await _sistem.initialize(
-        settings: const InitializationSettings(
+        const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
           iOS: darwin,
           macOS: darwin,
-          windows: WindowsInitializationSettings(
-            appName: 'BamBumPOS',
-            appUserModelId: 'BamBumPOS.POS',
-            guid: '6b1e0c52-7a44-4c5b-9e0b-bb05b05a0001',
-          ),
         ),
         onDidReceiveNotificationResponse: (r) {
           final a = r.payload;
@@ -224,11 +221,10 @@ class BildirimMerkezi extends ChangeNotifier {
     if (!_sistemHazir) return;
     try {
       await _sistem.show(
-        id: _id(n) & 0x7fffffff,
-        title: '${n['title'] ?? 'BamBumPOS'}',
-        body: n['body']?.toString(),
-        payload: n['url']?.toString(),
-        notificationDetails: NotificationDetails(
+        _id(n) & 0x7fffffff,
+        '${n['title'] ?? 'BamBumPOS'}',
+        n['body']?.toString(),
+        NotificationDetails(
           android: AndroidNotificationDetails(
             sesli ? 'bildirim_sesli' : 'bildirim_sessiz',
             sesli ? 'Önemli bildirimler' : 'Diğer bildirimler',
@@ -240,6 +236,7 @@ class BildirimMerkezi extends ChangeNotifier {
           iOS: DarwinNotificationDetails(presentSound: sesli),
           macOS: DarwinNotificationDetails(presentSound: sesli),
         ),
+        payload: n['url']?.toString(),
       );
     } catch (e) {
       debugPrint('Sistem bildirimi gösterilemedi: $e');

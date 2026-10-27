@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.2.27+30
 
 environment:
-  sdk: ^3.13.7
+  sdk: '>=3.3.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -27,6 +27,10 @@ environment:
 # dependencies can be manually updated by changing the version numbers below to
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
+# pos-win7 dalı: Flutter 3.19.6 / Dart 3.3 (Windows 7'yi destekleyen son
+# Flutter). Sürümler bu SDK ile çözülen ve Windows 7'de çalışan değerlere
+# SABİTLENDİ. share_plus çıkarıldı (Windows eklentisi WinRT ister →
+# Windows 7'de exe hiç açılmaz; paylaşım yalnız Android/iOS'ta kullanılıyordu).
 dependencies:
   flutter:
     sdk: flutter
@@ -35,24 +39,23 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  dio: ^5.11.1
-  dio_cookie_manager: ^3.5.0
-  cookie_jar: ^4.0.9
-  path_provider: ^2.1.6
-  shared_preferences: ^2.5.6
-  uuid: ^4.6.0
-  wakelock_plus: ^1.8.2
-  package_info_plus: ^10.2.2
-  url_launcher: ^6.3.3
-  cached_network_image: ^4.0.5
-  device_info_plus: ^13.3.0
-  network_info_plus: ^8.2.2
-  ota_update: ^7.1.0
-  qr_flutter: ^4.1.0
-  share_plus: ^13.3.1
-  flutter_local_notifications: ^22.3.3
-  ffi: ^2.2.0
+  cupertino_icons: 1.0.8
+  dio: 5.11.1
+  dio_cookie_manager: 3.5.0
+  cookie_jar: 4.0.9
+  path_provider: 2.1.4
+  shared_preferences: 2.2.3
+  uuid: 4.6.0
+  wakelock_plus: 1.2.8
+  package_info_plus: 8.0.2
+  url_launcher: 6.3.1
+  cached_network_image: 3.4.0
+  device_info_plus: 10.1.2
+  network_info_plus: 6.0.1
+  ota_update: 6.0.0
+  qr_flutter: 4.1.0
+  flutter_local_notifications: 18.0.1
+  ffi: 2.1.3
 
 dev_dependencies:
   flutter_test:
@@ -63,8 +66,8 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4
+  flutter_lints: 4.0.0
+  flutter_launcher_icons: 0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

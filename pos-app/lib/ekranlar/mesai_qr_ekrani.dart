@@ -89,7 +89,7 @@ class _MesaiQrEkraniState extends State<MesaiQrEkrani> {
       final son = yokla && eski != null ? eski['kod']?.toString() : null;
       final r = await _api.get('/api/v1/uygulama/mesai-qr', sorgu: {
         'kip': mola ? 'mola' : 'mesai',
-        'son': ?son,
+        if (son case final bbDeger?) 'son': bbDeger,
       });
       // Yanıt gelene kadar kip değiştiyse eski kipin karesi basılmaz.
       if (!mounted || r is! Map || mola != _mola) return;

@@ -206,7 +206,7 @@ class Api {
   Future<({dynamic veri, String? etag})?> getEtagli(String yol, String? etag,
       {Map<String, dynamic>? sorgu}) async {
     final r = await _gonder('GET', yol,
-        sorgu: sorgu, basliklar: {'If-None-Match': ?etag});
+        sorgu: sorgu, basliklar: {if (etag case final bbDeger?) 'If-None-Match': bbDeger});
     if (r.statusCode == 304) return null;
     _denetle(r);
     return (veri: r.data, etag: r.headers.value('etag'));

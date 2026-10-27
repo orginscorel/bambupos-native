@@ -90,7 +90,7 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "BamBumPOS" "\0"
-            VALUE "FileDescription", "BamBumPOS POS" "\0"
+            VALUE "FileDescription", "BamBumPOS POS (Windows 7)" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "BamBumPOS" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 BamBumPOS" "\0"

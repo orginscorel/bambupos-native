@@ -80,7 +80,7 @@ class UsbCihaz {
         'seri': seri,
         'os_ad': osAd,
         'platform': platform,
-        'ipucu': ?ipucu,
+        if (ipucu case final bbDeger?) 'ipucu': bbDeger,
       };
 
   UsbCihaz kopya({bool? izinGerekli}) => UsbCihaz(

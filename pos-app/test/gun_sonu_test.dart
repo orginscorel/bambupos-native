@@ -79,7 +79,7 @@ class _Sunucu implements HttpClientAdapter {
   final istekler = <String>[];
 
   @override
-  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async {
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? __) async {
     final yol = o.uri.path;
     istekler.add('${o.method} $yol');
     final govde = switch (yol) {

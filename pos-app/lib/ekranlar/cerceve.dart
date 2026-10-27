@@ -157,7 +157,7 @@ class UstCubuk extends StatelessWidget implements PreferredSizeWidget {
           ),
           child: Row(
             children: [
-              ?sol,
+              if (sol case final bbDeger?) bbDeger,
               MarkaIsareti(yazi: !telefon),
               // Başlık + rozet tek esnek blokta: kalan boşluk SAĞA taşmaz,
               // zil ve tema düğmesi her genişlikte sağ uçta durur (web .pg-ust).
@@ -263,9 +263,9 @@ class _BildirimZiliState extends State<BildirimZili> {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Kapat',
-      barrierColor: Colors.black.withValues(alpha: .12),
+      barrierColor: Colors.black.withOpacity(.12),
       transitionDuration: const Duration(milliseconds: 180),
-      transitionBuilder: (_, a, _, child) {
+      transitionBuilder: (_, a, __, child) {
         final e = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
         return FadeTransition(
           opacity: e,
@@ -275,7 +275,7 @@ class _BildirimZiliState extends State<BildirimZili> {
           ),
         );
       },
-      pageBuilder: (ctx, _, _) {
+      pageBuilder: (ctx, _, __) {
         final ekran = MediaQuery.sizeOf(ctx);
         final genislik = math.min(380.0, ekran.width - 24);
         final sag = math.max(12.0, ekran.width - (konum.dx + boy.width) - 4);
@@ -378,7 +378,7 @@ class _BildirimPaneliState extends State<_BildirimPaneli> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: koyuTema.value ? .5 : .16),
+            color: Colors.black.withOpacity(koyuTema.value ? .5 : .16),
             blurRadius: 28,
             offset: const Offset(0, 12),
             spreadRadius: -6,
@@ -413,7 +413,7 @@ class _BildirimPaneliState extends State<_BildirimPaneli> {
                     if (yeniSayi > 0)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(color: Kabuk.brand.withValues(alpha: .14), borderRadius: BorderRadius.circular(6)),
+                        decoration: BoxDecoration(color: Kabuk.brand.withOpacity(.14), borderRadius: BorderRadius.circular(6)),
                         child: Text(
                           '$yeniSayi yeni',
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Kabuk.brand),
@@ -458,14 +458,14 @@ class _BildirimPaneliState extends State<_BildirimPaneli> {
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: liste.length,
-                    separatorBuilder: (_, _) => Divider(height: 1, indent: 60, color: Kabuk.line),
+                    separatorBuilder: (_, __) => Divider(height: 1, indent: 60, color: Kabuk.line),
                     itemBuilder: (_, i) {
                       final n = liste[i];
                       final yeni = widget.yeniler.contains(n['id']);
                       final (ikon, renk) = _tur('${n['type'] ?? ''}');
                       final govde = '${n['body'] ?? ''}'.trim();
                       return Container(
-                        color: yeni ? Kabuk.brand.withValues(alpha: .06) : null,
+                        color: yeni ? Kabuk.brand.withOpacity(.06) : null,
                         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,7 +473,7 @@ class _BildirimPaneliState extends State<_BildirimPaneli> {
                             Container(
                               width: 34,
                               height: 34,
-                              decoration: BoxDecoration(color: renk.withValues(alpha: .13), borderRadius: BorderRadius.circular(9)),
+                              decoration: BoxDecoration(color: renk.withOpacity(.13), borderRadius: BorderRadius.circular(9)),
                               child: Icon(ikon, size: 18, color: renk),
                             ),
                             const SizedBox(width: 12),
@@ -791,7 +791,7 @@ class _Kunye extends StatelessWidget {
       barrierDismissible: true,
       barrierLabel: 'Kişi menüsü',
       barrierColor: Colors.transparent,
-      pageBuilder: (dctx, _, _) => Stack(
+      pageBuilder: (dctx, _, __) => Stack(
         children: [
           Positioned(
             left: konum.dx,
@@ -1161,7 +1161,7 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
     barrierLabel: c.ad,
     barrierColor: const Color(0x730F172A),
     transitionDuration: const Duration(milliseconds: 140),
-    pageBuilder: (ctx, _, _) {
+    pageBuilder: (ctx, _, __) {
       final mq = MediaQuery.of(ctx);
       final dar = mq.size.width <= 640;
       final altBosluk = (mq.size.width <= 700 ? 104.0 : 49.0) + 7 + mq.padding.bottom;
@@ -1182,7 +1182,7 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                   Container(
                     width: 32,
                     height: 32,
-                    decoration: BoxDecoration(color: renk.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(color: renk.withOpacity(.12), borderRadius: BorderRadius.circular(8)),
                     child: Icon(x.ikon, size: 18, color: renk),
                   ),
                   const SizedBox(width: 10),
@@ -1196,7 +1196,7 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: renk.withValues(alpha: .12), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(color: renk.withOpacity(.12), borderRadius: BorderRadius.circular(8)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1305,7 +1305,7 @@ Future<void> cihazAyrintiAc(BuildContext context, SeritCihaz c) {
                 clipBehavior: Clip.antiAlias,
                 elevation: 12,
                 shadowColor: const Color(0x2E0F172A),
-                child: c.dinle == null ? govde(c) : ListenableBuilder(listenable: c.dinle!, builder: (_, _) => govde(c.guncel)),
+                child: c.dinle == null ? govde(c) : ListenableBuilder(listenable: c.dinle!, builder: (_, __) => govde(c.guncel)),
               ),
             ),
           ),
@@ -1334,7 +1334,7 @@ Future<void> tumBolumlerAc(BuildContext context, List<CekmeceOgesi> ogeler) {
     barrierLabel: 'Tüm bölümler',
     barrierColor: const Color(0x730F172A),
     transitionDuration: const Duration(milliseconds: 140),
-    pageBuilder: (ctx, _, _) {
+    pageBuilder: (ctx, _, __) {
       final mq = MediaQuery.of(ctx);
       final dar = mq.size.width <= 640;
       final altBosluk = (mq.size.width <= 700 ? 104.0 : 49.0) + 7 + mq.padding.bottom;
@@ -1448,14 +1448,14 @@ class KilitDugmesi extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(left: 4),
         child: Material(
-          color: Kabuk.negative.withValues(alpha: .10),
+          color: Kabuk.negative.withOpacity(.10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: Kabuk.negative.withValues(alpha: .35)),
+            side: BorderSide(color: Kabuk.negative.withOpacity(.35)),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
-            hoverColor: Kabuk.negative.withValues(alpha: .16),
+            hoverColor: Kabuk.negative.withOpacity(.16),
             onTap: d.kilitle,
             child: SizedBox(width: 36, height: 36, child: Icon(Icons.lock_rounded, size: 18, color: Kabuk.negative)),
           ),

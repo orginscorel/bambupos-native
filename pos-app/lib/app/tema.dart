@@ -78,9 +78,9 @@ abstract final class Renk {
 }
 
 /// Zemin renginin saydamlığını ÇARPAR (koyu temada zeminler zaten yarı
-/// saydam; `withValues(alpha:)` onları ezip parlatıyordu).
+/// saydam; `withOpacity()` onları ezip parlatıyordu).
 extension Saydamlik on Color {
-  Color carp(double f) => withValues(alpha: a * f);
+  Color carp(double f) => withOpacity(opacity * f);
 }
 
 /// --radius-md (buton, input) ve --radius-lg (kart).
@@ -126,7 +126,7 @@ ThemeData temaKur({String? yaziTipiAdi}) {
       centerTitle: false,
       titleTextStyle: govde.copyWith(fontFamily: ad, fontSize: 17, fontWeight: FontWeight.w700),
     ),
-    cardTheme: CardThemeData(
+    cardTheme: CardTheme(
       color: Renk.yuzey,
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -158,7 +158,7 @@ ThemeData temaKur({String? yaziTipiAdi}) {
     ),
     iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(shape: sekil, foregroundColor: Renk.ikinci)),
     chipTheme: ChipThemeData(shape: sekil, side: BorderSide(color: Renk.cizgi), labelStyle: TextStyle(fontFamily: ad, fontSize: 13)),
-    dialogTheme: DialogThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: Renk.yuzey),
+    dialogTheme: DialogTheme(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: Renk.yuzey),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: Renk.yuzey,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -198,9 +198,9 @@ class Rozet extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: buyuk ? 10 : 7, vertical: buyuk ? 4 : 2),
       decoration: BoxDecoration(
-        color: dolu ? renk : (zemin ?? renk.withValues(alpha: .08)),
+        color: dolu ? renk : (zemin ?? renk.withOpacity(.08)),
         borderRadius: BorderRadius.circular(999),
-        border: dolu ? null : Border.all(color: kenar ?? renk.withValues(alpha: .25)),
+        border: dolu ? null : Border.all(color: kenar ?? renk.withOpacity(.25)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (ikon != null) ...[Icon(ikon, size: buyuk ? 14 : 12, color: dolu ? Renk.durumUstu : renk), const SizedBox(width: 4)],

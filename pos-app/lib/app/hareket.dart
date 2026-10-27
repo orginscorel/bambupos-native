@@ -261,7 +261,7 @@ class EkranGecisi extends StatelessWidget {
       duration: Hareket.orta,
       reverseDuration: Hareket.orta,
       switchInCurve: Hareket.giris,
-      layoutBuilder: (simdiki, oncekiler) => Stack(fit: StackFit.expand, children: [...oncekiler, ?simdiki]),
+      layoutBuilder: (simdiki, oncekiler) => Stack(fit: StackFit.expand, children: [...oncekiler, if (simdiki case final bbDeger?) bbDeger]),
       transitionBuilder: (cocuk, a) => _GirenCikan(
         animation: a,
         yeni: (a) => SlideTransition(

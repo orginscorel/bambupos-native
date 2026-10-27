@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +10,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'app/hareket.dart';
 import 'app/tema.dart';
+import 'core/baslangic_log.dart';
 import 'core/durum.dart';
 import 'core/eski_windows.dart';
 import 'ekranlar/acilis.dart';
@@ -15,23 +20,79 @@ import 'ekranlar/kabuk.dart';
 import 'ekranlar/pin_ekrani.dart';
 import 'ekranlar/ortak.dart';
 
-Future<void> main() async {
+// pos-win7 dalı: açılış adımları ve yakalanmamış her hata
+// %LOCALAPPDATA%\BamBumPOS\logs\baslangic.log dosyasına yazılır
+// (core/baslangic_log.dart; native taraf windows/runner/baslangic_log.cpp).
+void main() {
+  BaslangicLog.yaz('main() başladı · Dart ${Platform.version.split(' ').first} · ${Platform.operatingSystemVersion}');
+  runZonedGuarded<Future<void>>(_baslat, (hata, iz) => BaslangicLog.hata('zone', hata, iz));
+}
+
+Future<void> _baslat() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final onceki = FlutterError.onError;
+  FlutterError.onError = (ayrinti) {
+    BaslangicLog.hata('FlutterError', ayrinti.exception, ayrinti.stack);
+    onceki?.call(ayrinti);
+  };
+  PlatformDispatcher.instance.onError = (hata, iz) {
+    BaslangicLog.hata('PlatformDispatcher', hata, iz);
+    return true;
+  };
+  BaslangicLog.yaz('Flutter bağlamı hazır (eski Windows: $eskiWindows)');
 
-  if (defaultTargetPlatform == TargetPlatform.android) {
-    // POS tableti: sistem çubukları gizli, kaydırınca geçici görünür.
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  try {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      // POS tableti: sistem çubukları gizli, kaydırınca geçici görünür.
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+    // Kasa/mutfak ekranı uykuya geçmesin.
+    WakelockPlus.enable().catchError((Object e) => BaslangicLog.yaz('Ekran uyku kilidi açılamadı: $e'));
+
+    await eskiWindowsHazirla();
+    BaslangicLog.yaz('Sertifika ayarı tamam');
+    // Tema tercihi ve durum kurulumu birbirini beklemez (açılış süresi).
+    final tema = temaYukle();
+    final durum = await UygulamaDurumu.kur();
+    await tema;
+    BaslangicLog.yaz('Uygulama durumu kuruldu (sürüm ${durum.surum}); arayüz başlıyor');
+    runApp(BamBumPosUygulamasi(durum: durum));
+    WidgetsBinding.instance.addPostFrameCallback((_) => BaslangicLog.yaz('İlk Flutter karesi çizildi — açılış tamam'));
+    durum.baslat();
+  } catch (hata, iz) {
+    BaslangicLog.hata('açılış', hata, iz);
+    runApp(_AcilisHatasi(hata: '$hata', gunluk: BaslangicLog.yol));
   }
-  // Kasa/mutfak ekranı uykuya geçmesin.
-  WakelockPlus.enable().ignore();
+}
 
-  await eskiWindowsHazirla();
-  // Tema tercihi ve durum kurulumu birbirini beklemez (açılış süresi).
-  final tema = temaYukle();
-  final durum = await UygulamaDurumu.kur();
-  await tema;
-  runApp(BamBumPosUygulamasi(durum: durum));
-  durum.baslat();
+/// Açılış tamamlanamadıysa boş/donuk pencere yerine neden + günlük yolu.
+class _AcilisHatasi extends StatelessWidget {
+  const _AcilisHatasi({required this.hata, this.gunluk});
+  final String hata;
+  final String? gunluk;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('BamBumPOS başlatılamadı', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              SelectableText(hata, textAlign: TextAlign.center),
+              if (gunluk != null) ...[
+                const SizedBox(height: 12),
+                SelectableText('Ayrıntılar: $gunluk', textAlign: TextAlign.center),
+              ],
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class BamBumPosUygulamasi extends StatefulWidget {
@@ -70,7 +131,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
       durum: widget.durum,
       child: ValueListenableBuilder<bool>(
         valueListenable: koyuTema,
-        builder: (context, _, _) => MaterialApp(
+        builder: (context, _, __) => MaterialApp(
           title: 'BamBumPOS',
           debugShowCheckedModeBanner: false,
           theme: temaKur(),
@@ -86,7 +147,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
             onPointerHover: (_) => widget.durum.etkinlik(),
             onPointerSignal: (_) => widget.durum.etkinlik(),
             child: Stack(children: [
-              ?child,
+              if (child case final bbDeger?) bbDeger,
               BildirimBaloncuklari(merkez: widget.durum.bildirim),
             ]),
           ),

@@ -208,7 +208,7 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
                       child: Text.rich(
                         TextSpan(children: [
                           TextSpan(text: '$ad '),
-                          TextSpan(text: '$n', style: TextStyle(color: (_suzgec == k ? Kabuk.ink : Kabuk.soft).withValues(alpha: .7))),
+                          TextSpan(text: '$n', style: TextStyle(color: (_suzgec == k ? Kabuk.ink : Kabuk.soft).withOpacity(.7))),
                         ]),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

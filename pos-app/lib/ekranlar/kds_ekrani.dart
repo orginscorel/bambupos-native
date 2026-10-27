@@ -95,7 +95,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
       };
   String get _ekranIstasyonu => widget.serit ?? 'kitchen';
 
-  Map<String, dynamic> get _sorgu => _komi ? {'mode': 'runner'} : {'mode': 'kitchen', 'lane': ?widget.serit};
+  Map<String, dynamic> get _sorgu => _komi ? {'mode': 'runner'} : {'mode': 'kitchen', if (widget.serit case final bbDeger?) 'lane': bbDeger};
 
   Oturum get _o => context.durum.oturum!;
 
@@ -571,7 +571,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
       return ListView.separated(
         padding: const EdgeInsets.all(12),
         itemCount: satirlar.length,
-        separatorBuilder: (_, _) => const SizedBox(height: bosluk),
+        separatorBuilder: (_, __) => const SizedBox(height: bosluk),
         itemBuilder: (_, i) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (var j = 0; j < sutun; j++) ...[
             if (j > 0) const SizedBox(width: bosluk),
@@ -758,7 +758,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
                     ]),
                   ),
                 if (_m(x['station_label']) != null)
-                  Text('${x['station_label']}', style: TextStyle(fontSize: 12, color: Renk.soluk.withValues(alpha: .7))),
+                  Text('${x['station_label']}', style: TextStyle(fontSize: 12, color: Renk.soluk.withOpacity(.7))),
               ]),
             ),
           Padding(
@@ -827,7 +827,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: kalemler.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (_, i) => Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1152), child: _komiSatiri(kalemler[i]))),
     );
   }
@@ -1095,7 +1095,7 @@ class _KdsEkraniState extends State<KdsEkrani> {
                 Text('Tanımlı yazıcı yok. Ayarlar > Yazıcılar bölümünden ekleyin.', style: TextStyle(color: Renk.ikinci))
               else
                 DropdownButtonFormField<int?>(
-                  initialValue: _seciliYazici,
+                  value: _seciliYazici,
                   isExpanded: true,
                   items: [
                     const DropdownMenuItem<int?>(value: null, child: Text('Yazıcı seçilmedi')),
@@ -1218,7 +1218,7 @@ class _KalemGorseli extends StatelessWidget {
             imageUrl: u,
             fit: BoxFit.cover,
             memCacheWidth: (boyut * MediaQuery.devicePixelRatioOf(context)).round(),
-            errorWidget: (_, _, _) => yer,
+            errorWidget: (_, __, ___) => yer,
           ),
         ),
       ),
@@ -1249,7 +1249,7 @@ class _NabizNoktasiState extends State<_NabizNoktasi> with SingleTickerProviderS
         height: 18,
         child: AnimatedBuilder(
           animation: _c,
-          builder: (_, _) => Stack(alignment: Alignment.center, children: [
+          builder: (_, __) => Stack(alignment: Alignment.center, children: [
             Transform.scale(
               scale: 1 + _c.value,
               child: Opacity(

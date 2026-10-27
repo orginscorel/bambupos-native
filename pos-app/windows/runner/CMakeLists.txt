@@ -7,6 +7,7 @@ project(runner LANGUAGES CXX)
 #
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
+  "baslangic_log.cpp"
   "flutter_window.cpp"
   "main.cpp"
   "utils.cpp"
@@ -34,6 +35,13 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+
+# pos-win7: kaynaklar UTF-8 (Türkçe günlük/uyarı metinleri). flutter_windows.dll
+# gecikmeli yüklenir: main.cpp önce kendisi yükler, olmazsa eksik DLL/işlevi
+# günlüğe ve ekrana yazar (Windows'un anlamsız "başlatılamadı" kutusu yerine).
+target_compile_options(${BINARY_NAME} PRIVATE /utf-8)
+target_link_libraries(${BINARY_NAME} PRIVATE "delayimp.lib")
+target_link_options(${BINARY_NAME} PRIVATE "/DELAYLOAD:flutter_windows.dll")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

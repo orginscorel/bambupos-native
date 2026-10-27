@@ -11,7 +11,7 @@ class _Zil implements HttpClientAdapter {
   List<Map<String, dynamic>> liste = [];
 
   @override
-  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? _) async =>
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? _, Future<void>? __) async =>
       ResponseBody.fromString(
         jsonEncode({'unread_count': liste.where((n) => n['read'] != true).length, 'items': liste}),
         200,

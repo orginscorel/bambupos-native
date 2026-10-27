@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YALNIZ pos-win7 dalı: Flutter 3.19 aracı build.gradle.kts'i tanımaz ve
+     gömme sürümünü bu dosyada arar ("v1 embedding" hatası vermesin diye).
+     Android paketi bu dalda derlenmez; asıl dosya app/src/main altında. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <meta-data android:name="flutterEmbedding" android:value="2" />
+    </application>
+</manifest>

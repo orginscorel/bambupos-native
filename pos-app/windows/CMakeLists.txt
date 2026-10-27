@@ -57,6 +57,12 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# pos-win7: eklenti DLL'leri de gecikmeli yüklenir (runner/baslangic_log.cpp
+# BaglantilariDenetle önce yükler ve yüklenemeyeni adıyla bildirir).
+foreach(plugin ${FLUTTER_PLUGIN_LIST})
+  target_link_options(${BINARY_NAME} PRIVATE "/DELAYLOAD:${plugin}_plugin.dll")
+endforeach(plugin)
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

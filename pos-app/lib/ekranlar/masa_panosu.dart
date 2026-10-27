@@ -32,11 +32,11 @@ enum _Durum { bos, rezerve, dolu, bekliyor, hesap }
 
 /// Web'deki MASA_KART / MASA_HAP / MASA_VURGU sözlüğü.
 ({Color kenar, Color zemin, Color hap, Color vurgu, String etiket}) _renk(_Durum d) => switch (d) {
-      _Durum.bos => (kenar: Renk.basari.withValues(alpha: .55), zemin: Renk.basariZemin, hap: Renk.basari, vurgu: Renk.basari, etiket: 'BOŞ'),
-      _Durum.rezerve => (kenar: Renk.bilgi.withValues(alpha: .55), zemin: Renk.bilgiZemin, hap: Renk.bilgi, vurgu: Renk.bilgi, etiket: 'REZERVE'),
+      _Durum.bos => (kenar: Renk.basari.withOpacity(.55), zemin: Renk.basariZemin, hap: Renk.basari, vurgu: Renk.basari, etiket: 'BOŞ'),
+      _Durum.rezerve => (kenar: Renk.bilgi.withOpacity(.55), zemin: Renk.bilgiZemin, hap: Renk.bilgi, vurgu: Renk.bilgi, etiket: 'REZERVE'),
       _Durum.dolu => (kenar: Renk.hataKenar, zemin: Renk.hataZemin, hap: Renk.hata, vurgu: Renk.hata, etiket: 'AÇIK ADİSYON'),
       _Durum.bekliyor => (kenar: Renk.uyariKenar, zemin: Renk.uyariZemin, hap: Renk.uyari, vurgu: Renk.uyari, etiket: 'AÇIK ADİSYON'),
-      _Durum.hesap => (kenar: Renk.marka.withValues(alpha: .55), zemin: Renk.markaAcik, hap: Renk.marka, vurgu: Renk.marka, etiket: 'HESAP İSTENDİ'),
+      _Durum.hesap => (kenar: Renk.marka.withOpacity(.55), zemin: Renk.markaAcik, hap: Renk.marka, vurgu: Renk.marka, etiket: 'HESAP İSTENDİ'),
     };
 
 class _MasaPanosuState extends State<MasaPanosu> {
@@ -380,7 +380,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
           TextSpan(children: [
             TextSpan(text: m.ad),
             if (m.numara != null)
-              TextSpan(text: '  #${m.numara}', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Renk.durumUstu.withValues(alpha: .7))),
+              TextSpan(text: '  #${m.numara}', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Renk.durumUstu.withOpacity(.7))),
           ]),
           style: TextStyle(color: Renk.durumUstu, fontWeight: FontWeight.w700, fontSize: 12.5),
         ),
@@ -450,7 +450,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
             child: LinearProgressIndicator(
               value: kalem == 0 ? 0 : servis / kalem,
               minHeight: 5,
-              backgroundColor: Renk.yazi.withValues(alpha: .06),
+              backgroundColor: Renk.yazi.withOpacity(.06),
               color: r.vurgu,
             ),
           ),
@@ -508,7 +508,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
             decoration: BoxDecoration(borderRadius: kartYuvarlak, border: Border.all(color: r.kenar)),
             child: Column(children: [
               Padding(padding: const EdgeInsets.fromLTRB(8, 10, 8, 8), child: ust),
-              Divider(height: 1, color: r.kenar.withValues(alpha: .6)),
+              Divider(height: 1, color: r.kenar.withOpacity(.6)),
               Expanded(child: alt),
             ]),
           ),
@@ -803,7 +803,7 @@ class _OzetCipi extends StatelessWidget {
           const SizedBox(width: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: .15), borderRadius: BorderRadius.circular(6)),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(.15), borderRadius: BorderRadius.circular(6)),
             child: Text('$sahis şahıs', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
           ),
         ],
@@ -825,9 +825,9 @@ class _UyariKarti extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
       decoration: BoxDecoration(
-        color: renk.withValues(alpha: .08),
+        color: renk.withOpacity(.08),
         borderRadius: koseYuvarlak,
-        border: Border.all(color: renk.withValues(alpha: .35)),
+        border: Border.all(color: renk.withOpacity(.35)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(ikon, size: 18, color: renk),

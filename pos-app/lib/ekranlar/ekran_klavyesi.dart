@@ -89,7 +89,7 @@ class _Baglanti {
     );
   });
 
-  void temizle() => degistir((_, _) => const TextEditingValue());
+  void temizle() => degistir((_, __) => const TextEditingValue());
 }
 
 /// Ekran klavyesiyle çalışan metin alanı. Telefonda düz TextField gibidir.

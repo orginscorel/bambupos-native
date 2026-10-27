@@ -200,8 +200,8 @@ class _UsbSatiri extends StatelessWidget {
             : (c.ipucu ?? (c.tur == 'yazici' && !c.yazdirilabilir ? 'Yazdırılamıyor' : 'Hazır'),
                 c.ipucu != null ? Renk.uyari : Renk.ikinci);
     final alt = [
-      ?c.uretici,
-      ?c.vidPid,
+      if (c.uretici case final bbDeger?) bbDeger,
+      if (c.vidPid case final bbDeger?) bbDeger,
       if (c.osAd != null && c.platform != 'android') c.osAd!,
     ].join(' · ');
     final dugmeStili = OutlinedButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 12));

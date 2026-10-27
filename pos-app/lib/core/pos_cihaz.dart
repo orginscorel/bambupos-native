@@ -17,7 +17,7 @@ String posCihazAdi(Map c) {
 
   final ad = m('ad');
   if (ad != null) return ad;
-  final mm = [?m('marka'), ?m('model')].join(' - ');
+  final mm = [if (m('marka') case final bbDeger?) bbDeger, if (m('model') case final bbDeger?) bbDeger].join(' - ');
   if (mm.isNotEmpty) return mm;
   return m('banka') ?? 'Kart POS';
 }

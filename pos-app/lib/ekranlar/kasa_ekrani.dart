@@ -1053,7 +1053,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       return;
     }
     try {
-      await _api.post('/api/v1/print/receipt', {'printer_id': _yazici, 'order_id': ?siparis, 'title': baslik, 'receipt': fis});
+      await _api.post('/api/v1/print/receipt', {'printer_id': _yazici, if (siparis case final bbDeger?) 'order_id': bbDeger, 'title': baslik, 'receipt': fis});
       if (mounted) context.bildir2('Fiş yazıcıya gönderildi', _yaziciAdi ?? '');
     } on ApiHata catch (e) {
       if (mounted) context.bildir2('Yazıcıya gönderilemedi', e.mesaj, hata: true);
@@ -1376,7 +1376,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       // Ödeme bölmesi seçimden gelen tutarla kendi başına yenilenir.
       final odeme = _borclu != null
           ? _borcOdemeBolmesi(g)
-          : RepaintBoundary(child: ListenableBuilder(listenable: _odemeTetik, builder: (_, _) => _odemeBolmesi(g)));
+          : RepaintBoundary(child: ListenableBuilder(listenable: _odemeTetik, builder: (_, __) => _odemeBolmesi(g)));
       if (genis) {
         // Masaüstü (1.2.22): sağ döküm genişliğin ~%40'ı (420–640 px);
         // tablet eski sabit genişlikte.
@@ -1395,7 +1395,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               _kart(odeme),
             ]),
           ),
-          if (_borclu == null && _secili != null && _kalan > 0) ListenableBuilder(listenable: _odemeTetik, builder: (_, _) => _mobilOdemeCubugu()),
+          if (_borclu == null && _secili != null && _kalan > 0) ListenableBuilder(listenable: _odemeTetik, builder: (_, __) => _mobilOdemeCubugu()),
         ]);
       }
     }
@@ -1520,12 +1520,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final (govde, kenar, hap, vurgu, etiket) = switch (d) {
       _KartDurum.acik => (Renk.hataZemin, Renk.hataKenar, Renk.hata, Renk.hata, 'Açık adisyon'),
       _KartDurum.kismi => (Renk.uyariZemin, Renk.uyariKenar, Renk.uyari, Renk.uyari, 'Kısmi ödendi'),
-      _KartDurum.odendi => (Renk.basariZemin, Renk.basari.withValues(alpha: .55), Renk.basari, Renk.basari, 'Ödendi'),
-      _KartDurum.hesap => (Renk.markaAcik.carp(.4), Renk.marka.withValues(alpha: .55), Renk.marka, Renk.marka, 'Hesap istendi'),
+      _KartDurum.odendi => (Renk.basariZemin, Renk.basari.withOpacity(.55), Renk.basari, Renk.basari, 'Ödendi'),
+      _KartDurum.hesap => (Renk.markaAcik.carp(.4), Renk.marka.withOpacity(.55), Renk.marka, Renk.marka, 'Hesap istendi'),
     };
     final baslik = _baslik(a);
     final borc = a.ham['receivable_id'] != null ? tamSayi(a.ham['receivable_balance_minor']) : 0;
-    final ciz = Container(height: 1, color: kenar.withValues(alpha: .6));
+    final ciz = Container(height: 1, color: kenar.withOpacity(.6));
     final tutar = Column(children: [
       Text('Adisyon', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
       FittedBox(
@@ -1667,7 +1667,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final son = d['last_payment_at']?.toString();
     return Material(
       color: Renk.markaAcik.carp(.3),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Renk.marka.withValues(alpha: .45))),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Renk.marka.withOpacity(.45))),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _borcluSec(d),
@@ -1797,7 +1797,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final y = (r['yontemler'] as List? ?? const []).whereType<Map>().toList();
     return Material(
       color: Renk.basariZemin,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Renk.basari.withValues(alpha: .55))),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Renk.basari.withOpacity(.55))),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
@@ -2085,7 +2085,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       RepaintBoundary(
         child: ListenableBuilder(
           listenable: _odemeTetik,
-          builder: (_, _) => _toplamSeridi(s),
+          builder: (_, __) => _toplamSeridi(s),
         ),
       ),
     ]);
@@ -2246,9 +2246,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     // Satırlar ListView.builder ile — yalnız görünenler kurulur.
     final ogeler = <Widget Function()>[];
     if (!_duzelt && kalemler.isNotEmpty && s.kalan > 0) {
-      ogeler.add(() => RepaintBoundary(child: ListenableBuilder(listenable: _secim, builder: (_, _) => _secimSeridi())));
+      ogeler.add(() => RepaintBoundary(child: ListenableBuilder(listenable: _secim, builder: (_, __) => _secimSeridi())));
     }
-    Widget satir(Kalem k) => ListenableBuilder(listenable: _satirDinle, builder: (_, _) => _kalemSatiri(k));
+    Widget satir(Kalem k) => ListenableBuilder(listenable: _satirDinle, builder: (_, __) => _kalemSatiri(k));
     if (kalemler.isEmpty) {
       ogeler.add(() => _bos(Icons.receipt_long_outlined, 'Kalem yok', ''));
     } else if (h['aktif_parti'] != null) {
@@ -2628,7 +2628,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     return ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: _odemeler.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
+      separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (_, i) {
         final p = _odemeler[i];
         final iadeMi = p['kind'] == 'refund';
@@ -3045,7 +3045,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(child: Text(etiket, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Renk.ikinci))),
-            ?sag,
+            if (sag case final bbDeger?) bbDeger,
           ]),
           SizedBox(
             height: _sikSol ? 32 : 40,
@@ -3579,7 +3579,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     return ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: _hareketler.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
+      separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (_, i) {
         final t = _hareketler[i];
         final tur = '${t['type']}';
@@ -4037,9 +4037,9 @@ class _Etiket extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: renk.withValues(alpha: .08),
+        color: renk.withOpacity(.08),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: renk.withValues(alpha: .28)),
+        border: Border.all(color: renk.withOpacity(.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

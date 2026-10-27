@@ -193,7 +193,7 @@ class YazdirmaAjani extends ChangeNotifier {
     }
     if (id == null) return;
     try {
-      await _api.post('/api/v1/print/agent/jobs/$id/ack', {'ok': hata == null, 'error': ?hata}, _baslik);
+      await _api.post('/api/v1/print/agent/jobs/$id/ack', {'ok': hata == null, if (hata case final bbDeger?) 'error': bbDeger}, _baslik);
     } on ApiHata {
       // Onay gitmezse sunucu işi zaman aşımında geri alır.
     }
@@ -368,7 +368,7 @@ class YazdirmaAjani extends ChangeNotifier {
         if (sonTarama != null) ...{
           'printers': bulunanYazicilar,
           'pos': bulunanPos,
-          'cihaz': ?_cihaz,
+          if (_cihaz case final bbDeger?) 'cihaz': bbDeger,
         },
       }, _baslik);
       _usbSonBildirim = DateTime.now();
@@ -431,7 +431,7 @@ class YazdirmaAjani extends ChangeNotifier {
       final r = await _api.post('/api/v1/print/agent/usb/benimse', {
         'anahtar': c.anahtar,
         if (ad != null && ad.trim().isNotEmpty) 'ad': ad.trim(),
-        'istasyon': ?istasyon,
+        if (istasyon case final bbDeger?) 'istasyon': bbDeger,
         'tur': tur ?? c.tur,
       }, _baslik);
       _tanimlilariOku(r);
@@ -589,7 +589,7 @@ class YazdirmaAjani extends ChangeNotifier {
       'marka': marka,
       'model': model,
       'pos_cihazi': Platform.isAndroid && _posUreticileri.any(aranan.contains),
-      'ip': ?ip,
+      if (ip case final bbDeger?) 'ip': bbDeger,
     };
   }
 
