@@ -3224,14 +3224,43 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
+  /// Kısa pencere için dar yöntem düğmesi: simge üstte, ad altta.
+  Widget _yontemDugmesiDikey((String, String, String, bool) y) {
+    final secili = _yontem == y.$1;
+    final t = yontemTonu(y.$1);
+    return Material(
+      color: secili ? t.zemin : Renk.yuzey,
+      shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? t.kenar : Renk.cizgiKoyu, width: secili ? 2 : 1)),
+      child: InkWell(
+        key: ValueKey('kasa-yontem-${y.$1}'),
+        customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+        onTap: () => setState(() => _yontem = y.$1),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(yontemSimgesi(y.$1, y.$3), size: 18, color: t.ikon),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(y.$2, maxLines: 1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: secili ? t.yazi : Renk.yazi)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   /// Masaüstü ödeme yöntemleri (1.2.32): tuş takımının ALTINDA yan yana;
   /// yalnız işletmede açık olanlar. 4'e kadar tek sıra, fazlası iki sıra.
   Widget _yontemSirasi() {
     final l = kasadaGorunenYontemler;
     if (l.isEmpty) return const SizedBox.shrink();
-    final sutun = l.length <= 4 ? l.length : (l.length / 2).ceil();
+    // Kısa pencerede (sık düzen) tek sıra: simge üstte, ad altta — tuş
+    // takımına yer kalsın.
+    final tekSira = _sikSol;
+    final sutun = tekSira || l.length <= 4 ? l.length : (l.length / 2).ceil();
     final satir = (l.length / sutun).ceil();
-    final boy = _sikSol ? 46.0 : 54.0;
+    final boy = tekSira ? 50.0 : 54.0;
     return Column(key: const ValueKey('kasa-yontemler'), children: [
       for (var r = 0; r < satir; r++)
         SizedBox(
@@ -3241,7 +3270,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(3),
-                  child: r * sutun + c < l.length ? _yontemDugmesi(l[r * sutun + c]) : const SizedBox.shrink(),
+                  child: r * sutun + c >= l.length
+                      ? const SizedBox.shrink()
+                      : (tekSira ? _yontemDugmesiDikey(l[r * sutun + c]) : _yontemDugmesi(l[r * sutun + c])),
                 ),
               ),
           ]),
@@ -3316,22 +3347,23 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                         Row(children: [
                           Icon(yontemSimgesi(p['method']?.toString(), p['method_icon']?.toString()), size: 16, color: Renk.ikinci),
                           const SizedBox(width: 7),
-                          Flexible(
+                          Expanded(
                             child: Text('${iadeMi ? 'İade — ' : ''}${p['method_label'] ?? ''}',
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                           ),
                           const SizedBox(width: 6),
-                          Icon(Icons.schedule_rounded, size: 12, color: Renk.soluk),
-                          const SizedBox(width: 2),
-                          Text(saatMetni(p['created_at']?.toString()), style: TextStyle(fontSize: 12, color: Renk.soluk)),
-                          const Spacer(),
-                          Rozet('${p['status_label'] ?? durum}', renk: renk),
-                          const SizedBox(width: 8),
                           Text('${iadeMi ? '−' : ''}${para(tutar)}',
                               style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
                         ]),
+                        const SizedBox(height: 3),
                         Row(children: [
                           const SizedBox(width: 23),
+                          Icon(Icons.schedule_rounded, size: 12, color: Renk.soluk),
+                          const SizedBox(width: 2),
+                          Text(saatMetni(p['created_at']?.toString()), style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+                          const SizedBox(width: 6),
+                          Rozet('${p['status_label'] ?? durum}', renk: renk),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               [
@@ -3345,8 +3377,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                               style: TextStyle(fontSize: 11.5, color: p['suspect'] == true ? Renk.hata : Renk.ikinci),
                             ),
                           ),
-                          ...aksiyonlar,
                         ]),
+                        if (aksiyonlar.isNotEmpty)
+                          Align(alignment: Alignment.centerRight, child: Wrap(spacing: 2, children: aksiyonlar)),
                       ]),
                     );
                   },
