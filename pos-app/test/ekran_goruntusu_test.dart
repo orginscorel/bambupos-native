@@ -229,6 +229,15 @@ Map<String, String> _kasaVerisi({bool posCihazlari = false, bool indirimli = fal
           {'id': 9, 'ad': 'Ziraat POS', 'banka': 'Ziraat Bankası', 'terminal_no': '5521'},
         ],
     }),
+    // Borçlar sekmesi (1.2.34 görünüm denetimi).
+    '/api/v1/receivables': jsonEncode({
+      'receivables': [
+        {'id': 41, 'name': 'Mehmet Kaya', 'phone': '05321234567', 'balance_minor': 1245000, 'open_debt_orders_count': 3, 'last_payment_at': DateTime.now().subtract(const Duration(days: 2)).toIso8601String()},
+        {'id': 42, 'name': 'İbrahim Öz', 'phone': null, 'balance_minor': 1050000, 'open_debt_orders_count': 1, 'last_payment_at': null},
+        {'id': 43, 'name': 'Ayşe Demir', 'phone': '05559876543', 'balance_minor': 32000, 'open_debt_orders_count': 0, 'last_payment_at': DateTime.now().subtract(const Duration(hours: 5)).toIso8601String()},
+        {'id': 44, 'name': 'Serkan Yılmaz', 'phone': '05301112233', 'balance_minor': 185000, 'open_debt_orders_count': 2, 'last_payment_at': null},
+      ],
+    }),
     '/api/v1/discount-presets': jsonEncode({
       'presets': [
         {'id': 1, 'name': 'Öğrenci', 'value_label': '%10', 'note': 'Öğrenci kartı ile'},
@@ -460,6 +469,13 @@ void main() {
         await t.runAsync(d.oturumuYenile);
         await t.pumpWidget(_uygulama(d, const Kabuk()));
         await _bekle(t);
+        if (yontem == 'Nakit') {
+          await t.tap(find.text('Borçlar').first);
+          await _bekle(t);
+          await _yaz(t, 'kasa-kabuk-$ad-borclar');
+          await t.tap(find.text('Adisyonlar').first);
+          await _bekle(t);
+        }
         await t.tap(find.text('Bahçe 2').first);
         await _bekle(t);
         final kisa = yontem == 'Nakit' ? 'nakit' : 'kart';
