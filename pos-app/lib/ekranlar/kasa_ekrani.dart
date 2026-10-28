@@ -3281,14 +3281,19 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   }
 
   /// ÖDEME GEÇMİŞİ (1.2.32): tuş takımının yanında, sağdaki "Ödemeler"
-  /// sekmesinin içeriği. Boşsa "Ödeme yok".
+  /// sekmesinin içeriği. Boşsa "Ödeme yok". İşlemler (1.2.33) satırın 3 nokta
+  /// menüsünde: sorgula, yöntem değiştir, iptal. İade burada YOK (Ödemeler sekmesi).
   Widget _odemeGecmisi() {
     final basarili = _odemeler.where((p) => p['kind'] == 'payment' && p['status'] == 'succeeded').toList();
     final toplam = basarili.fold<int>(0, (t, p) => t + tamSayi(p['amount_minor']));
-    Widget aksiyon(String ad, VoidCallback? bas) => TextButton(
-          style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact),
-          onPressed: bas,
-          child: Text(ad, style: const TextStyle(fontSize: 12)),
+    PopupMenuItem<VoidCallback> oge(IconData ikon, String ad, VoidCallback bas, {bool tehlike = false}) => PopupMenuItem<VoidCallback>(
+          value: bas,
+          height: 40,
+          child: Row(children: [
+            Icon(ikon, size: 18, color: tehlike ? Renk.hata : Renk.ikinci),
+            const SizedBox(width: 10),
+            Text(ad, style: TextStyle(fontSize: 14, color: tehlike ? Renk.hata : Renk.yazi)),
+          ]),
         );
     return Container(
       key: const ValueKey('kasa-odeme-gecmisi'),
@@ -3334,12 +3339,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                     };
                     final yontemDegisir = !iadeMi && durum == 'succeeded' && iadeToplam == 0 &&
                         const ['cash', 'card_present', 'mock', 'demo', null].contains(p['provider']);
-                    final aksiyonlar = <Widget>[
-                      if (durum == 'pending' && _odemeYetkisi) aksiyon('Sorgula', () => _sorgula(p)),
-                      if (_iadeYetkisi && !iadeMi && yontemDegisir) aksiyon('Yöntem', _mesgul ? null : () => _yontemDegistir(p)),
-                      if (_iadeYetkisi && !iadeMi && durum == 'succeeded' && iadeToplam == 0) aksiyon('İptal', _mesgul ? null : () => _void(p)),
-                      if (_iadeYetkisi && !iadeMi && (durum == 'succeeded' || durum == 'partially_refunded') && iadeToplam < tutar)
-                        aksiyon('İade', _mesgul ? null : () => _iade(p)),
+                    final menu = <PopupMenuItem<VoidCallback>>[
+                      if (durum == 'pending' && _odemeYetkisi) oge(Icons.sync_rounded, 'Durumu sorgula', () => _sorgula(p)),
+                      if (_iadeYetkisi && !iadeMi && yontemDegisir) oge(Icons.swap_horiz_rounded, 'Yöntemi değiştir', () => _yontemDegistir(p)),
+                      if (_iadeYetkisi && !iadeMi && durum == 'succeeded' && iadeToplam == 0)
+                        oge(Icons.delete_outline_rounded, 'Ödemeyi iptal et', () => _void(p), tehlike: true),
                     ];
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 8, 6),
@@ -3354,6 +3358,23 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                           const SizedBox(width: 6),
                           Text('${iadeMi ? '−' : ''}${para(tutar)}',
                               style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                          if (menu.isEmpty)
+                            const SizedBox(width: 30)
+                          else
+                            SizedBox(
+                              width: 30,
+                              height: 26,
+                              child: PopupMenuButton<VoidCallback>(
+                                key: ValueKey('odeme-menu-${p['id']}'),
+                                tooltip: 'Ödeme işlemleri',
+                                padding: EdgeInsets.zero,
+                                enabled: !_mesgul,
+                                icon: Icon(Icons.more_vert_rounded, size: 18, color: Renk.ikinci),
+                                shape: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+                                onSelected: (f) => f(),
+                                itemBuilder: (_) => menu,
+                              ),
+                            ),
                         ]),
                         const SizedBox(height: 3),
                         Row(children: [
@@ -3378,8 +3399,6 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                             ),
                           ),
                         ]),
-                        if (aksiyonlar.isNotEmpty)
-                          Align(alignment: Alignment.centerRight, child: Wrap(spacing: 2, children: aksiyonlar)),
                       ]),
                     );
                   },
