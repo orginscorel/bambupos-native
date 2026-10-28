@@ -1110,6 +1110,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     if (ok) _odenenleriYenile();
   }
 
+  // 1.2.34: kasada iade düğmesi yok (sağ Ödemeler sekmesi kalktı); yeri
+  // işletme kararıyla belirlenecek, işlev hazır dursun.
+  // ignore: unused_element
   Future<void> _iade(Json p) async {
     final r = await _penceredeyken(() => iadePenceresi(context, p));
     if (r == null || !mounted) return;
