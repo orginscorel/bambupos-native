@@ -1642,13 +1642,13 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
   int _sutun(double g) => g >= 1536 ? 7 : (g >= 1280 ? 6 : (g >= 1024 ? 5 : (g >= 768 ? 4 : (g >= 640 ? 3 : 2))));
 
-  Widget _izgara(double g, List<Widget> kartlar) => GridView.builder(
+  Widget _izgara(double g, List<Widget> kartlar, {double ek = 0}) => GridView.builder(
         padding: const EdgeInsets.all(12),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: _sutun(g),
           mainAxisSpacing: g >= 640 ? 10 : 8,
           crossAxisSpacing: g >= 640 ? 10 : 8,
-          mainAxisExtent: g >= 480 ? 200 : 270,
+          mainAxisExtent: (g >= 480 ? 200 : 270) + ek,
         ),
         itemCount: kartlar.length,
         itemBuilder: (_, i) => kartlar[i],
@@ -1827,7 +1827,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             ? Center(child: Text('Şahıslar yükleniyor…', style: TextStyle(color: Renk.ikinci)))
             : liste.isEmpty
                 ? _bos(Icons.check_circle_outline_rounded, 'Borçlu şahıs yok', 'Adisyon borca taşındığında ya da elle şahıs eklendiğinde burada listelenir.')
-                : _izgara(g, [for (final d in liste) _borcluKarti(d, enYuksek)]),
+                : _izgara(g, [for (final d in liste) _borcluKarti(d, enYuksek)], ek: 24),
       ),
     ]);
   }
