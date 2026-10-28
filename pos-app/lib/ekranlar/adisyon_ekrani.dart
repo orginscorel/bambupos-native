@@ -525,6 +525,23 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
   List<Kalem> get _seciliKalemler => _a?.aktifKalemler.where((k) => _secili.contains(k.id)).toList() ?? const [];
 
+  /// TÜM ÜRÜNLERİ SEÇ (2026-10-28 işletme talebi): kutusu görünen (aktif,
+  /// parası alınmamış) kalemlerin hepsi tam adetle seçilir; hepsi zaten
+  /// seçiliyse seçim kaldırılır. Web adisyon ekranıyla aynı kural.
+  List<Kalem> get _secilebilirKalemler => _a?.aktifKalemler.where(_tasinabilir).toList() ?? const [];
+
+  bool get _hepsiSecili {
+    final l = _secilebilirKalemler;
+    return l.isNotEmpty && l.every((k) => _secili.contains(k.id) && _topluAdedi(k) >= k.adet);
+  }
+
+  void _tumunuSecDegistir() => setState(() {
+        final hepsi = _hepsiSecili;
+        _birim.clear();
+        _secili.clear();
+        if (!hepsi) _secili.addAll(_secilebilirKalemler.map((k) => k.id));
+      });
+
   /* ═════════════ Taşıma / birleştirme (§4.4 / §4.7) ═════════════ */
 
   void _hedefeGit(dynamic r) {
@@ -1278,6 +1295,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           position: RelativeRect.fromLTRB(p.dx - 220, p.dy + kutu.size.height + 4, 16, 0),
           shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
           items: [
+            if (a.acik && _can('orders.update') && _secilebilirKalemler.isNotEmpty)
+              _hepsiSecili
+                  ? _menuOgesi('tumunu_sec', Icons.close_rounded, 'Seçimi kaldır')
+                  : _menuOgesi('tumunu_sec', Icons.check_rounded, 'Tüm ürünleri seç'),
             if (a.acik && _can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Adisyonu başka masaya taşı'),
             if (a.acik && _can('orders.merge_tables')) _menuOgesi('birlestir', Icons.merge_rounded, 'Birleştir'),
             if (a.acik && _canOrPin('orders.discount')) _menuOgesi('indirim', Icons.sell_outlined, indirimVar ? 'İndirimi kaldır' : 'İndirim uygula'),
@@ -1285,6 +1306,8 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           ],
         ));
     switch (s) {
+      case 'tumunu_sec':
+        _tumunuSecDegistir();
       case 'tasi':
         _adisyonuTasi();
       case 'birlestir':

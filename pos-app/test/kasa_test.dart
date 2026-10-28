@@ -505,6 +505,26 @@ void main() {
     await _bitir(t, d);
   });
 
+  testWidgets('adisyon: 3 nokta → Tüm ürünleri seç hepsini tikler, Seçimi kaldır bırakır', (t) async {
+    final (d, _) = await _kur(t, manuel: false, boyut: const Size(1280, 1800), ekran: const AdisyonEkrani(adisyonId: 300), ek: _notYanitlari());
+    // Çay 2 + Kaşarlı Tost 2 + Filtre Kahve 1 = 5 adet, 3 ürün.
+    expect(find.textContaining('adet seçili'), findsNothing);
+    await t.tap(find.byTooltip('Diğer işlemler'));
+    await _bekle(t);
+    expect(find.text('Tüm ürünleri seç'), findsOneWidget);
+    await t.tap(find.text('Tüm ürünleri seç'));
+    await _bekle(t);
+    expect(find.textContaining('5 adet seçili · 3 üründen'), findsOneWidget);
+    // Hepsi seçiliyken menü seçimi kaldırmayı önerir.
+    await t.tap(find.byTooltip('Diğer işlemler'));
+    await _bekle(t);
+    expect(find.text('Tüm ürünleri seç'), findsNothing);
+    await t.tap(find.text('Seçimi kaldır'));
+    await _bekle(t);
+    expect(find.textContaining('adet seçili'), findsNothing);
+    await _bitir(t, d);
+  });
+
   group('kalem notu', () {
     Future<(UygulamaDurumu, _Sunucu)> ac(WidgetTester t, {Map<String, (int, String)>? y}) =>
         _kur(t, manuel: false, boyut: const Size(1280, 1800), ekran: const AdisyonEkrani(adisyonId: 300), ek: y ?? _notYanitlari());
