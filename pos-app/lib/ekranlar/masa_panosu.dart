@@ -13,6 +13,7 @@ import 'ortak.dart';
 
 /// MASA PANOSU — web'deki /panel/siparisler (Board.vue) ile birebir:
 ///  • sekmeler: Boş Masalar · Açık Masalar · alanlar · Şahıslar · Paket & Kanal
+///    ("Önce alanlar" ayarında: alanlar · Açık Masalar · Boş Masalar)
 ///  • alan başlığında "● n dolu ● n boş"
 ///  • masa kartı renkleri web'in durum sözlüğünden (MASA_KART/HAP/VURGU):
 ///      boş → yeşil · rezerve → mavi · dolu → kırmızı ·
@@ -44,6 +45,8 @@ class _MasaPanosuState extends State<MasaPanosu> {
   bool _baglantiYok = false;
   bool _yukleniyor = false;
   String _sekme = 'bos';
+  /// "Önce alanlar" kipinde ekran ilk sekmeyle (ilk alan) açılır — bir kez.
+  bool _ilkSekmeAyarlandi = false;
   Timer? _zamanlayici;
   bool _acilisYapiliyor = false;
   String? _sonHam;
@@ -232,19 +235,31 @@ class _MasaPanosuState extends State<MasaPanosu> {
     final cariAcik = pano.cariler.where((c) => c.adisyonlar.isNotEmpty).length;
     final alanlar = pano.alanlar;
 
-    final sekmeler = <(String, String, IconData, int)>[
-      if (sekmeliKip) ...[
+    // Sekme sırası işletme ayarıdır (web Board.vue ile aynı kural).
+    final alanOnce = o.masaSekmeSirasi == 'alan_once';
+    final durumSekmeleri = <(String, String, IconData, int)>[
+      if (alanOnce) ...[
+        ('acik', 'Açık Masalar', Icons.receipt_long_outlined, acikSayi),
+        ('bos', 'Boş Masalar', Icons.restaurant_rounded, bosSayi),
+      ] else ...[
         ('bos', 'Boş Masalar', Icons.restaurant_rounded, bosSayi),
         ('acik', 'Açık Masalar', Icons.receipt_long_outlined, acikSayi),
       ],
+    ];
+
+    final sekmeler = <(String, String, IconData, int)>[
+      if (sekmeliKip && !alanOnce) ...durumSekmeleri,
       if (alanlar.length >= 2)
         for (final a in alanlar) ('alan:$a', a, Icons.restaurant_rounded, pano.masalar.where((m) => m.alan == a).length)
       else if (!sekmeliKip)
         ('all', 'Masalar', Icons.restaurant_rounded, pano.masalar.length),
+      if (sekmeliKip && alanOnce) ...durumSekmeleri,
       if (o.eklenti('receivables', varsayilan: false) && pano.cariler.isNotEmpty) ('cari', 'Şahıslar', Icons.people_alt_outlined, pano.cariler.length),
       if (o.eklenti('delivery', varsayilan: false) || pano.kanalSiparisleri.isNotEmpty)
         ('kanal', 'Paket & Kanal', Icons.local_shipping_outlined, pano.kanalSiparisleri.length),
     ];
+    if (alanOnce && !_ilkSekmeAyarlandi) _sekme = sekmeler.first.$1;
+    _ilkSekmeAyarlandi = true;
     if (!sekmeler.any((s) => s.$1 == _sekme)) _sekme = sekmeler.first.$1;
 
     return Stack(children: [

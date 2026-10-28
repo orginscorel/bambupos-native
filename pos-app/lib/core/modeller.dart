@@ -46,6 +46,10 @@ class Oturum {
   /// Kişinin KDS istasyon aileleri (web auth.stations); boş = kısıt yok.
   List<String> get istasyonlar => (ham['istasyonlar'] is List) ? (ham['istasyonlar'] as List).map((e) => '$e').toList() : const [];
 
+  /// Siparişler ekranı sekme sırası (işletme ayarı, 2026-10-28):
+  /// 'durum_once' → Boş · Açık · alanlar; 'alan_once' → alanlar · Açık · Boş.
+  String get masaSekmeSirasi => _metin(_json(ham['ayarlar'])['masa_sekme_sirasi']) ?? 'durum_once';
+
   /// İşletme Yönetimi › Eklentiler. Liste hiç gelmediyse (eski sunucu)
   /// varsayılan AÇIK sayılır — sunucu zaten kapalı özelliğin verisini vermez.
   bool eklenti(String anahtar, {bool varsayilan = true}) {
