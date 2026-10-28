@@ -3114,21 +3114,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   }) {
     final sik = _sikSol;
     final ara = sik ? 8.0 : 12.0;
-    final odemeVar = _odemeler.any((p) => p['kind'] == 'payment' && p['status'] == 'succeeded');
+    // 1.2.32: tuş takımının yanında ödeme geçmişi (parçalı ödemeler bir
+    // bakışta); ödeme yöntemleri aşağıda yan yana (web kasayla aynı düzen).
     final orta = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(flex: 55, child: _numpad(borc: false, doldur: true)),
       const SizedBox(width: 14),
-      Expanded(
-        flex: 45,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(3, 2, 3, 4),
-            child: _bolumBasligi(Icons.wallet_outlined, 'Ödeme yöntemi',
-                sag: _yontem == null ? Text('seçilmedi', style: TextStyle(fontSize: 12, color: Renk.uyari, fontWeight: FontWeight.w600)) : null),
-          ),
-          Expanded(child: _yontemSutunlari()),
-        ]),
-      ),
+      Expanded(flex: 45, child: _odemeGecmisi()),
     ]);
     return Padding(
       key: const ValueKey('kasa-masaustu-sol'),
@@ -3164,12 +3155,14 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         ],
         SizedBox(height: ara),
         // Orta bölüm boşluğu doldurur; çok uzun pencerede tuşlar dev olmasın
-        // diye en çok 600 px (kalan boşluk üst-alt eşit dağılır).
+        // diye en çok 520 px (kalan boşluk üst-alt eşit dağılır).
         Expanded(
           child: LayoutBuilder(
-            builder: (_, k) => Center(child: SizedBox(height: k.maxHeight.clamp(0.0, 600.0), child: orta)),
+            builder: (_, k) => Center(child: SizedBox(height: k.maxHeight.clamp(0.0, 520.0), child: orta)),
           ),
         ),
+        SizedBox(height: ara),
+        _yontemSirasi(),
         if (_terminalYontemi) ...[SizedBox(height: ara), _posKutusu()],
         if (_bahsisAcik) ...[
           SizedBox(height: ara),
@@ -3184,73 +3177,183 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             ),
           ),
         ],
-        if (odemeVar) ...[
-          SizedBox(height: ara),
-          _odemelerAcik
-              ? ConstrainedBox(constraints: const BoxConstraints(maxHeight: 180), child: SingleChildScrollView(child: _yapilanOdemeler()))
-              : _yapilanOdemelerOzeti(),
-        ],
         SizedBox(height: ara),
         _odemeDugmesi(yukseklik: sik ? 50 : 58, buyuk: true),
       ]),
     );
   }
 
-  /// Masaüstü ödeme yöntemleri: iki sütun, satırlar eşit boyda; her biri
-  /// çerçeveli düğme (renkli simge kutusu + ad), seçili olan renkli.
-  Widget _yontemSutunlari() {
-    final l = kasadaGorunenYontemler;
-    final satir = (l.length / 2).ceil();
-    Widget dugme(int i) {
-      if (i >= l.length) return const SizedBox.shrink();
-      final y = l[i];
-      final secili = _yontem == y.$1;
-      final t = yontemTonu(y.$1);
-      return Material(
-        color: secili ? t.zemin : Renk.yuzey,
-        shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? t.kenar : Renk.cizgiKoyu, width: secili ? 2 : 1)),
-        child: InkWell(
-          key: ValueKey('kasa-yontem-${y.$1}'),
-          customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
-          onTap: () => setState(() => _yontem = y.$1),
-          child: LayoutBuilder(builder: (_, k) {
-            // Uzun pencerede düğme büyür: simge ve yazı da büyür.
-            final iri = k.maxHeight >= 84;
-            // Çok kısa pencerede (ör. %125 ölçekli 1366×768): ince, tek satır.
-            final ince = k.maxHeight < 46;
-            final ad = Text(y.$2,
-                maxLines: ince ? 1 : 2,
-                overflow: ince ? TextOverflow.visible : TextOverflow.ellipsis,
-                style: TextStyle(fontSize: iri ? 16 : (ince ? 13 : 14), height: 1.15, fontWeight: FontWeight.w600, color: secili ? t.yazi : Renk.yazi));
-            final kutu = iri ? 44.0 : (ince ? 26.0 : 34.0);
-            return Padding(
-              padding: EdgeInsets.symmetric(horizontal: iri ? 14 : (ince ? 6 : 10)),
-              child: Row(children: [
-                Container(
-                  width: kutu,
-                  height: kutu,
-                  decoration: BoxDecoration(color: secili ? Renk.yuzey : t.zemin, borderRadius: koseYuvarlak),
-                  child: Icon(yontemSimgesi(y.$1, y.$3), size: iri ? 24 : (ince ? 16 : 20), color: t.ikon),
-                ),
-                SizedBox(width: iri ? 12 : (ince ? 6 : 10)),
-                Expanded(child: ince ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: ad) : ad),
-                if (secili) Icon(Icons.check_circle_rounded, size: iri ? 20 : (ince ? 16 : 18), color: t.yazi),
-              ]),
-            );
-          }),
-        ),
-      );
-    }
+  /// Tek ödeme yöntemi düğmesi: çerçeveli, renkli simge kutusu + ad;
+  /// seçili olan yöntem renginde. Boyu bulunduğu kutuya göre ayarlanır.
+  Widget _yontemDugmesi((String, String, String, bool) y) {
+    final secili = _yontem == y.$1;
+    final t = yontemTonu(y.$1);
+    return Material(
+      color: secili ? t.zemin : Renk.yuzey,
+      shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: secili ? t.kenar : Renk.cizgiKoyu, width: secili ? 2 : 1)),
+      child: InkWell(
+        key: ValueKey('kasa-yontem-${y.$1}'),
+        customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+        onTap: () => setState(() => _yontem = y.$1),
+        child: LayoutBuilder(builder: (_, k) {
+          // Uzun pencerede düğme büyür: simge ve yazı da büyür.
+          final iri = k.maxHeight >= 84;
+          // Çok kısa pencerede (ör. %125 ölçekli 1366×768): ince, tek satır.
+          final ince = k.maxHeight < 46;
+          final ad = Text(y.$2,
+              maxLines: ince ? 1 : 2,
+              overflow: ince ? TextOverflow.visible : TextOverflow.ellipsis,
+              style: TextStyle(fontSize: iri ? 16 : (ince ? 13 : 14), height: 1.15, fontWeight: FontWeight.w600, color: secili ? t.yazi : Renk.yazi));
+          final kutu = iri ? 44.0 : (ince ? 26.0 : 34.0);
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: iri ? 14 : (ince ? 6 : 10)),
+            child: Row(children: [
+              Container(
+                width: kutu,
+                height: kutu,
+                decoration: BoxDecoration(color: secili ? Renk.yuzey : t.zemin, borderRadius: koseYuvarlak),
+                child: Icon(yontemSimgesi(y.$1, y.$3), size: iri ? 24 : (ince ? 16 : 20), color: t.ikon),
+              ),
+              SizedBox(width: iri ? 12 : (ince ? 6 : 10)),
+              Expanded(child: ince ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: ad) : ad),
+              if (secili) Icon(Icons.check_circle_rounded, size: iri ? 20 : (ince ? 16 : 18), color: t.yazi),
+            ]),
+          );
+        }),
+      ),
+    );
+  }
 
-    return Column(children: [
+  /// Masaüstü ödeme yöntemleri (1.2.32): tuş takımının ALTINDA yan yana;
+  /// yalnız işletmede açık olanlar. 4'e kadar tek sıra, fazlası iki sıra.
+  Widget _yontemSirasi() {
+    final l = kasadaGorunenYontemler;
+    if (l.isEmpty) return const SizedBox.shrink();
+    final sutun = l.length <= 4 ? l.length : (l.length / 2).ceil();
+    final satir = (l.length / sutun).ceil();
+    final boy = _sikSol ? 46.0 : 54.0;
+    return Column(key: const ValueKey('kasa-yontemler'), children: [
       for (var r = 0; r < satir; r++)
-        Expanded(
+        SizedBox(
+          height: boy,
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: Padding(padding: const EdgeInsets.all(3), child: dugme(r * 2))),
-            Expanded(child: Padding(padding: const EdgeInsets.all(3), child: dugme(r * 2 + 1))),
+            for (var c = 0; c < sutun; c++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: r * sutun + c < l.length ? _yontemDugmesi(l[r * sutun + c]) : const SizedBox.shrink(),
+                ),
+              ),
           ]),
         ),
     ]);
+  }
+
+  /// ÖDEME GEÇMİŞİ (1.2.32): tuş takımının yanında, sağdaki "Ödemeler"
+  /// sekmesinin içeriği. Boşsa "Ödeme yok".
+  Widget _odemeGecmisi() {
+    final basarili = _odemeler.where((p) => p['kind'] == 'payment' && p['status'] == 'succeeded').toList();
+    final toplam = basarili.fold<int>(0, (t, p) => t + tamSayi(p['amount_minor']));
+    Widget aksiyon(String ad, VoidCallback? bas) => TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact),
+          onPressed: bas,
+          child: Text(ad, style: const TextStyle(fontSize: 12)),
+        );
+    return Container(
+      key: const ValueKey('kasa-odeme-gecmisi'),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Renk.cizgi))),
+          child: Row(children: [
+            Icon(Icons.receipt_long_outlined, size: 16, color: Renk.ikinci),
+            const SizedBox(width: 6),
+            const Text('Ödeme geçmişi', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            if (basarili.isNotEmpty) Text('${basarili.length} ödeme · ${para(toplam)}', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          ]),
+        ),
+        Expanded(
+          child: _odemeler.isEmpty
+              ? Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.account_balance_wallet_outlined, size: 24, color: Renk.soluk),
+                    const SizedBox(height: 6),
+                    Text('Ödeme yok', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Renk.soluk)),
+                  ]),
+                )
+              : ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: _odemeler.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final p = _odemeler[i];
+                    final iadeMi = p['kind'] == 'refund';
+                    final durum = '${p['status'] ?? ''}';
+                    final tutar = tamSayi(p['amount_minor']);
+                    final iadeToplam = tamSayi(p['refunded_total_minor']);
+                    final renk = switch ('${p['status_variant']}') {
+                      'success' => Renk.basari,
+                      'warning' => Renk.uyari,
+                      'danger' => Renk.hata,
+                      'info' => Renk.bilgi,
+                      _ => Renk.ikinci,
+                    };
+                    final yontemDegisir = !iadeMi && durum == 'succeeded' && iadeToplam == 0 &&
+                        const ['cash', 'card_present', 'mock', 'demo', null].contains(p['provider']);
+                    final aksiyonlar = <Widget>[
+                      if (durum == 'pending' && _odemeYetkisi) aksiyon('Sorgula', () => _sorgula(p)),
+                      if (_iadeYetkisi && !iadeMi && yontemDegisir) aksiyon('Yöntem', _mesgul ? null : () => _yontemDegistir(p)),
+                      if (_iadeYetkisi && !iadeMi && durum == 'succeeded' && iadeToplam == 0) aksiyon('İptal', _mesgul ? null : () => _void(p)),
+                      if (_iadeYetkisi && !iadeMi && (durum == 'succeeded' || durum == 'partially_refunded') && iadeToplam < tutar)
+                        aksiyon('İade', _mesgul ? null : () => _iade(p)),
+                    ];
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 8, 6),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Row(children: [
+                          Icon(yontemSimgesi(p['method']?.toString(), p['method_icon']?.toString()), size: 16, color: Renk.ikinci),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text('${iadeMi ? 'İade — ' : ''}${p['method_label'] ?? ''}',
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.schedule_rounded, size: 12, color: Renk.soluk),
+                          const SizedBox(width: 2),
+                          Text(saatMetni(p['created_at']?.toString()), style: TextStyle(fontSize: 12, color: Renk.soluk)),
+                          const Spacer(),
+                          Rozet('${p['status_label'] ?? durum}', renk: renk),
+                          const SizedBox(width: 8),
+                          Text('${iadeMi ? '−' : ''}${para(tutar)}',
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()])),
+                        ]),
+                        Row(children: [
+                          const SizedBox(width: 23),
+                          Expanded(
+                            child: Text(
+                              [
+                                if (p['cashier'] != null) '${p['cashier']}',
+                                if (tamSayi(p['tip_minor']) > 0) '+${para(tamSayi(p['tip_minor']))} bahşiş',
+                                if (p['reason'] != null) '${p['reason']}',
+                                if (p['suspect'] == true) '⚠ ${p['suspect_reason'] ?? ''}',
+                              ].join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11.5, color: p['suspect'] == true ? Renk.hata : Renk.ikinci),
+                            ),
+                          ),
+                          ...aksiyonlar,
+                        ]),
+                      ]),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    );
   }
 
   Widget _bolumBasligi(IconData ikon, String ad, {Widget? sag}) => Row(children: [
@@ -3325,7 +3428,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                         fit: BoxFit.scaleDown,
                         child: Text(etiket,
                             style: TextStyle(
-                              fontSize: (hizli || sil ? .66 : 1) * (k.maxHeight * .34).clamp(22.0, 34.0),
+                              fontSize: (hizli || sil ? .66 : 1) * (k.maxHeight * .30).clamp(20.0, 30.0),
                               fontWeight: FontWeight.w600,
                               color: sil ? Renk.hata : (hizli ? Renk.marka : Renk.yazi),
                               fontFeatures: const [FontFeature.tabularFigures()],
