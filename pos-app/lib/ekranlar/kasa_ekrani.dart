@@ -188,6 +188,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     if (!mounted || _modal > 0 || _duzelt || !context.yoklamaUygun) return;
     _yukle(sessiz: true);
     _posDurumu(sessiz: true);
+    // Borçlar listesi açıkken o da tazelenir (başka cihazdan borca yazılan
+    // adisyon çıkıp girmeden görünür).
+    if (_sekme == 'debts' && _borclu == null) _borclulariYukle(sessiz: true);
   }
 
   @override
@@ -266,7 +269,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _borclulariYukle() async {
+  /// [sessiz]: arka plan tazelemesi (1.2.35) — hata bildirimi göstermez.
+  Future<void> _borclulariYukle({bool sessiz = false}) async {
+    if (!mounted) return;
     setState(() => _borcYukleniyor = true);
     try {
       final r = await _api.get('/api/v1/receivables', sorgu: {'per_page': 200});
@@ -274,7 +279,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _borclular = (d as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList());
     } on ApiHata catch (e) {
-      if (mounted) context.bildir2('Şahıslar yüklenemedi', e.mesaj, hata: true);
+      if (mounted && !sessiz) context.bildir2('Şahıslar yüklenemedi', e.mesaj, hata: true);
     } finally {
       if (mounted) setState(() => _borcYukleniyor = false);
     }
@@ -1057,6 +1062,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         if (!mounted) return;
         context.bildir2('Seçili kalemler borca yazıldı', '${seciliUcretli.length} kalem · ${para(tutar)} şahsın borcuna aktarıldı; adisyonun kalanı açık.');
         _secim.temizle();
+        _borclulariYukle(sessiz: true);
         await _degisimSonrasi();
       } else {
         await _api.post('$_oyol/transfer-to-debt', {'receivable_id': cari, 'reason': r.neden});
@@ -1064,6 +1070,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         context.bildir2('Borca taşındı', '${_baslik(s)} borç hesabına aktarıldı.');
         _secimeDon();
         _yukle(sessiz: true);
+        // Borçlar sekmesi anında güncel olsun (1.2.35).
+        _borclulariYukle(sessiz: true);
       }
     } on ApiHata catch (e) {
       if (mounted) context.bildir2('Borca taşınamadı', e.mesaj, hata: true);
@@ -1596,7 +1604,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           child: InkWell(
             onTap: () {
               setState(() => _sekme = k);
-              if (k == 'debts' && _borclular.isEmpty) _borclulariYukle();
+              // Sekmeye her girişte taze liste (önce yalnız boşken yükleniyordu).
+              if (k == 'debts') _borclulariYukle(sessiz: _borclular.isNotEmpty);
             },
             child: Container(
               height: 48,
