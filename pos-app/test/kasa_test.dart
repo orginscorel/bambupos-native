@@ -9,6 +9,7 @@ import 'package:bambumpos_pos/core/durum.dart';
 import 'package:bambumpos_pos/core/modeller.dart';
 import 'package:bambumpos_pos/ekranlar/adisyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kasa_ekrani.dart';
+import 'package:bambumpos_pos/ekranlar/kasa_pencereleri.dart';
 import 'package:bambumpos_pos/ekranlar/ortak.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -866,6 +867,20 @@ void main() {
       expect(find.text('Adisyon kapatıldı'), findsWidgets);
       expect(find.text('Tüm kalemler ikram — tahsilat yapılmadı.'), findsOneWidget);
       await _bitir(t, d);
+    });
+  });
+
+  group('kasada açık ödeme yöntemleri', () {
+    tearDown(() => acikKasaYontemleri = null);
+
+    test('bilgi yoksa hepsi listelenir', () {
+      acikKasaYontemleri = null;
+      expect(kasadaGorunenYontemler.length, kasaYontemleri.length);
+    });
+
+    test('kapatılan yöntem listelenmez, sıra korunur', () {
+      acikKasaYontemleri = {'cash', 'credit_card', 'meal_card'};
+      expect(kasadaGorunenYontemler.map((y) => y.\$1).toList(), ['cash', 'credit_card', 'meal_card']);
     });
   });
 }

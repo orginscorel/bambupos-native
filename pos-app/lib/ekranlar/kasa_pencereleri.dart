@@ -90,6 +90,19 @@ const kasaYontemleri = <(String, String, String, bool)>[
   ('gift_card', 'Hediye kartı', 'inbox', false),
 ];
 
+/// KASADA AÇIK YÖNTEMLER (2026-10-28): İşletme Yönetimi › Ödeme yöntemleri'nde
+/// kapatılan yöntem kasada listelenmez. Sunucu açık listeyi kasa listesi
+/// ucunda (`odeme_yontemleri`) verir; kasa her yoklamada tazeler.
+/// null = bilgi yok (eski sunucu) → hepsi açık.
+Set<String>? acikKasaYontemleri;
+
+/// Kasada seçilebilen yöntemler (kapatılanlar hariç).
+List<(String, String, String, bool)> get kasadaGorunenYontemler {
+  final acik = acikKasaYontemleri;
+  if (acik == null) return kasaYontemleri;
+  return kasaYontemleri.where((y) => acik.contains(y.$1)).toList();
+}
+
 /// Ödeme yönteminin simgesi (yöntem koduna göre; sunucu simgesi yalnız yedek).
 IconData yontemSimgesi(String? kod, [String? sunucuSimgesi]) => switch (kod) {
       'cash' => Icons.payments_outlined,
@@ -562,7 +575,7 @@ Future<({String yontem, String? neden})?> yontemDegistirPenceresi(BuildContext c
         crossAxisSpacing: 6,
         childAspectRatio: 3.6,
         children: [
-          for (final y in kasaYontemleri.where((y) => y.$1 != mevcut))
+          for (final y in kasadaGorunenYontemler.where((y) => y.$1 != mevcut))
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 backgroundColor: secili == y.$1 ? Renk.markaAcik : null,

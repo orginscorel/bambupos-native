@@ -214,8 +214,14 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     try {
       final r = await _api.get('/api/v1/payments/pending-orders', sorgu: {'q': ''});
       final l = (r is Map ? r['orders'] as List? : null) ?? const [];
+      final yl = r is Map ? r['odeme_yontemleri'] : null;
       if (!mounted) return;
       setState(() {
+        if (yl is List) {
+          acikKasaYontemleri = yl.map((e) => '$e').toSet();
+          // Seçili yöntem az önce kapatıldıysa seçim bırakılır.
+          if (_yontem != null && !acikKasaYontemleri!.contains(_yontem)) _yontem = null;
+        }
         _adisyonlar = l.whereType<Map>().map((e) => AdisyonOzet(e.cast<String, dynamic>())).toList();
         _yukleniyor = false;
       });
@@ -3193,7 +3199,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// Masaüstü ödeme yöntemleri: iki sütun, satırlar eşit boyda; her biri
   /// çerçeveli düğme (renkli simge kutusu + ad), seçili olan renkli.
   Widget _yontemSutunlari() {
-    final l = kasaYontemleri;
+    final l = kasadaGorunenYontemler;
     final satir = (l.length / 2).ceil();
     Widget dugme(int i) {
       if (i >= l.length) return const SizedBox.shrink();
@@ -3394,9 +3400,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 6, crossAxisSpacing: 6, mainAxisExtent: 40),
-        itemCount: kasaYontemleri.length,
+        itemCount: kasadaGorunenYontemler.length,
         itemBuilder: (_, i) {
-          final y = kasaYontemleri[i];
+          final y = kasadaGorunenYontemler[i];
           return _yontemKutusu(y.$1, y.$2, yontemSimgesi(y.$1, y.$3), _yontem == y.$1, () => setState(() => _yontem = y.$1), tekSatir: true);
         },
       );
@@ -3407,9 +3413,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 8, crossAxisSpacing: 8, mainAxisExtent: 64),
-        itemCount: kasaYontemleri.length,
+        itemCount: kasadaGorunenYontemler.length,
         itemBuilder: (_, i) {
-          final y = kasaYontemleri[i];
+          final y = kasadaGorunenYontemler[i];
           return _yontemKutusu(y.$1, y.$2, yontemSimgesi(y.$1, y.$3), _yontem == y.$1, () => setState(() => _yontem = y.$1));
         },
       );
@@ -3422,7 +3428,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       crossAxisSpacing: 8,
       childAspectRatio: g >= 1024 ? 2.1 : 2.3,
       children: [
-        for (final y in kasaYontemleri) _yontemKutusu(y.$1, y.$2, yontemSimgesi(y.$1, y.$3), _yontem == y.$1, () => setState(() => _yontem = y.$1)),
+        for (final y in kasadaGorunenYontemler) _yontemKutusu(y.$1, y.$2, yontemSimgesi(y.$1, y.$3), _yontem == y.$1, () => setState(() => _yontem = y.$1)),
       ],
     );
   }
