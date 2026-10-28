@@ -1552,10 +1552,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ? _borcOdemeBolmesi(g)
           : RepaintBoundary(child: ListenableBuilder(listenable: _odemeTetik, builder: (_, _) => _odemeBolmesi(g)));
       if (genis) {
-        // Masaüstü (1.2.33): sağ döküm genişliğin ~%36'sı (420–600 px; önce
+        // Masaüstü (1.2.33): sağ döküm genişliğin ~%37'si (420–600 px; önce
         // %40 / 640) — tahsilat bölmesine biraz daha yer. Alt sınır aynı: küçük
         // pencerede hiçbir şey sıkışmaz. Tablet eski sabit genişlikte.
-        final sag = _masaustu ? (g * .36).clamp(420.0, 600.0) : (g >= 1536 ? 440.0 : 380.0);
+        final sag = _masaustu ? (g * .37).clamp(420.0, 600.0) : (g >= 1536 ? 440.0 : 380.0);
         govde = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: odeme),
           Container(width: 1, color: Renk.cizgi),
@@ -2149,11 +2149,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         ),
     ];
     // Masaüstü (1.2.22): eşit genişlikte, aynı boyda düğmeler (simge üstte,
-    // kısa ad altta); dar panelde Fiş ⋮ menüsüne geçer, yazı kırpılmaz.
+    // kısa ad altta); dar panelde (<500 px) Fiş ⋮ menüsüne geçer, yazı kırpılmaz.
     final masaustuArac = genis && _masaustu;
     final araclar = masaustuArac
         ? LayoutBuilder(builder: (c0, k) {
-            final fisMenude = k.maxWidth < 540 && araclarListesi.any((w) => w.key == const ValueKey('kasa-fis'));
+            final fisMenude = k.maxWidth < 500 && araclarListesi.any((w) => w.key == const ValueKey('kasa-fis'));
             final l = [
               for (final w in araclarListesi)
                 if (!(fisMenude && w.key == const ValueKey('kasa-fis'))) w.dikey(sik ? 46 : 54),
