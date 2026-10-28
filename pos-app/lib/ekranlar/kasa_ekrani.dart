@@ -1552,9 +1552,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ? _borcOdemeBolmesi(g)
           : RepaintBoundary(child: ListenableBuilder(listenable: _odemeTetik, builder: (_, _) => _odemeBolmesi(g)));
       if (genis) {
-        // Masaüstü (1.2.22): sağ döküm genişliğin ~%40'ı (420–640 px);
-        // tablet eski sabit genişlikte.
-        final sag = _masaustu ? (g * .40).clamp(420.0, 640.0) : (g >= 1536 ? 440.0 : 380.0);
+        // Masaüstü (1.2.33): sağ döküm genişliğin ~%36'sı (420–600 px; önce
+        // %40 / 640) — tahsilat bölmesine biraz daha yer. Alt sınır aynı: küçük
+        // pencerede hiçbir şey sıkışmaz. Tablet eski sabit genişlikte.
+        final sag = _masaustu ? (g * .36).clamp(420.0, 600.0) : (g >= 1536 ? 440.0 : 380.0);
         govde = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: odeme),
           Container(width: 1, color: Renk.cizgi),
