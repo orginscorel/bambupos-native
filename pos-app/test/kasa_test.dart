@@ -880,7 +880,7 @@ void main() {
 
     test('kapatılan yöntem listelenmez, sıra korunur', () {
       acikKasaYontemleri = {'cash', 'credit_card', 'meal_card'};
-      expect(kasadaGorunenYontemler.map((y) => y.\$1).toList(), ['cash', 'credit_card', 'meal_card']);
+      expect(kasadaGorunenYontemler.map((y) => y.$1).toList(), ['cash', 'credit_card', 'meal_card']);
     });
   });
 }
