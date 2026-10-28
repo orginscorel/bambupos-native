@@ -441,7 +441,9 @@ Future<(String, String, num)?> servisBedeliPenceresi(BuildContext context, {requ
 
 /* ───────── İkram / Ödemeyi kaldır / İade ───────── */
 
-Future<String?> ikramPenceresi(BuildContext context, String ad) {
+/// [kalir] > 0: satırın bir kısmı ikram ediliyor — kalan adet bilgisi
+/// gösterilir ("2 × Çay · 2 adet adisyonda kalır", web kasa ikramı gibi).
+Future<String?> ikramPenceresi(BuildContext context, String ad, {int kalir = 0}) {
   var neden = '';
   return kasaPenceresi<String>(
     context,
@@ -451,6 +453,10 @@ Future<String?> ikramPenceresi(BuildContext context, String ad) {
         TextSpan(text: ad, style: const TextStyle(fontWeight: FontWeight.w700)),
         const TextSpan(text: ' ikram edilecek; tutarı sıfırlanır ve Z raporunda ikram olarak izlenir.'),
       ])),
+      if (kalir > 0) ...[
+        const SizedBox(height: 6),
+        Text('$kalir adet adisyonda kalır.', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Renk.ikinci)),
+      ],
       const SizedBox(height: 12),
       FormAlani(
         etiket: 'Neden',

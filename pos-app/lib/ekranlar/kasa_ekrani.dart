@@ -762,6 +762,33 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         ok: 'İkram işlendi', okMetin: '${k.ad} ücretsiz', hataBaslik: 'İşlenemedi');
   }
 
+  /// web canOrPin('orders.comp'): uygulama her zaman terminal oturumudur;
+  /// yetkiyi sunucu işlemi yapan personelde denetler (adisyon ekranı gibi).
+  bool get _ikramGorunur => true;
+
+  /// Seçim şeridindeki "İkram et": yalnız TEK satır seçiliyken. Adet
+  /// pencerede sorulmaz — seçilen adet kadar ikram edilir; satır adedinden
+  /// azsa `qty` gider, sunucu satırı böler (adisyon ekranındaki `_kismi`).
+  Future<void> _seciliIkram() async {
+    final s = _seciliKalemler;
+    if (s.length != 1 || !(_detay?.acik ?? false)) return;
+    final k = s.single.kalem;
+    final n = s.single.adet.clamp(1, k.adet);
+    final neden = await _penceredeyken(() => ikramPenceresi(context, '$n × ${k.ad}', kalir: k.adet - n));
+    if (neden == null || !mounted) return;
+    final ok = await _islem(
+      () => _api.post('$_oyol/items/${k.id}/comp', {'reason': neden, 'expected_version': _surum, if (n < k.adet) 'qty': n}),
+      ok: 'İkram işlendi',
+      okMetin: '$n × ${k.ad} ücretsiz',
+      hataBaslik: 'İkram edilemedi',
+    );
+    if (ok && mounted) {
+      // Seçim temizlenince tahsil tutarı kalan tutara döner (_secimDegisti).
+      _secim.temizle();
+      _acikKalem.value = null;
+    }
+  }
+
   Future<void> _ikramKaldir(Kalem k) => _islem(() => _api.delete('$_oyol/items/${k.id}/comp', {'expected_version': _surum}),
       ok: 'İkram kaldırıldı', okMetin: '${k.ad} yeniden ücretli', hataBaslik: 'İşlenemedi');
 
@@ -2330,6 +2357,14 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           },
           child: const Text('Temizle'),
         ),
+        if (_ikramGorunur && (_detay?.acik ?? false))
+          TextButton.icon(
+            key: const ValueKey('kasa-secim-ikram'),
+            style: TextButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 10), foregroundColor: Renk.bilgi),
+            onPressed: secim.length == 1 && !_mesgul ? _seciliIkram : null,
+            icon: const Icon(Icons.card_giftcard_rounded, size: 16),
+            label: const Text('İkram et'),
+          ),
         const SizedBox(width: 2),
         FilledButton(
           style: FilledButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 12)),
@@ -2469,7 +2504,28 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           else if (k.odendi)
             Text('Ödendi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Renk.basari))
           else if (k.ikram)
-            Text('İkram${k.ikramNedeni != null && k.ikramNedeni!.isNotEmpty ? ' · ${k.ikramNedeni}' : ''}', style: TextStyle(fontSize: 12, color: Renk.bilgi))
+            Row(children: [
+              Flexible(
+                child: Text('İkram${k.ikramNedeni != null && k.ikramNedeni!.isNotEmpty ? ' · ${k.ikramNedeni}' : ''}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.bilgi)),
+              ),
+              // Düzelt kipinde alt çubukta zaten var; burada sade küçük düğme.
+              if (!_duzelt && _ikramGorunur && (_detay?.acik ?? false)) ...[
+                const SizedBox(width: 6),
+                TextButton(
+                  key: ValueKey('kasa-ikram-kaldir-${k.id}'),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 26),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  onPressed: _mesgul ? null : () => _ikramKaldir(k),
+                  child: const Text('İkramı kaldır'),
+                ),
+              ],
+            ])
           else if (oran > 0)
             Text('KDV ${_oran(oran)} dahil', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
         ]),

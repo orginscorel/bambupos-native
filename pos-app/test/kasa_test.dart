@@ -601,4 +601,85 @@ void main() {
       await _bitir(t, d);
     });
   });
+
+  group('kasa: seçimden ikram', () {
+    Map<String, (int, String)> yanit({bool cayIkram = false}) {
+      final y = _kasaYanitlari();
+      final o = _adisyon(y);
+      o['is_open'] = true;
+      o['version'] = 9;
+      if (cayIkram) {
+        final ks = (o['items'] as List).cast<Map<String, dynamic>>();
+        ks[0]
+          ..['is_comp'] = true
+          ..['comp_reason'] = 'Geç servis';
+      }
+      return {...y, '/api/v1/orders/300': (200, jsonEncode({'order': o}))};
+    }
+
+    testWidgets('2 çay seç → İkram et → neden → POST comp {reason, expected_version, qty: 2}', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      final dugme = find.byKey(const ValueKey('kasa-secim-ikram'));
+      // İki farklı satır seçiliyken soluk.
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      expect(t.widget<TextButton>(dugme).onPressed, isNull);
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+      await t.pump();
+      expect(dugme, findsNothing);
+      await t.tap(find.text('Çay'));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-birim-901-0')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-birim-901-2')));
+      await t.pump();
+      expect(t.widget<TextButton>(dugme).onPressed, isNotNull);
+      await t.ensureVisible(dugme);
+      await t.pump();
+      await t.tap(dugme);
+      await t.pumpAndSettle();
+      expect(find.textContaining('2 × Çay', findRichText: true), findsWidgets);
+      expect(find.text('2 adet adisyonda kalır.'), findsOneWidget);
+      await t.tap(find.text('Geç servis').first);
+      await t.pump();
+      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await _bekle(t);
+      final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/901/comp').toList();
+      expect(r, hasLength(1));
+      expect(r.single.$3, {'reason': 'Geç servis', 'expected_version': 9, 'qty': 2});
+      // Başarıdan sonra seçim temizlenir.
+      expect(find.byKey(const ValueKey('kasa-secim-ikram')), findsNothing);
+      await _bitir(t, d);
+    });
+
+    testWidgets('satırın tamamı seçiliyse qty gitmez', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
+      await t.pumpAndSettle();
+      expect(find.textContaining('adisyonda kalır'), findsNothing);
+      await t.tap(find.text('Müşteri memnuniyeti').first);
+      await t.pump();
+      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await _bekle(t);
+      final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/902/comp').single;
+      expect(r.$3, {'reason': 'Müşteri memnuniyeti', 'expected_version': 9});
+      await _bitir(t, d);
+    });
+
+    testWidgets('ikram edilmiş satırda İkramı kaldır → DELETE comp {expected_version}', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit(cayIkram: true));
+      expect(find.text('İkram · Geç servis'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('kasa-ikram-kaldir-901')));
+      await _bekle(t);
+      final r = s.istekler.where((r) => r.$1 == 'DELETE' && r.$2 == '/api/v1/orders/300/items/901/comp').single;
+      expect(r.$3, {'expected_version': 9});
+      await _bitir(t, d);
+    });
+  });
 }
