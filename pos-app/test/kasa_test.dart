@@ -29,6 +29,9 @@ class _Sunucu implements HttpClientAdapter {
   /// Ödeme ucu: her çağrıda sıradaki yanıt (boşsa başarılı).
   final odemeYanitlari = <(int, String)>[];
 
+  /// 'POST /yol' → sıradaki yanıtlar (bitince [yanitlar]'a düşer).
+  final sirali = <String, List<(int, String)>>{};
+
   /// Yol → ETag: istek aynı If-None-Match ile gelirse 304 döner.
   final etaglar = <String, String>{};
 
@@ -45,6 +48,8 @@ class _Sunucu implements HttpClientAdapter {
           ? odemeYanitlari.removeAt(0)
           : (201, jsonEncode({'payment': {'status': 'succeeded', 'amount_minor': govde?['amount_minor'], 'method_label': 'Nakit', 'change_minor': 0}}));
     }
+    final sira = sirali['${o.method} $yol'];
+    if (sira != null && sira.isNotEmpty) y = sira.removeAt(0);
     y ??= (200, '{}');
     final etag = etaglar[yol];
     if (o.method == 'GET' && etag != null) {
@@ -603,29 +608,73 @@ void main() {
   });
 
   group('kasa: seçimden ikram', () {
-    Map<String, (int, String)> yanit({bool cayIkram = false}) {
+    Map<String, (int, String)> yanit({bool cayIkram = false, bool tostOdendi = false}) {
       final y = _kasaYanitlari();
       final o = _adisyon(y);
       o['is_open'] = true;
       o['version'] = 9;
+      final ks = (o['items'] as List).cast<Map<String, dynamic>>();
       if (cayIkram) {
-        final ks = (o['items'] as List).cast<Map<String, dynamic>>();
         ks[0]
           ..['is_comp'] = true
           ..['comp_reason'] = 'Geç servis';
       }
+      if (tostOdendi) ks[1]['is_settled'] = true;
       return {...y, '/api/v1/orders/300': (200, jsonEncode({'order': o}))};
+    }
+
+    /// Tüm kalemler ikram: toplam 0, kalan 0, adisyon hâlâ AÇIK.
+    Map<String, (int, String)> sifirYanit() {
+      final y = _kasaYanitlari();
+      final o = _adisyon(y);
+      for (final k in (o['items'] as List).cast<Map<String, dynamic>>()) {
+        k
+          ..['is_comp'] = true
+          ..['comp_reason'] = 'Geç servis'
+          ..['line_total_minor'] = 0;
+      }
+      o
+        ..['is_open'] = true
+        ..['version'] = 12
+        ..['comp_total_minor'] = 28000
+        ..['total_minor'] = 0
+        ..['paid_minor'] = 0
+        ..['remaining_minor'] = 0;
+      final ozet = Map<String, dynamic>.from(o)
+        ..remove('items')
+        ..remove('events');
+      return {
+        ...y,
+        '/api/v1/payments/pending-orders': (200, jsonEncode({'orders': [ozet]})),
+        '/api/v1/orders/300': (200, jsonEncode({'order': o})),
+        'GET /api/v1/orders/300/payments': (200, jsonEncode({'order': ozet, 'payments': []})),
+        'POST /api/v1/orders/300/sifir-kapat': (200, jsonEncode({'order': {...ozet, 'is_open': false, 'status': 'paid', 'version': 13}})),
+      };
+    }
+
+    Future<void> ikisiniSecVeIkramEt(WidgetTester t, {String neden = 'Geç servis'}) async {
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
+      await t.pumpAndSettle();
+      await t.tap(find.text(neden).first);
+      await t.pump();
+      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await _bekle(t);
     }
 
     testWidgets('2 çay seç → İkram et → neden → POST comp {reason, expected_version, qty: 2}', (t) async {
       final (d, s) = await _kur(t, manuel: false, ek: yanit());
       final dugme = find.byKey(const ValueKey('kasa-secim-ikram'));
-      // İki farklı satır seçiliyken soluk.
+      // İki farklı satır seçiliyken de etkin; sayı düğmede.
       await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
       await t.pump();
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
-      expect(t.widget<TextButton>(dugme).onPressed, isNull);
+      expect(t.widget<TextButton>(dugme).onPressed, isNotNull);
+      expect(find.text('İkram et (2)'), findsOneWidget);
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
       await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
@@ -656,7 +705,7 @@ void main() {
       await _bitir(t, d);
     });
 
-    testWidgets('satırın tamamı seçiliyse qty gitmez', (t) async {
+    testWidgets('satırın tamamı seçiliyse de qty açıkça gider', (t) async {
       final (d, s) = await _kur(t, manuel: false, ek: yanit());
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
@@ -668,7 +717,7 @@ void main() {
       await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
       await _bekle(t);
       final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/902/comp').single;
-      expect(r.$3, {'reason': 'Müşteri memnuniyeti', 'expected_version': 9});
+      expect(r.$3, {'reason': 'Müşteri memnuniyeti', 'expected_version': 9, 'qty': 2});
       await _bitir(t, d);
     });
 
@@ -679,6 +728,123 @@ void main() {
       await _bekle(t);
       final r = s.istekler.where((r) => r.$1 == 'DELETE' && r.$2 == '/api/v1/orders/300/items/901/comp').single;
       expect(r.$3, {'expected_version': 9});
+      await _bitir(t, d);
+    });
+
+    testWidgets('çok satır: tek neden, satırlar SIRAYLA; sonraki çağrı önceki yanıtın sürümüyle', (t) async {
+      final y = yanit();
+      final o = _adisyon(y);
+      Map<String, dynamic> sonrasi(int surum, Set<int> ikramlar) => {
+            ...o,
+            'version': surum,
+            'items': [
+              for (final k in (o['items'] as List).cast<Map<String, dynamic>>())
+                ikramlar.contains(k['id']) ? {...k, 'is_comp': true, 'comp_reason': 'Geç servis'} : k,
+            ],
+          };
+      final (d, s) = await _kur(t, manuel: false, ek: {
+        ...y,
+        'POST /api/v1/orders/300/items/901/comp': (200, jsonEncode({'order': sonrasi(10, {901})})),
+        'POST /api/v1/orders/300/items/902/comp': (200, jsonEncode({'order': sonrasi(11, {901, 902})})),
+      });
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
+      await t.pumpAndSettle();
+      expect(find.textContaining('4 × Çay, 2 × Kaşarlı Tost', findRichText: true), findsWidgets);
+      await t.tap(find.text('Geç servis').first);
+      await t.pump();
+      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await _bekle(t);
+      final comp = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/comp')).toList();
+      expect(comp.map((r) => r.$2), ['/api/v1/orders/300/items/901/comp', '/api/v1/orders/300/items/902/comp']);
+      expect(comp[0].$3, {'reason': 'Geç servis', 'expected_version': 9, 'qty': 4});
+      expect(comp[1].$3, {'reason': 'Geç servis', 'expected_version': 10, 'qty': 2});
+      // Yanıttaki adisyon ekrana basılır: ödemeler / detay yeniden sorulmaz;
+      // liste bir kez tazelenir.
+      final sonra = s.istekler.skipWhile((r) => !(r.$1 == 'POST' && r.$2.endsWith('/comp'))).toList();
+      expect(sonra.where((r) => r.$1 == 'GET' && r.$2.startsWith('/api/v1/orders/300')), isEmpty);
+      expect(sonra.where((r) => r.$1 == 'GET' && r.$2 == '/api/v1/payments/pending-orders'), hasLength(1));
+      expect(find.text('İkram · Geç servis'), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('kasa-secim-ikram')), findsNothing);
+      await _bitir(t, d);
+    });
+
+    testWidgets('çok satır: ikincisi reddedilirse durur, kaçının işlendiği söylenir, seçim temizlenir', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: {
+        ...yanit(),
+        'POST /api/v1/orders/300/items/902/comp': (422, jsonEncode({'message': 'Ödenmiş kalem ikram edilemez.'})),
+      });
+      await ikisiniSecVeIkramEt(t);
+      final comp = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/comp')).toList();
+      expect(comp, hasLength(2));
+      expect(find.textContaining('Ödenmiş kalem ikram edilemez. (1 / 2 kalem ikram edildi'), findsOneWidget);
+      expect(find.byKey(const ValueKey('kasa-secim-ikram')), findsNothing);
+      final sonra = s.istekler.skipWhile((r) => !(r.$1 == 'POST' && r.$2.endsWith('/902/comp'))).skip(1);
+      expect(sonra.any((r) => r.$1 == 'GET' && r.$2 == '/api/v1/orders/300'), isTrue);
+      await _bitir(t, d);
+    });
+
+    test('yetki reddi: 403 ya da 422 errors.operator', () {
+      expect(personelYetkiReddi(ApiHata(403, 'x')), isTrue);
+      expect(personelYetkiReddi(ApiHata(422, 'x', {'errors': {'operator': ['y']}})), isTrue);
+      expect(personelYetkiReddi(ApiHata(422, 'x', {'errors': {'reason': ['y']}})), isFalse);
+      expect(personelYetkiReddi(ApiHata(409, 'x')), isFalse);
+    });
+
+    testWidgets('aktif personelin ikram yetkisi yoksa PIN sorulur, istek PIN ile yinelenir', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      s.sirali['POST /api/v1/orders/300/items/902/comp'] = [
+        (422, jsonEncode({'message': 'Aktif personelin bu işlem için yetkisi yok.', 'errors': {'operator': ['Aktif personelin bu işlem için yetkisi yok.']}})),
+      ];
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Müşteri memnuniyeti').first);
+      await t.pump();
+      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await _bekle(t);
+      expect(find.text('Personel PIN'), findsOneWidget);
+      await t.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), '1234');
+      await t.pump();
+      await t.tap(find.widgetWithText(FilledButton, 'Onayla'));
+      await _bekle(t);
+      final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/902/comp').toList();
+      expect(r, hasLength(2));
+      expect(r.first.$3, {'reason': 'Müşteri memnuniyeti', 'expected_version': 9, 'qty': 2});
+      expect(r.last.$3, {'reason': 'Müşteri memnuniyeti', 'expected_version': 9, 'qty': 2, 'pin': '1234', 'staff_code': null});
+      await _bitir(t, d);
+    });
+
+    testWidgets('Düzelt: ödenmiş satırda düzeltme çubuğu (adet / Değiştir / Çıkar / İkram) yok', (t) async {
+      final (d, _) = await _kur(t, manuel: false, ek: yanit(tostOdendi: true));
+      await t.tap(find.byKey(const ValueKey('kasa-duzelt')));
+      await t.pump();
+      expect(find.text('Değiştir'), findsOneWidget); // yalnız ödenmemiş Çay
+      await _bitir(t, d);
+    });
+
+    testWidgets('tümü ikram (0 ₺) açık adisyon: "Adisyonu kapat (0 ₺)" → sifir-kapat', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: sifirYanit());
+      expect(find.text('Adisyon tamamen ödendi'), findsNothing);
+      expect(find.textContaining('tahsil edildi'), findsNothing);
+      final dugme = find.byKey(const ValueKey('kasa-sifir-kapat'));
+      expect(dugme, findsOneWidget);
+      expect(find.text('Adisyonu kapat (0 ₺)'), findsOneWidget);
+      await t.ensureVisible(dugme);
+      await t.pump();
+      await t.tap(dugme);
+      await t.tap(dugme, warnIfMissed: false); // çift dokunuş ikinci istek atmaz
+      await _bekle(t);
+      final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/sifir-kapat').toList();
+      expect(r, hasLength(1));
+      expect(r.single.$3, {'expected_version': 12});
+      expect(dugme, findsNothing);
+      expect(find.text('Adisyon kapatıldı'), findsWidgets);
+      expect(find.text('Tüm kalemler ikram — tahsilat yapılmadı.'), findsOneWidget);
       await _bitir(t, d);
     });
   });

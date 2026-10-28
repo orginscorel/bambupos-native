@@ -455,15 +455,20 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   }
 
   Future<void> _ikram(Kalem k) async {
+    if (k.odendi) return; // parası alınmış satır ikram edilemez (sunucu da reddeder)
     if (k.ikram) {
       final ok = await _islem(() => context.api.delete('$_yol/items/${k.id}/comp', {'expected_version': _surum}), ok: 'İkram kaldırıldı');
       if (ok) _secimiTemizle(k.id);
       return;
     }
+    // Adet ve sürüm pencere açılmadan alınır; `qty` her zaman açık gider —
+    // pencere açıkken gelen yenileme seçilenden fazlasını ikram ettiremez.
+    final surum = _surum;
+    final n = _secili.contains(k.id) ? _topluAdedi(k).clamp(1, k.adet) : k.adet;
     final neden = await _penceredeyken(() => nedenSor(context, tur: 'item_comp', ust: _nedenUstu(k)));
     if (neden == null || !mounted) return;
     final ok = await _islem(
-      () => context.api.post('$_yol/items/${k.id}/comp', {'reason': neden, 'expected_version': _surum, ..._kismi(k)}),
+      () => context.api.post('$_yol/items/${k.id}/comp', {'reason': neden, 'expected_version': surum, 'qty': n}),
       ok: 'İkram edildi',
     );
     if (ok) _secimiTemizle(k.id);
@@ -1615,7 +1620,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
             ),
             const SizedBox(width: 6),
             if (a.acik) ...[
-              if (k.durum == 'placed' && !k.ikram)
+              if (k.durum == 'placed' && !k.ikram && !k.odendi)
                 Container(
                   decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgiKoyu)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1631,7 +1636,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   icon: const Icon(Icons.restaurant_rounded, size: 14),
                   label: const Text('Servis edildi'),
                 ),
-              if (k.durum == 'placed' && _can('orders.update'))
+              if (k.durum == 'placed' && !k.odendi && _can('orders.update'))
                 Padding(
                   padding: const EdgeInsets.only(left: 6),
                   child: Tooltip(

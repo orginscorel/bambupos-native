@@ -40,6 +40,16 @@ int? _secilenPosCihazi;
 /// Ethernet'li kart POS'larına bağlantı denemeleri (uygulama boyunca ortak).
 final _posErisim = PosErisimOnbellegi();
 
+/// Aktif personelin işlem için yetkisi yok mu (sunucu: 403 ya da 422
+/// `errors.operator` — TerminalPinGate::actorOrOperator)? Öyleyse yetkili
+/// personelin PIN'iyle yeniden denenebilir.
+bool personelYetkiReddi(ApiHata e) {
+  if (e.kod == 403) return true;
+  if (e.kod != 422) return false;
+  final h = e.govde?['errors'];
+  return h is Map && h.containsKey('operator');
+}
+
 /// Kart durumu (§1.3 kartDurum).
 enum _KartDurum { acik, kismi, odendi, hesap }
 
@@ -408,8 +418,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       });
 
   /// Kalem/indirim/iskonto değişikliği sonrası (§4.9 afterItemChange).
-  Future<void> _degisimSonrasi({bool liste = true}) async {
-    await Future.wait([_seciliyiTazele(), _detayiTazele()]);
+  /// [yanit]: işlemin döndürdüğü güncel adisyon (`{order}` — kalemleriyle);
+  /// varsa ekran ondan kurulur, ödemeler + detay GET'i atılmaz.
+  Future<void> _degisimSonrasi({bool liste = true, dynamic yanit}) async {
+    if (!_yanittanGuncelle(yanit)) await Future.wait([_seciliyiTazele(), _detayiTazele()]);
     if (liste) _yukle(sessiz: true);
     if (mounted) {
       setState(() {
@@ -417,6 +429,30 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         _taze = true;
       });
     }
+  }
+
+  /// İşlem yanıtındaki güncel adisyonu (detay biçimi: özet + `items`)
+  /// ekrana basar. Kalemsiz / başka adisyona ait / boş yanıtta false döner
+  /// (çağıran GET ile tazeler).
+  bool _yanittanGuncelle(dynamic r) {
+    final s = _secili;
+    if (!mounted || s == null || r is! Map || r['order'] is! Map) return false;
+    final ham = (r['order'] as Map).cast<String, dynamic>();
+    if (tamSayi(ham['id']) != s.id || ham['items'] is! List) return false;
+    final yeni = Adisyon(ham);
+    final ozet = Map<String, dynamic>.from(ham)
+      ..remove('items')
+      ..remove('events');
+    setState(() {
+      _secili = AdisyonOzet({...s.ham, ...ozet});
+      _detay = yeni;
+      _detayImza = jsonEncode(ham);
+    });
+    _secim.ayikla(yeni.aktifKalemler.where(_secilebilir));
+    if (_acikKalem.value != null && !yeni.aktifKalemler.any((k) => k.id == _acikKalem.value && _secilebilir(k) && k.adet > 1)) {
+      _acikKalem.value = null;
+    }
+    return true;
   }
 
   /* ═════════════ Numpad (§3) ═════════════ */
@@ -654,6 +690,44 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     }
   }
 
+  /// 0 ₺ ADİSYONU KAPAT: tüm kalemleri ikram edilmiş (alınacak para
+  /// kalmamış) açık adisyon. Ödeme ucu 0 ₺ kabul etmez; sunucu
+  /// `sifir-kapat` adisyonu "Ödendi" kapatır, masayı boşaltır. Ödeme gibi
+  /// aktif personele atfedilir (PIN gönderilmez); kilit `_odeniyor`.
+  Future<void> _sifirKapat() async {
+    final s = _secili;
+    if (s == null || _odeniyor) return;
+    final surum = _surum;
+    _odeniyor = true; // senkron kilit: çift dokunuş ikinci istek atmaz
+    setState(() {});
+    try {
+      final r = await _api.post('/api/v1/orders/${s.id}/sifir-kapat', {'expected_version': surum}, {'Idempotency-Key': _api.yeniIslemKimligi()});
+      if (!mounted) return;
+      context.bildir2('Adisyon kapatıldı', 'Tahsil edilecek tutar yoktu; masa boşaltıldı.');
+      _secim.temizle();
+      _acikKalem.value = null;
+      // Yanıt güncel özeti taşır: ödemeler yeniden sorulmaz, yalnız kalemler.
+      final o = r is Map && r['order'] is Map ? (r['order'] as Map).cast<String, dynamic>() : null;
+      final simdiki = _secili;
+      if (o != null && simdiki != null && simdiki.id == s.id && tamSayi(o['id']) == s.id) {
+        setState(() => _secili = AdisyonOzet({...simdiki.ham, ...o}..remove('items')..remove('events')));
+        await _detayiTazele();
+      } else {
+        await Future.wait([_seciliyiTazele(), _detayiTazele()]);
+      }
+      _yukle(sessiz: true);
+      _formuSifirla();
+    } on ApiHata catch (e) {
+      if (mounted) {
+        context.bildir2('Adisyon kapatılamadı', e.mesaj, hata: true);
+        await Future.wait([_seciliyiTazele(), _detayiTazele()]);
+      }
+    } finally {
+      _odeniyor = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   /* ═════════════ Kalem seçimi (§4.4) — adet adet ═════════════ */
 
   List<Kalem> get _gorunenKalemler => _detay?.aktifKalemler ?? const [];
@@ -722,13 +796,16 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
   /* ═════════════ Adisyon üzerinde işlemler ═════════════ */
 
-  Future<bool> _islem(Future<dynamic> Function() f, {String? ok, String okMetin = '', String hataBaslik = 'İşlem tamamlanamadı', bool liste = true}) async {
+  /// [yanittan]: uç güncel adisyonu `{order}` olarak döndürüyor (ikram /
+  /// ikram kaldırma); ekran yanıttan güncellenir, ayrıca GET atılmaz.
+  Future<bool> _islem(Future<dynamic> Function() f,
+      {String? ok, String okMetin = '', String hataBaslik = 'İşlem tamamlanamadı', bool liste = true, bool yanittan = false}) async {
     if (_mesgul) return false;
     setState(() => _mesgul = true);
     try {
-      await f();
+      final r = await f();
       if (ok != null && mounted) context.bildir2(ok, okMetin);
-      await _degisimSonrasi(liste: liste);
+      await _degisimSonrasi(liste: liste, yanit: yanittan ? r : null);
       return true;
     } on ApiHata catch (e) {
       if (mounted) context.bildir2(hataBaslik, e.mesaj, hata: true);
@@ -740,7 +817,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   }
 
   String get _oyol => '/api/v1/orders/${_secili!.id}';
-  int get _surum => _detay?.surum ?? _secili?.surum ?? 0;
+  /// Bilinen adisyon sürümü; bilinmiyorsa null (sahte 0 gönderilmez).
+  int? get _surum => _versiyon(_detay?.ham) ?? _versiyon(_secili?.ham);
+  static int? _versiyon(Json? h) => h == null || h['version'] == null ? null : tamSayi(h['version']);
 
   Future<void> _adet(Kalem k, int yeni) => _islem(
         () => _api.put('$_oyol/items/${k.id}', {'qty': yeni, 'expected_version': _surum}),
@@ -755,42 +834,104 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     await _islem(() => _api.delete('$_oyol/items/${k.id}', {'expected_version': _surum}), ok: 'Kalem çıkarıldı', okMetin: k.ad, hataBaslik: 'Çıkarılamadı');
   }
 
+  /// Düzelt kipindeki "İkram yap": satırın TAMAMI (adet pencerede görünür,
+  /// `qty` her zaman açıkça gider). Sürüm pencere açılmadan alınır.
   Future<void> _ikram(Kalem k) async {
-    final neden = await _penceredeyken(() => ikramPenceresi(context, k.ad));
+    if (k.odendi || k.ikram) return;
+    final surum = _surum;
+    final n = k.adet;
+    final neden = await _penceredeyken(() => ikramPenceresi(context, '$n × ${k.ad}'));
     if (neden == null || !mounted) return;
-    await _islem(() => _api.post('$_oyol/items/${k.id}/comp', {'reason': neden, 'expected_version': _surum}),
-        ok: 'İkram işlendi', okMetin: '${k.ad} ücretsiz', hataBaslik: 'İşlenemedi');
+    await _ikramlariIsle([(kalem: k, adet: n)], neden, surum);
   }
 
   /// web canOrPin('orders.comp'): uygulama her zaman terminal oturumudur;
   /// yetkiyi sunucu işlemi yapan personelde denetler (adisyon ekranı gibi).
+  /// Aktif personelin yetkisi yoksa yetkili personelin PIN'i sorulur
+  /// (_yetkiliIstek).
   bool get _ikramGorunur => true;
 
-  /// Seçim şeridindeki "İkram et": yalnız TEK satır seçiliyken. Adet
-  /// pencerede sorulmaz — seçilen adet kadar ikram edilir; satır adedinden
-  /// azsa `qty` gider, sunucu satırı böler (adisyon ekranındaki `_kismi`).
+  /// Seçim şeridindeki "İkram et": bir ya da birden çok satır. Tek neden
+  /// sorulur; her satır SIRAYLA, seçilen adet kadar (`qty` her zaman açık)
+  /// ikram edilir. Seçim, adetler ve sürüm pencere açılmadan alınır —
+  /// pencere açıkken gelen bir yenileme seçilenden fazlasını ikram ettiremez.
   Future<void> _seciliIkram() async {
-    final s = _seciliKalemler;
-    if (s.length != 1 || !(_detay?.acik ?? false)) return;
-    final k = s.single.kalem;
-    final n = s.single.adet.clamp(1, k.adet);
-    final neden = await _penceredeyken(() => ikramPenceresi(context, '$n × ${k.ad}', kalir: k.adet - n));
+    if (_mesgul || !(_detay?.acik ?? false)) return;
+    // _seciliKalemler yalnız ücretli satırları verir (ödenmiş / ikram hariç).
+    final secim = [
+      for (final x in _seciliKalemler)
+        if (!x.kalem.odendi && !x.kalem.ikram) (kalem: x.kalem, adet: x.adet.clamp(1, x.kalem.adet)),
+    ];
+    if (secim.isEmpty) return;
+    final surum = _surum;
+    final ad = secim.map((x) => '${x.adet} × ${x.kalem.ad}').join(', ');
+    final kalir = secim.fold<int>(0, (t, x) => t + x.kalem.adet - x.adet);
+    final neden = await _penceredeyken(() => ikramPenceresi(context, ad, kalir: kalir));
     if (neden == null || !mounted) return;
-    final ok = await _islem(
-      () => _api.post('$_oyol/items/${k.id}/comp', {'reason': neden, 'expected_version': _surum, if (n < k.adet) 'qty': n}),
-      ok: 'İkram işlendi',
-      okMetin: '$n × ${k.ad} ücretsiz',
-      hataBaslik: 'İkram edilemedi',
-    );
-    if (ok && mounted) {
-      // Seçim temizlenince tahsil tutarı kalan tutara döner (_secimDegisti).
+    await _ikramlariIsle(secim, neden, surum);
+  }
+
+  /// Satırları sırayla ikram eder; her çağrı bir öncekinin döndürdüğü
+  /// sürümle gider. Hata olursa durur: kaç satırın işlendiği söylenir,
+  /// adisyon yeniden yüklenir, seçim temizlenir. Liste bir kez tazelenir.
+  Future<void> _ikramlariIsle(List<({Kalem kalem, int adet})> secim, String neden, int? surum) async {
+    final s = _secili;
+    if (s == null || _mesgul || secim.isEmpty) return;
+    setState(() => _mesgul = true);
+    final yol = '/api/v1/orders/${s.id}';
+    final pin = <String, dynamic>{};
+    var guncelSurum = surum;
+    var islenen = 0;
+    dynamic son;
+    try {
+      for (final x in secim) {
+        final k = x.kalem;
+        final v = guncelSurum;
+        son = await _yetkiliIstek((p) => _api.post('$yol/items/${k.id}/comp', {'reason': neden, 'expected_version': v, 'qty': x.adet, ...p}), pin);
+        islenen++;
+        final o = son is Map && son['order'] is Map ? son['order'] as Map : null;
+        guncelSurum = o == null ? null : _versiyon(o.cast<String, dynamic>());
+      }
+      if (!mounted) return;
       _secim.temizle();
       _acikKalem.value = null;
+      context.bildir2('İkram işlendi',
+          secim.length == 1 ? '${secim.single.adet} × ${secim.single.kalem.ad} ücretsiz' : '${secim.length} kalem ücretsiz');
+      // Seçim temizlenince tahsil tutarı kalan tutara döner.
+      await _degisimSonrasi(yanit: son);
+    } on ApiHata catch (e) {
+      if (!mounted) return;
+      _secim.temizle();
+      _acikKalem.value = null;
+      context.bildir2(
+          'İkram edilemedi', islenen > 0 ? '${e.mesaj} ($islenen / ${secim.length} kalem ikram edildi; kalanlar işlenmedi.)' : e.mesaj,
+          hata: true);
+      await _degisimSonrasi();
+    } finally {
+      if (mounted) setState(() => _mesgul = false);
     }
   }
 
-  Future<void> _ikramKaldir(Kalem k) => _islem(() => _api.delete('$_oyol/items/${k.id}/comp', {'expected_version': _surum}),
-      ok: 'İkram kaldırıldı', okMetin: '${k.ad} yeniden ücretli', hataBaslik: 'İşlenemedi');
+  Future<void> _ikramKaldir(Kalem k) {
+    final surum = _surum;
+    return _islem(() => _yetkiliIstek((p) => _api.delete('$_oyol/items/${k.id}/comp', {'expected_version': surum, ...p}), <String, dynamic>{}),
+        ok: 'İkram kaldırıldı', okMetin: '${k.ad} yeniden ücretli', hataBaslik: 'İşlenemedi', yanittan: true);
+  }
+
+  /// İstek yetki reddiyle dönerse yetkili personelin PIN'i sorulur ve istek
+  /// PIN'le BİR KEZ yinelenir (ödeme kaldırma / iade ile aynı personelPinSor).
+  /// [pin] çağrılar arasında paylaşılır: toplu ikramda PIN bir kez sorulur.
+  Future<dynamic> _yetkiliIstek(Future<dynamic> Function(Map<String, dynamic> pin) f, Map<String, dynamic> pin) async {
+    try {
+      return await f(pin);
+    } on ApiHata catch (e) {
+      if (pin.isNotEmpty || !personelYetkiReddi(e) || !mounted) rethrow;
+      final p = await _penceredeyken(() => personelPinSor(context));
+      if (p == null || !mounted) rethrow;
+      pin.addAll(p);
+      return await f(pin);
+    }
+  }
 
   Future<void> _kalemDegistir(Kalem k) async {
     final katalog = KatalogDeposu.ornek.katalog ?? await KatalogDeposu.ornek.yukle(context.durum);
@@ -1895,6 +2036,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           if (bagli > 0) ...[_Etiket('${bagli + 1} masa', renk: Renk.marka, ikon: Icons.merge_rounded), const SizedBox(width: 6)],
           if (s.odenen > 0 && s.kalan > 0)
             _Etiket('Kısmi ödendi', renk: Renk.uyari, ikon: Icons.timelapse_rounded)
+          else if (s.kalan == 0 && s.acik)
+            _Etiket('Kapatılmadı', renk: Renk.uyari, ikon: Icons.info_outline_rounded)
           else if (s.kalan == 0)
             _Etiket('Ödendi', renk: Renk.basari, ikon: Icons.check_rounded)
           else if (s.hesapIstendi)
@@ -2106,7 +2249,13 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           child: Row(children: [
             Icon(Icons.check_circle_outline_rounded, color: Renk.basari, size: 18),
             const SizedBox(width: 8),
-            Expanded(child: Text('Adisyon tamamen ödendi — fiş verip kapatabilirsiniz.', style: TextStyle(color: Renk.basari, fontWeight: FontWeight.w600, fontSize: 13))),
+            Expanded(
+              child: Text(
+                  s.acik
+                      ? 'Tahsil edilecek tutar yok — adisyonu ödeme bölmesinden kapatın.'
+                      : (s.toplam == 0 && s.odenen == 0 ? 'Adisyon kapatıldı — tüm kalemler ikram.' : 'Adisyon tamamen ödendi — fiş verip kapatabilirsiniz.'),
+                  style: TextStyle(color: Renk.basari, fontWeight: FontWeight.w600, fontSize: 13)),
+            ),
           ]),
         ),
       RepaintBoundary(
@@ -2361,9 +2510,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           TextButton.icon(
             key: const ValueKey('kasa-secim-ikram'),
             style: TextButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 10), foregroundColor: Renk.bilgi),
-            onPressed: secim.length == 1 && !_mesgul ? _seciliIkram : null,
+            onPressed: secim.isNotEmpty && !_mesgul ? _seciliIkram : null,
             icon: const Icon(Icons.card_giftcard_rounded, size: 16),
-            label: const Text('İkram et'),
+            label: Text(secim.length > 1 ? 'İkram et (${secim.length})' : 'İkram et'),
           ),
         const SizedBox(width: 2),
         FilledButton(
@@ -2425,7 +2574,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       ...k.secenekler,
     ];
     final oran = (k.ham['tax_rate'] is num) ? (k.ham['tax_rate'] as num).toDouble() : double.tryParse('${k.ham['tax_rate']}') ?? 0;
-    final duzenle = _duzelt && _duzenlenebilir;
+    // Ödenmiş satır düzeltilemez (adet / değiştir / çıkar / ikram yok).
+    final duzenle = _duzelt && _duzenlenebilir && !k.odendi;
 
     // Sol kutu: ödendi ✓ · ikram 🎁 · seçim (boş / kısmi − / tam ✓).
     final Widget kutu;
@@ -2613,7 +2763,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             ),
             TextButton.icon(onPressed: _mesgul ? null : () => _kalemDegistir(k), icon: const Icon(Icons.edit_outlined, size: 15), label: const Text('Değiştir')),
           ],
-          if (_ikramEder && !k.ikram)
+          if (_ikramEder && !k.ikram && !k.odendi)
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Renk.bilgi),
               onPressed: _mesgul ? null : () => _ikram(k),
@@ -2758,29 +2908,61 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     _tusYuksekligi = 54;
     final ara = sik ? 6.0 : 10.0;
     if (s.kalan == 0) {
+      // Kalan 0 ama adisyon AÇIK (ör. tüm kalemler ikram): kapatılmadıkça
+      // masa dolu kalır — "Adisyonu kapat (0 ₺)" sunucuda kapatır.
+      final acikKaldi = s.acik;
+      final hepsiIkram = s.toplam == 0 && s.odenen == 0;
+      final (String baslikMetni, String aciklama) = acikKaldi
+          ? (
+              'Tahsil edilecek tutar yok',
+              s.odenen > 0
+                  ? 'Toplam ${para(s.toplam)} tahsil edildi; adisyon henüz kapanmadı. Kapatınca masa boşalır.'
+                  : 'Tüm kalemler ikram edildi; adisyon henüz kapanmadı. Kapatınca masa boşalır.',
+            )
+          : hepsiIkram
+              ? ('Adisyon kapatıldı', 'Tüm kalemler ikram — tahsilat yapılmadı.')
+              : ('Adisyon tamamen ödendi', 'Toplam ${para(s.toplam)} tahsil edildi.');
       return SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(children: [
           const SizedBox(height: 24),
-          Icon(Icons.check_circle_outline_rounded, size: 56, color: Renk.basari),
+          Icon(acikKaldi ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded, size: 56, color: acikKaldi ? Renk.marka : Renk.basari),
           const SizedBox(height: 10),
-          const Text('Adisyon tamamen ödendi', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(baslikMetni, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text('Toplam ${para(s.toplam)} tahsil edildi.', style: TextStyle(color: Renk.ikinci)),
+          Text(aciklama, textAlign: TextAlign.center, style: TextStyle(color: Renk.ikinci)),
           const SizedBox(height: 16),
           Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
-              onPressed: () => _fisYazdir('payment'),
-              icon: const Icon(Icons.print_outlined, size: 18),
-              label: const Text('Ödeme fişi yazdır'),
-            ),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-              onPressed: _secimeDon,
-              icon: const Icon(Icons.arrow_back_rounded, size: 18),
-              label: const Text('Masalara dön'),
-            ),
+            if (s.odenen > 0)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: () => _fisYazdir('payment'),
+                icon: const Icon(Icons.print_outlined, size: 18),
+                label: const Text('Ödeme fişi yazdır'),
+              ),
+            if (acikKaldi && _odemeYetkisi) ...[
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: _secimeDon,
+                icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                label: const Text('Masalara dön'),
+              ),
+              FilledButton.icon(
+                key: const ValueKey('kasa-sifir-kapat'),
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: _odeniyor ? null : _sifirKapat,
+                icon: _odeniyor
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Adisyonu kapat (0 ₺)'),
+              ),
+            ] else
+              FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: _secimeDon,
+                icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                label: const Text('Masalara dön'),
+              ),
           ]),
           const SizedBox(height: 20),
           ConstrainedBox(constraints: const BoxConstraints(maxWidth: 512), child: _yapilanOdemeler()),
