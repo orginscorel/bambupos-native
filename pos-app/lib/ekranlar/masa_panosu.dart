@@ -9,6 +9,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
 import 'adisyon_ekrani.dart';
+import 'birlestir_onay.dart';
 import 'ortak.dart';
 
 /// MASA PANOSU — web'deki /panel/siparisler (Board.vue) ile birebir:
@@ -22,8 +23,14 @@ import 'ortak.dart';
 /// Veri `GET /api/v1/orders/board`; ekran açıkken 5 sn'de bir tazelenir,
 /// son pano diskte tutulur (açılışta beklemeden çizilir).
 class MasaPanosu extends StatefulWidget {
-  const MasaPanosu({super.key, this.kasaKipi = false});
+  const MasaPanosu({super.key, this.kasaKipi = false, this.birlestirKaynak});
   final bool kasaKipi;
+
+  /// MASAYI BİRLEŞTİR MODU (1.2.36, web ile aynı — Kardo usulü): pano bu
+  /// adisyon için açılır; üstte bilgi kutusu çıkar, karta dokunmak adisyona
+  /// girmek yerine birleştirme onayını açar. Sayfa, açık kalan adisyonun
+  /// id'siyle kapanır (vazgeçilirse null).
+  final AdisyonOzet? birlestirKaynak;
 
   @override
   State<MasaPanosu> createState() => _MasaPanosuState();
@@ -44,7 +51,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
   Pano? _pano;
   bool _baglantiYok = false;
   bool _yukleniyor = false;
-  String _sekme = 'bos';
+  late String _sekme = widget.birlestirKaynak != null ? 'acik' : 'bos';
   /// "Önce alanlar" kipinde ekran ilk sekmeyle (ilk alan) açılır — bir kez.
   bool _ilkSekmeAyarlandi = false;
   Timer? _zamanlayici;
@@ -147,6 +154,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
 
   Future<void> _masayaDokun(Masa m) async {
     if (_acilisYapiliyor) return;
+    if (_birlestirModu) return _birlestirMasaSec(m);
     final bagli = m.bagli;
     if (bagli != null) return _adisyonuAc(tamSayi(bagli['order_id']));
 
@@ -210,6 +218,124 @@ class _MasaPanosuState extends State<MasaPanosu> {
     }
   }
 
+  /* ═════════════ Masayı birleştir modu (1.2.36) ═════════════ */
+
+  bool get _birlestirModu => widget.birlestirKaynak != null;
+  int get _kaynakId => widget.birlestirKaynak?.id ?? 0;
+
+  String get _kaynakAdi {
+    final k = widget.birlestirKaynak;
+    if (k == null) return '';
+    return k.masaAdi ?? k.cariAdi ?? 'Adisyon #${k.id}';
+  }
+
+  bool _kaynakMasaMi(Masa m) => m.adisyonlar.any((a) => a.id == _kaynakId) || tamSayi(m.bagli?['order_id']) == _kaynakId;
+
+  Widget _birlestirKutusu() => Container(
+        key: const ValueKey('birlestir-kutusu'),
+        margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        decoration: BoxDecoration(color: Renk.uyariZemin, borderRadius: koseYuvarlak, border: Border.all(color: Renk.uyariKenar)),
+        child: Column(children: [
+          Text.rich(
+            TextSpan(children: [
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak),
+                  child: Text(_kaynakAdi, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const TextSpan(text: '  adisyonunu '),
+              const TextSpan(text: 'birleştirmek', style: TextStyle(fontWeight: FontWeight.w800)),
+              const TextSpan(text: ' istediğiniz masayı seçiniz'),
+            ]),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, color: Renk.yazi),
+          ),
+          const SizedBox(height: 4),
+          Text('Açık masa seçerseniz adisyonlar birleşir; boş masa seçerseniz adisyon o masaya taşınır.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          const SizedBox(height: 10),
+          OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('İşlemden vazgeç')),
+        ]),
+      );
+
+  Widget _birlestirEtiketi(Masa m) {
+    final bu = _kaynakMasaMi(m);
+    final acik = m.dolu || m.bagli != null;
+    final (ikon, metin) = bu
+        ? (Icons.check_rounded, 'Bu masa')
+        : acik
+            ? (Icons.merge_rounded, 'Masayı birleştir')
+            : (Icons.arrow_forward_rounded, 'Buraya taşı');
+    return Container(
+      height: 30,
+      margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(ikon, size: 15, color: Renk.yazi),
+        const SizedBox(width: 6),
+        Text(metin, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+
+  Future<void> _birlestirMasaSec(Masa m) async {
+    if (_kaynakMasaMi(m)) return;
+    final dolu = m.adisyonlar;
+    final bagli = m.bagli;
+    if (dolu.isNotEmpty) {
+      final h = dolu.firstWhere((a) => a.ham['is_split_child'] != true, orElse: () => dolu.first);
+      return _birlestirOnayla(BirlestirSecim(tur: 'acik', ad: m.ad, masaId: m.id, hedefId: h.id, kalem: h.kalemSayisi, toplam: h.toplam));
+    }
+    if (bagli != null) {
+      return _birlestirOnayla(BirlestirSecim(
+          tur: 'acik',
+          ad: '${bagli['table_name'] ?? m.ad}',
+          masaId: m.id,
+          hedefId: tamSayi(bagli['order_id']),
+          kalem: tamSayi(bagli['items_count']),
+          toplam: tamSayi(bagli['remaining_minor'])));
+    }
+    if (m.servisDisi) {
+      context.bildir('${m.ad} servis dışı.');
+      return;
+    }
+    return _birlestirOnayla(BirlestirSecim(tur: 'bos', ad: m.ad, masaId: m.id, hedefId: null, kalem: 0, toplam: 0));
+  }
+
+  Future<void> _birlestirCariSec(CariKart c) async {
+    if (c.adisyonlar.isEmpty) {
+      context.bildir('${c.ad} adına açık adisyon olmadığı için birleştirilemez.', hata: true);
+      return;
+    }
+    final h = c.adisyonlar.first;
+    if (h.id == _kaynakId) return;
+    return _birlestirOnayla(BirlestirSecim(tur: 'acik', ad: c.ad, masaId: null, hedefId: h.id, kalem: h.kalemSayisi, toplam: h.toplam));
+  }
+
+  Future<void> _birlestirOnayla(BirlestirSecim secim) async {
+    final k = widget.birlestirKaynak!;
+    final yon = await birlestirOnayPenceresi(context, kaynakAdi: _kaynakAdi, kaynakKalem: k.kalemSayisi, kaynakToplam: k.toplam, secim: secim);
+    if (yon == null || !mounted) return;
+    final api = context.api;
+    final gidilecek = await birlestirBekleme<int>(context, tasima: secim.tur == 'bos', is_: () async {
+      if (secim.tur == 'bos') {
+        await api.post('/api/v1/orders/${k.id}/move', {'table_id': secim.masaId});
+        return k.id;
+      }
+      if (yon == 'aktar') {
+        await api.post('/api/v1/orders/${secim.hedefId}/merge', {'source_order_id': k.id});
+        return secim.hedefId!;
+      }
+      await api.post('/api/v1/orders/${k.id}/merge', {'source_order_id': secim.hedefId});
+      return k.id;
+    });
+    if (gidilecek != null && mounted) Navigator.of(context).pop(gidilecek);
+  }
+
   Future<void> _talepTamam(ServisTalebi t) async {
     await context.islem(() => context.api.post('/api/v1/orders/service-requests/${t.id}/done'));
     _yenile();
@@ -258,13 +384,14 @@ class _MasaPanosuState extends State<MasaPanosu> {
       if (o.eklenti('delivery', varsayilan: false) || pano.kanalSiparisleri.isNotEmpty)
         ('kanal', 'Paket & Kanal', Icons.local_shipping_outlined, pano.kanalSiparisleri.length),
     ];
-    if (alanOnce && !_ilkSekmeAyarlandi) _sekme = sekmeler.first.$1;
+    if (alanOnce && !_ilkSekmeAyarlandi && !_birlestirModu) _sekme = sekmeler.first.$1;
     _ilkSekmeAyarlandi = true;
     if (!sekmeler.any((s) => s.$1 == _sekme)) _sekme = sekmeler.first.$1;
 
     return Stack(children: [
       Column(children: [
         BaglantiSeridi(gorunur: _baglantiYok),
+        if (_birlestirModu) _birlestirKutusu(),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
           child: _SekmeSeridi(
@@ -330,7 +457,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
         padding: const EdgeInsets.only(bottom: 18),
         gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 215,
-          mainAxisExtent: herhangiDolu ? 206 : 138,
+          mainAxisExtent: (herhangiDolu ? 206 : 138) + (_birlestirModu ? 38 : 0),
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
         ),
@@ -525,6 +652,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
               Padding(padding: const EdgeInsets.fromLTRB(8, 10, 8, 8), child: ust),
               Divider(height: 1, color: r.kenar.withValues(alpha: .6)),
               Expanded(child: alt),
+              if (_birlestirModu) _birlestirEtiketi(m),
             ]),
           ),
         ),
@@ -590,7 +718,11 @@ class _MasaPanosuState extends State<MasaPanosu> {
           borderRadius: kartYuvarlak,
           child: InkWell(
             borderRadius: kartYuvarlak,
-            onTap: () => acik ? _adisyonuAc(c.adisyonlar.first.id) : _yeniAdisyon({'receivable_id': c.id}),
+            onTap: () => _birlestirModu
+                ? _birlestirCariSec(c)
+                : acik
+                    ? _adisyonuAc(c.adisyonlar.first.id)
+                    : _yeniAdisyon({'receivable_id': c.id}),
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(borderRadius: kartYuvarlak, border: Border.all(color: r.kenar)),

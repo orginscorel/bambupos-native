@@ -787,7 +787,7 @@ Future<bool> fisOnizle(BuildContext context, {required String baslik, required J
       FilledButton.icon(
         onPressed: yaziciAdi == null ? null : () => Navigator.pop(ctx, true),
         icon: const Icon(Icons.print_outlined, size: 16),
-        label: const Text('Yazdır'),
+        label: const Text('Bas'),
       ),
     ],
   );

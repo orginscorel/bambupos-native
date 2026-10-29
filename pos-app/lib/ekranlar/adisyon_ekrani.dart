@@ -15,6 +15,7 @@ import 'adet_kartlari.dart';
 import 'adisyon_pencereleri.dart';
 import 'cerceve.dart';
 import 'kabuk.dart';
+import 'masa_panosu.dart';
 import 'nedenler.dart';
 import 'ekran_klavyesi.dart';
 import 'ortak.dart';
@@ -417,6 +418,26 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     if (ok) _secimiTemizle(k.id);
   }
 
+  /// SONRADAN EKLENEN ADET (1.2.36, web ile aynı): hazırlığa gitmiş "çay ×1"
+  /// satırına yeni çay eklenince satır "çay ×2 (1'i gönderilmedi)" olur.
+  /// Gönderilmemiş adet "Tamamlandı" denene kadar nedensiz azaltılıp
+  /// çıkarılabilir; gönderilmiş adede dokunulmaz.
+  bool _kismenGonderilmis(Kalem k) => k.durum != 'placed' && _bekleyen(k) > 0;
+
+  Future<void> _bekleyeniCikar(Kalem k, [int? adet]) async {
+    final n = [adet ?? _bekleyen(k), _bekleyen(k), k.adet - 1].reduce((a, b) => a < b ? a : b);
+    if (n < 1) return;
+    final ok = await _islem(() => context.api.put('$_yol/items/${k.id}', {'qty': k.adet - n, 'expected_version': _surum}),
+        ok: 'Eklenen adet çıkarıldı');
+    if (ok) _secimiTemizle(k.id);
+  }
+
+  /// Menüdeki "Çıkar": seçilen adet gönderilmemiş kısımdan karşılanıyorsa nedensiz.
+  bool _cikarilabilir(Kalem k) {
+    if (k.durum == 'placed') return _topluAdedi(k) >= k.adet;
+    return _kismenGonderilmis(k) && _topluAdedi(k) <= _bekleyen(k) && _topluAdedi(k) < k.adet;
+  }
+
   /// Kalem notu (yalnız hazırlığa gönderilmemiş adetler). Sunucu kısmen
   /// gönderilmiş satırı böler; yanıttaki adisyon ekrana basılır.
   Future<void> _kalemNotu(Kalem k) async {
@@ -692,12 +713,38 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
         ),
       );
 
+  /// MASAYI BİRLEŞTİR (1.2.36, web ile aynı — Kardo usulü): masa panosu
+  /// birleştirme modunda açılır; masa orada seçilir, yön orada sorulur.
+  /// Dönüşte açık kalan adisyona geçilir (bu adisyonsa yenilenir).
   Future<void> _birlestir() async {
     final a = _a;
     if (a == null) return;
-    final kaynak = await _penceredeyken(() => birlestirPenceresi(context, a));
-    if (kaynak == null || !mounted) return;
-    await _islem(() => context.api.post('$_yol/merge', {'source_order_id': kaynak, 'expected_version': _surum}), ok: 'Adisyonlar birleştirildi');
+    final o = context.durum.oturum!;
+    final hedef = await _penceredeyken(() => Navigator.of(context).push<int>(MaterialPageRoute<int>(
+          builder: (c) => Scaffold(
+            backgroundColor: Renk.zemin,
+            appBar: UstCubuk(
+              baslik: o.isletme,
+              rozet: 'Masayı birleştir',
+              sol: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: IconButton(
+                  tooltip: 'Geri',
+                  onPressed: () => Navigator.of(c).maybePop(),
+                  icon: Icon(Icons.arrow_back_rounded, size: 22, color: Renk.yazi),
+                ),
+              ),
+            ),
+            body: MasaPanosu(kasaKipi: widget.kasaKipi, birlestirKaynak: a),
+          ),
+        )));
+    if (hedef == null || !mounted) return;
+    if (hedef != id) {
+      _ayrildi = true;
+      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => AdisyonEkrani(adisyonId: hedef, kasaKipi: widget.kasaKipi)));
+    } else {
+      _yukle(sessiz: true);
+    }
   }
 
   /* ═════════════ Adisyon işlemleri ═════════════ */
@@ -766,11 +813,6 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
       () => context.api.post('$_yol/parti-adi', {'parti_no': no, 'ad': ad.isEmpty ? null : ad, 'expected_version': _surum}),
       ok: ad.isEmpty ? 'Parti adı kaldırıldı' : 'Parti adı kaydedildi',
     );
-  }
-
-  void _kasayaGit() {
-    ekranIstegi.value = PosEkrani.kasa;
-    _panoyaDon();
   }
 
   /* ═════════════ Görünüm ═════════════ */
@@ -1300,7 +1342,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   ? _menuOgesi('tumunu_sec', Icons.close_rounded, 'Seçimi kaldır')
                   : _menuOgesi('tumunu_sec', Icons.check_rounded, 'Tüm ürünleri seç'),
             if (a.acik && _can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Adisyonu başka masaya taşı'),
-            if (a.acik && _can('orders.merge_tables')) _menuOgesi('birlestir', Icons.merge_rounded, 'Birleştir'),
+            if (a.acik && _can('orders.merge_tables')) _menuOgesi('birlestir', Icons.merge_rounded, 'Masayı birleştir'),
             if (a.acik && _canOrPin('orders.discount')) _menuOgesi('indirim', Icons.sell_outlined, indirimVar ? 'İndirimi kaldır' : 'İndirim uygula'),
             if (a.durum == 'paid' && _can('orders.refund')) _menuOgesi('iade', Icons.arrow_back_rounded, 'İade et', tehlikeli: true),
           ],
@@ -1403,7 +1445,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     final adet = secim.fold<int>(0, (t, k) => t + _topluAdedi(k));
     final tutar = secim.fold<int>(0, (t, k) => t + (k.adet == 0 ? 0 : (k.tutar / k.adet * _topluAdedi(k)).round()));
     final tek = secim.length == 1 ? secim.first : null;
-    final cikarMi = tek != null && tek.durum == 'placed' && _topluAdedi(tek) >= tek.adet;
+    final cikarMi = tek != null && _cikarilabilir(tek);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: BoxDecoration(color: Renk.markaAcik, border: Border(bottom: BorderSide(color: Renk.marka.withValues(alpha: .3)))),
@@ -1438,7 +1480,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                         _menuOgesi('ikram', Icons.check_circle_outline_rounded, tek?.ikram == true ? 'İkramı kaldır' : 'İkram et', etkin: tek != null),
                       if (_can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Başka masaya taşı'),
                       _menuOgesi('iptal', Icons.cancel_outlined, cikarMi ? 'Çıkar' : 'İptal et (nedenli)',
-                          tehlikeli: true, etkin: tek != null && (tek.durum == 'placed' || _canOrPin('orders.cancel'))),
+                          tehlikeli: true, etkin: tek != null && (tek.durum == 'placed' || cikarMi || _canOrPin('orders.cancel'))),
                     ],
                   ));
               if (!mounted) return;
@@ -1448,7 +1490,15 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                 case 'tasi':
                   _topluTasi();
                 case 'iptal':
-                  if (tek != null) cikarMi ? _cikar(tek) : _kalemIptal(tek);
+                  if (tek != null) {
+                    if (!cikarMi) {
+                      _kalemIptal(tek);
+                    } else if (tek.durum == 'placed') {
+                      _cikar(tek);
+                    } else {
+                      _bekleyeniCikar(tek, _topluAdedi(tek));
+                    }
+                  }
               }
             },
             child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.more_vert_rounded, size: 15), SizedBox(width: 4), Text('Menü')]),
@@ -1643,11 +1693,11 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
             ),
             const SizedBox(width: 6),
             if (a.acik) ...[
-              if (k.durum == 'placed' && !k.ikram && !k.odendi)
+              if ((k.durum == 'placed' || _kismenGonderilmis(k)) && !k.ikram && !k.odendi)
                 Container(
                   decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgiKoyu)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    _kucukDugme(Icons.remove_rounded, k.adet > 1 && !_mesgul ? () => _adet(k, -1) : null, 'Azalt'),
+                    _kucukDugme(Icons.remove_rounded, k.adet > 1 && (k.durum == 'placed' || _bekleyen(k) > 0) && !_mesgul ? () => _adet(k, -1) : null, 'Azalt'),
                     SizedBox(width: 28, child: Text('${k.adet}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
                     _kucukDugme(Icons.add_rounded, _mesgul ? null : () => _adet(k, 1), 'Artır'),
                   ]),
@@ -1669,6 +1719,20 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                       padding: EdgeInsets.zero,
                       style: IconButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: koseYuvarlak)),
                       onPressed: _mesgul ? null : () => _cikar(k),
+                      icon: Icon(Icons.delete_outline_rounded, size: 18, color: Renk.hata),
+                    ),
+                  ),
+                )
+              else if (_kismenGonderilmis(k) && !k.odendi && _can('orders.update'))
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Tooltip(
+                    message: 'Gönderilmemiş ${_bekleyen(k)} adedi çıkar',
+                    child: IconButton(
+                      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                      padding: EdgeInsets.zero,
+                      style: IconButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: koseYuvarlak)),
+                      onPressed: _mesgul ? null : () => _bekleyeniCikar(k),
                       icon: Icon(Icons.delete_outline_rounded, size: 18, color: Renk.hata),
                     ),
                   ),
@@ -1826,24 +1890,6 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           onPressed: _mesgul ? null : _tamamlandi,
           icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
           label: Text('Tamamlandı — hazırlığa gönder ($unsent)'),
-        ));
-      }
-    } else if (a.hesapIstendi) {
-      if (_can('payments.take') || _can('cash.view')) {
-        ogeler.add(OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          onPressed: _kasayaGit,
-          icon: const Icon(Icons.account_balance_wallet_outlined, size: 17),
-          label: const Text('Kasada bekliyor — Kasaya git'),
-        ));
-      } else {
-        ogeler.add(Text('Adisyon kasada bekliyor.', textAlign: TextAlign.center, style: TextStyle(color: Renk.uyari, fontWeight: FontWeight.w600)));
-      }
-      if (_canOrPin('orders.update')) {
-        ogeler.add(TextButton.icon(
-          onPressed: _mesgul ? null : _hesapGeriAl,
-          icon: const Icon(Icons.undo_rounded, size: 15),
-          label: const Text('Yanlışlıkla mı oldu? Hesap isteğini geri al'),
         ));
       }
     } else if (!a.acik) {

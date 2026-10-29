@@ -1164,13 +1164,23 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final satirlar = <Json>[];
     var cesit = 0;
     var adet = 0;
-    for (final k in d?.aktifKalemler ?? const <Kalem>[]) {
+    // KISMİ TAHSİLAT (1.2.36, web ile aynı): ödenecek kalemler önce,
+    // tahsil edilenler ayrı başlık altında "✓ Tahsil edildi" notuyla.
+    final aktif = d?.aktifKalemler ?? const <Kalem>[];
+    final sirali = [...aktif.where((k) => !k.odendi), ...aktif.where((k) => k.odendi)];
+    var tahsilBasligi = false;
+    for (final k in sirali) {
+      if (k.odendi && !tahsilBasligi) {
+        satirlar.add({'name': '— TAHSİL EDİLENLER —', 'amount': ''});
+        tahsilBasligi = true;
+      }
       cesit++;
       adet += k.adet;
       satirlar.add({'name': '${k.adet}x ${k.ad}${k.varyant != null ? ' (${k.varyant})' : ''}', 'amount': k.ikram ? 'İKRAM' : tl(k.tutar)});
       if (k.adet > 1 && !k.ikram) satirlar.add({'name': '    ${k.adet} × ${tl(k.birimFiyat)}', 'amount': ''});
       if (k.secenekler.isNotEmpty) satirlar.add({'name': '    ${k.secenekler.join(' · ')}', 'amount': ''});
       if (k.not != null && k.not!.isNotEmpty) satirlar.add({'name': '    » ${k.not}', 'amount': ''});
+      if (k.odendi) satirlar.add({'name': '    ✓ Tahsil edildi', 'amount': ''});
     }
     if (cesit > 0) satirlar.add({'name': '$cesit çeşit · $adet adet ürün', 'amount': ''});
 
@@ -1182,7 +1192,13 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         {'label': 'İskonto${h['iskonto_reason'] != null ? ' (${h['iskonto_reason']})' : ''}', 'value': '-${tl(tamSayi(h['iskonto_minor']))}'},
       if (tamSayi(h['service_charge_minor']) > 0) {'label': 'Servis', 'value': tl(tamSayi(h['service_charge_minor']))},
       if (tamSayi(h['rounding_minor']) != 0) {'label': 'Yuvarlama', 'value': tl(tamSayi(h['rounding_minor']))},
-      {'label': 'TOPLAM', 'value': tl(s.toplam), 'big': true},
+      // KISMİ TAHSİLATLI HESAP FİŞİ: tahsil edilen düşülür, büyük satır KALAN.
+      if (tur == 'bill' && s.odenen > 0) ...[
+        {'label': 'Toplam', 'value': tl(s.toplam)},
+        {'label': 'Tahsil edilen', 'value': '-${tl(s.odenen)}'},
+        {'label': 'KALAN', 'value': tl(s.kalan), 'big': true},
+      ] else
+        {'label': 'TOPLAM', 'value': tl(s.toplam), 'big': true},
     ];
     final kdv = (h['vat_by_rate'] as List? ?? const []).whereType<Map>().toList();
     if (kdv.length == 1) {
@@ -1254,6 +1270,30 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final fis = _fisVerisi(tur);
     final yaz = await _penceredeyken(() => fisOnizle(context, baslik: tur == 'bill' ? 'Hesap fişi önizleme' : 'Ödeme fişi önizleme', fis: fis, yaziciAdi: _yaziciAdi));
     if (yaz == true && mounted) await _fisGonder(fis, siparis: s.id, baslik: '${tur == 'bill' ? 'Hesap' : 'Ödeme'} fişi #${s.id}');
+  }
+
+  /// HESAP (1.2.36, web ile aynı): dokununca iki seçenek — önizle / bas.
+  Future<void> _hesapMenusu(BuildContext c) async {
+    if (_secili == null) return;
+    final kutu = c.findRenderObject() as RenderBox;
+    final p = kutu.localToGlobal(Offset.zero);
+    PopupMenuItem<String> oge(String d, IconData i, String ad) => PopupMenuItem<String>(
+          value: d,
+          height: 44,
+          child: Row(children: [Icon(i, size: 17, color: Renk.yazi), const SizedBox(width: 10), Text(ad, style: const TextStyle(fontSize: 13.5))]),
+        );
+    final secim = await _penceredeyken(() => showMenu<String>(
+          context: context,
+          position: RelativeRect.fromLTRB(p.dx, p.dy + kutu.size.height + 4, p.dx + kutu.size.width, 0),
+          shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
+          items: [
+            oge('onizle', Icons.preview_outlined, 'Hesap fişini önizle'),
+            oge('bas', Icons.print_outlined, 'Hesap fişini bas'),
+          ],
+        ));
+    if (!mounted) return;
+    if (secim == 'onizle') _fisOnizle('bill');
+    if (secim == 'bas') _fisYazdir('bill');
   }
 
   Future<void> _yaziciSec({bool uyari = false}) async {
@@ -2130,11 +2170,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         key: const ValueKey('kasa-hesap'),
         ikon: Icons.print_outlined,
         ad: 'Hesap',
-        ipucu: 'Hesap fişi yazdır',
+        ipucu: 'Hesap fişi',
         renk: Renk.bilgi,
         zemin: Renk.bilgiZemin,
         kenar: Renk.bilgiKenar,
-        bas: () => _fisYazdir('bill'),
+        bas: () {},
+        basBaglam: _hesapMenusu,
       ),
       // İNDİRİM: Hesap'ın hemen yanında; hazır indirim / manuel iskonto
       // penceresini açar. Uygulanmışsa düğme turuncu, tutar altta satırda.
@@ -4400,6 +4441,7 @@ class _AracDugmesi extends StatelessWidget {
       required this.zemin,
       required this.kenar,
       required this.bas,
+      this.basBaglam,
       this.sik = false,
       this.yukseklik = 52});
   final IconData ikon;
@@ -4409,7 +4451,7 @@ class _AracDugmesi extends StatelessWidget {
 
   /// Aynı düğme, simge üstte / ad altta, verilen boyda (masaüstü satırı).
   _AracDugmesi dikey(double h) =>
-      _AracDugmesi(key: key, ikon: ikon, ad: ad, ipucu: ipucu, renk: renk, zemin: zemin, kenar: kenar, bas: bas, yukseklik: h);
+      _AracDugmesi(key: key, ikon: ikon, ad: ad, ipucu: ipucu, renk: renk, zemin: zemin, kenar: kenar, bas: bas, basBaglam: basBaglam, yukseklik: h);
 
   /// Kısa masaüstü ekranı: simge + ad yan yana, ince düğme.
   final bool sik;
@@ -4419,6 +4461,9 @@ class _AracDugmesi extends StatelessWidget {
   final Color zemin;
   final Color kenar;
   final VoidCallback? bas;
+
+  /// Dokununca düğmenin konumu gereken eylemler (açılır menü) için.
+  final void Function(BuildContext c)? basBaglam;
 
   @override
   Widget build(BuildContext context) {
@@ -4431,7 +4476,7 @@ class _AracDugmesi extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: kenar)),
           child: InkWell(
             customBorder: RoundedRectangleBorder(borderRadius: koseYuvarlak),
-            onTap: bas,
+            onTap: bas == null ? null : (basBaglam != null ? () => basBaglam!(context) : bas),
             child: sik
                 ? SizedBox(
                     height: 36,
