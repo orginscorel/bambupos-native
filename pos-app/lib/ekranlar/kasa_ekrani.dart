@@ -2679,7 +2679,6 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       if (k.varyant != null) k.varyant!,
       ...k.secenekler,
     ];
-    final oran = (k.ham['tax_rate'] is num) ? (k.ham['tax_rate'] as num).toDouble() : double.tryParse('${k.ham['tax_rate']}') ?? 0;
     // Ödenmiş satır düzeltilemez (adet / değiştir / çıkar / ikram yok).
     final duzenle = _duzelt && _duzenlenebilir && !k.odendi;
 
@@ -2783,9 +2782,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                   child: const Text('İkramı kaldır'),
                 ),
               ],
-            ])
-          else if (oran > 0)
-            Text('KDV ${_oran(oran)} dahil', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+            ]),
         ]),
       ),
       const SizedBox(width: 8),
