@@ -985,7 +985,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       _secim.temizle();
       _acikKalem.value = null;
       context.bildir2(
-          '${iade ? 'İptal / iade işlenemedi' : 'İkram edilemedi'}',
+          iade ? 'İptal / iade işlenemedi' : 'İkram edilemedi',
           islenen > 0 ? '${e.mesaj} ($islenen / ${secim.length} kalem ${iade ? 'iade' : 'ikram'} edildi; kalanlar işlenmedi.)' : e.mesaj,
           hata: true);
       await _degisimSonrasi();
