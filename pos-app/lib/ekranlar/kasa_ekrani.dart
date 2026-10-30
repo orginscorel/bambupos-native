@@ -2700,37 +2700,35 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     }
 
     // Adet rozeti: seçim kısmiyse "2/4".
-    final rozet = Container(
-      constraints: const BoxConstraints(minWidth: 34),
-      height: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: secAdet > 0 ? Renk.markaAcik : Renk.yuzey,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: secAdet > 0 ? Renk.markaKenar : Renk.cizgi),
-      ),
-      child: Text('${k.adet}×',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: secAdet > 0 ? Renk.marka : (soluk ? Renk.soluk : Renk.yazi))),
-    );
 
     final ust = Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       kutu,
       const SizedBox(width: 6),
-      rozet,
-      const SizedBox(width: 10),
+      const SizedBox(width: 4),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          UrunAdi(k.ad,
-              maxLines: sikSatir ? 1 : 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: sikSatir ? 14 : 15,
-                fontWeight: FontWeight.w600,
-                decoration: soluk ? TextDecoration.lineThrough : null,
-                decorationColor: Renk.soluk,
-                color: soluk ? Renk.soluk : Renk.yazi,
-              )),
+          // Adet adın önünde düz kalın yazı (adisyon ekranıyla aynı; kutu yok).
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${k.adet}× ',
+                style: TextStyle(
+                  fontSize: sikSatir ? 14 : 15,
+                  fontWeight: FontWeight.w800,
+                  color: secAdet > 0 ? Renk.marka : (soluk ? Renk.soluk : Renk.yazi),
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                )),
+            Flexible(
+              child: UrunAdi(k.ad,
+                  maxLines: sikSatir ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: sikSatir ? 14 : 15,
+                    fontWeight: FontWeight.w600,
+                    decoration: soluk ? TextDecoration.lineThrough : null,
+                    decorationColor: Renk.soluk,
+                    color: soluk ? Renk.soluk : Renk.yazi,
+                  )),
+            ),
+          ]),
           if (meta.isNotEmpty) Text(meta.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
           // Kim, kaçta: tek adette satırda (adisyon ekranıyla aynı).
           if (k.adet == 1) ...tekAdetEkleyen(k),
