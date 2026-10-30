@@ -109,6 +109,8 @@ class AdisyonOzet {
   int get araToplam => tamSayi(ham['items_total_minor']);
   int get indirim => tamSayi(ham['discount_minor']) + tamSayi(ham['iskonto_minor']);
   int get ikram => tamSayi(ham['comp_total_minor']);
+  /// Kasa iptal / iade toplamı (2026-10-30; ikramdan ayrı).
+  int get iade => tamSayi(ham['iade_total_minor']);
   int get servisUcreti => tamSayi(ham['service_charge_minor']);
   int get yuvarlama => tamSayi(ham['rounding_minor']);
   int? get kisi => ham['guest_count'] == null ? null : tamSayi(ham['guest_count']);
@@ -215,7 +217,10 @@ class Kalem {
   String get durum => _metin(ham['status']) ?? '';
   String get durumEtiket => _metin(ham['status_label']) ?? '';
   bool get aktif => ham['is_active'] == true;
+  /// Ücretsiz düşülen satır: ikram YA DA iptal / iade (sunucuda ikisi de is_comp).
   bool get ikram => ham['is_comp'] == true;
+  /// Kasa iptal / iade satırı (müşteri iade etti / ödemeden gitti).
+  bool get iade => ham['is_iade'] == true;
   bool get odendi => ham['is_settled'] == true;
 
   /// Ödenmemiş adet: sunucu `unpaid_qty` verirse o, yoksa ödenmemiş satırın

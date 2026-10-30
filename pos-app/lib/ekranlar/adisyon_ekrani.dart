@@ -521,7 +521,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   Future<void> _ikram(Kalem k) async {
     if (k.odendi) return; // parası alınmış satır ikram edilemez (sunucu da reddeder)
     if (k.ikram) {
-      final ok = await _islem(() => context.api.delete('$_yol/items/${k.id}/comp', {'expected_version': _surum}), ok: 'İkram kaldırıldı');
+      final ok = await _islem(() => context.api.delete('$_yol/items/${k.id}/comp', {'expected_version': _surum}), ok: k.iade ? 'İade geri alındı' : 'İkram kaldırıldı');
       if (ok) _secimiTemizle(k.id);
       return;
     }
@@ -1520,7 +1520,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                     shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
                     items: [
                       if (_canOrPin('orders.comp'))
-                        _menuOgesi('ikram', Icons.check_circle_outline_rounded, tek?.ikram == true ? 'İkramı kaldır' : 'İkram et', etkin: tek != null),
+                        _menuOgesi('ikram', Icons.check_circle_outline_rounded, tek?.ikram == true ? (tek!.iade ? 'İadeyi geri al' : 'İkramı kaldır') : 'İkram et', etkin: tek != null),
                       if (_can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Başka masaya taşı'),
                       _menuOgesi('iptal', Icons.cancel_outlined, cikarMi ? 'Çıkar' : 'İptal et (nedenli)',
                           tehlikeli: true, etkin: tek != null && (tek.durum == 'placed' || cikarMi || _canOrPin('orders.cancel'))),
@@ -1675,7 +1675,9 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   // gibi saat + personel satırda; 1'den fazla adette yalnız açılan kartlarda.
                   if (k.adet == 1 && !acik) ...tekAdetEkleyen(k),
                   if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
-                  if (k.ikram) Text('İkram — ${k.ikramNedeni ?? ''}', style: TextStyle(fontSize: 12, color: Renk.basari)),
+                  if (k.ikram)
+                    Text('${k.iade ? 'İptal / iade' : 'İkram'} — ${k.ikramNedeni ?? ''}',
+                        style: TextStyle(fontSize: 12, color: k.iade ? Renk.hata : Renk.basari)),
                 ]),
               ),
             ),
@@ -1825,6 +1827,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
         if (indirim > 0) satir('İndirim${yuzde != null ? ' (%${oran(yuzde)})' : ''}', '−${para(indirim)}', renk: Renk.uyari),
         if (iskonto > 0) satir('İskonto', '−${para(iskonto)}', renk: Renk.uyari),
         if (a.ikram > 0) satir('İkramlar', para(a.ikram), renk: Renk.basari),
+        if (a.iade > 0) satir('İptal / iade', para(a.iade), renk: Renk.hata),
         satir(kdvler.length == 1 ? 'KDV %${oran(kdvler.first['rate'])} (dahil)' : 'Toplam KDV (dahil)', para(tamSayi(a.ham['vat_total_minor'])),
             renk: Renk.ikinci, boy: 12),
       ]),

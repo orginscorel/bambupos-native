@@ -471,6 +471,17 @@ const ikramHazirAciklamalar = [
   'Personel / sahip ikramı',
 ];
 
+/// Hazır iptal / iade açıklamaları (web IkramOnayDialog HAZIR_IADE ile aynı).
+const iadeHazirAciklamalar = [
+  'Müşteri ürünü tüketmedi',
+  'Müşteri ürünü iade etti',
+  'Müşteri ödemeden gitti',
+  'Ürün bozuk / hatalı çıktı',
+  'Yanlış ürün servis edildi',
+  'Ürün geç geldi, istenmedi',
+  'Döküldü / kırıldı',
+];
+
 /// İKRAM ONAYI (2026-10-30 işletme talebi; web IkramOnayDialog.vue ile
 /// aynı): "Bu ürünleri ikram etmek istediğinizden emin misiniz?" — ürünler
 /// (adet × ad, seçenekler, tutar) ve toplam listelenir; AÇIKLAMA zorunlu
@@ -482,7 +493,12 @@ const ikramHazirAciklamalar = [
 /// dönerse hata pencere İÇİNDE gösterilir, pencere açık kalır.
 /// "Onaylamıyorum", ✕, dışarı dokunuş, Esc ve geri: hiçbir şey gönderilmez.
 /// Dönüş: true = gönderildi, false = vazgeçildi.
-Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar, {required Future<String?> Function(String neden) gonder}) async {
+///
+/// [iade] = true: aynı pencere "İptal / İade onayı" olarak açılır (kırmızı
+/// onay düğmesi, iade hazır açıklamaları). İade ikramdan AYRI raporlanır.
+Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar,
+    {required Future<String?> Function(String neden) gonder, bool iade = false}) async {
+  final hazirlar = iade ? iadeHazirAciklamalar : ikramHazirAciklamalar;
   final aciklama = TextEditingController();
   String? secili; // seçili hazır açıklama ya da 'Diğer'
   var mesgul = false;
@@ -549,7 +565,7 @@ Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar
                       secili = ad;
                       hata = null;
                       if (diger) {
-                        if (ikramHazirAciklamalar.contains(aciklama.text)) aciklama.clear();
+                        if (hazirlar.contains(aciklama.text)) aciklama.clear();
                       } else {
                         aciklama.text = ad;
                         aciklama.selection = TextSelection.collapsed(offset: ad.length);
@@ -570,13 +586,17 @@ Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar
             scrollable: true,
             insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: dar ? 12 : 24),
             title: Row(children: [
-              const Expanded(child: Text('İkram onayı')),
+              Expanded(child: Text(iade ? 'İptal / İade onayı' : 'İkram onayı')),
               IconButton(onPressed: mesgul ? null : vazgec, icon: const Icon(Icons.close_rounded, size: 20), tooltip: 'Kapat'),
             ]),
             content: SizedBox(
               width: 640,
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const Text('Bu ürünleri ikram etmek istediğinizden emin misiniz?', style: TextStyle(fontSize: 15)),
+                Text(
+                    iade
+                        ? 'Bu ürünler parası alınmadan adisyondan düşülecek (iptal / iade). Emin misiniz?'
+                        : 'Bu ürünleri ikram etmek istediğinizden emin misiniz?',
+                    style: const TextStyle(fontSize: 15)),
                 const SizedBox(height: 12),
                 // Ürünler
                 Container(
@@ -618,7 +638,7 @@ Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar
                       decoration: BoxDecoration(color: Renk.yuzey, border: Border(top: BorderSide(color: Renk.cizgi))),
                       child: Row(children: [
                         Expanded(
-                          child: Text('${satirlar.length} kalem · $toplamAdet adet ikram edilecek', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+                          child: Text('${satirlar.length} kalem · $toplamAdet adet ${iade ? 'iptal / iade' : 'ikram'} edilecek', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
                         ),
                         Text(para(toplamTutar),
                             key: const ValueKey('ikram-toplam'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -633,7 +653,7 @@ Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar
                 ]), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final a in ikramHazirAciklamalar) hazir(a),
+                  for (final a in hazirlar) hazir(a),
                   hazir('Diğer', diger: true),
                 ]),
                 const SizedBox(height: 10),
@@ -644,7 +664,7 @@ Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar
                   decoration: const InputDecoration(hintText: 'Açıklamayı yazın ya da yukarıdan seçin…', counterText: ''),
                   onChanged: (v) => yenile(() {
                     hata = null;
-                    secili = ikramHazirAciklamalar.contains(v) ? v : (v.trim().isEmpty ? (secili == 'Diğer' ? 'Diğer' : null) : 'Diğer');
+                    secili = hazirlar.contains(v) ? v : (v.trim().isEmpty ? (secili == 'Diğer' ? 'Diğer' : null) : 'Diğer');
                   }),
                 ),
                 const SizedBox(height: 6),
@@ -671,6 +691,7 @@ Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar
               ),
               FilledButton(
                 key: const ValueKey('ikram-onayliyorum'),
+                style: iade ? FilledButton.styleFrom(backgroundColor: Renk.hata, foregroundColor: Colors.white) : null,
                 onPressed: mesgul || !gecerli ? null : onayla,
                 child: mesgul
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))

@@ -894,6 +894,45 @@ void main() {
       await _bitir(t, d);
     });
 
+    testWidgets('⋮ → İptal / İade: kırmızı, iade penceresi, POST /iade (comp değil), satır "İade" görünür', (t) async {
+      final y = yanit();
+      final o = _adisyon(y);
+      Map<String, dynamic> sonrasi(int surum, Set<int> iadeler) => {
+            ...o,
+            'version': surum,
+            'iade_total_minor': 1000,
+            'items': [
+              for (final k in (o['items'] as List).cast<Map<String, dynamic>>())
+                iadeler.contains(k['id']) ? {...k, 'is_comp': true, 'is_iade': true, 'comp_reason': 'Müşteri ödemeden gitti'} : k,
+            ],
+          };
+      final (d, s) = await _kur(t, manuel: false, ek: {
+        ...y,
+        'POST /api/v1/orders/300/items/901/iade': (200, jsonEncode({'order': sonrasi(10, {901})})),
+        'POST /api/v1/orders/300/items/902/iade': (200, jsonEncode({'order': sonrasi(11, {901, 902})})),
+      });
+      await ikisiniSec(t);
+      await t.ensureVisible(menu);
+      await t.pump();
+      await t.tap(menu);
+      await t.pumpAndSettle();
+      expect(find.text('İptal / İade (6)'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('kasa-secim-iade')));
+      await t.pumpAndSettle();
+      expect(find.text('İptal / İade onayı'), findsOneWidget);
+      await t.tap(hazir('Müşteri ödemeden gitti'));
+      await t.pump();
+      await t.tap(onayliyorum);
+      await _bekle(t);
+      final iade = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/iade')).toList();
+      expect(iade.map((r) => r.$2), ['/api/v1/orders/300/items/901/iade', '/api/v1/orders/300/items/902/iade']);
+      expect(iade[0].$3, {'reason': 'Müşteri ödemeden gitti', 'expected_version': 9, 'qty': 4});
+      expect(compIstekleri(s), isEmpty);
+      expect(find.text('İade · Müşteri ödemeden gitti'), findsNWidgets(2));
+      expect(find.text('İadeyi geri al'), findsWidgets);
+      await _bitir(t, d);
+    });
+
     testWidgets('çok satır: ikincisi reddedilirse durur, kaçının işlendiği söylenir, seçim temizlenir', (t) async {
       final (d, s) = await _kur(t, manuel: false, ek: {
         ...yanit(),
@@ -1017,7 +1056,7 @@ void main() {
       expect(r.single.$3, {'expected_version': 12});
       expect(dugme, findsNothing);
       expect(find.text('Adisyon kapatıldı'), findsWidgets);
-      expect(find.text('Tüm kalemler ikram — tahsilat yapılmadı.'), findsOneWidget);
+      expect(find.text('Tüm kalemler ikram / iade — tahsilat yapılmadı.'), findsOneWidget);
       await _bitir(t, d);
     });
   });

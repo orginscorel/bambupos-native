@@ -895,7 +895,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// "Onaylıyorum" denince [_ikramlariIsle] pencere açıkken çalışır (yükleniyor),
   /// hiçbiri işlenmediyse hata pencerede gösterilir ve güncel sürümle
   /// yeniden denenebilir. "Onaylamıyorum" hiçbir şey göndermez, seçim kalır.
-  Future<void> _ikramOnayi(List<({Kalem kalem, int adet})> secim) async {
+  Future<void> _ikramOnayi(List<({Kalem kalem, int adet})> secim, {bool iade = false}) async {
     if (secim.isEmpty || _mesgul) return;
     var surum = _surum;
     final satirlar = <IkramSatiri>[
@@ -908,8 +908,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           tutar: _payTutari(x.kalem, x.adet),
         ),
     ];
-    await _penceredeyken(() => ikramOnayPenceresi(context, satirlar, gonder: (neden) async {
-          final h = await _ikramlariIsle(secim, neden, surum);
+    await _penceredeyken(() => ikramOnayPenceresi(context, satirlar, iade: iade, gonder: (neden) async {
+          final h = await _ikramlariIsle(secim, neden, surum, iade: iade);
           // Hata sonrası adisyon yeniden okundu → yeniden denemede güncel sürüm.
           if (h != null) surum = _surum;
           return h;
@@ -926,7 +926,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// sorulur; her satır SIRAYLA, seçilen adet kadar (`qty` her zaman açık)
   /// ikram edilir. Seçim, adetler ve sürüm pencere açılmadan alınır —
   /// pencere açıkken gelen bir yenileme seçilenden fazlasını ikram ettiremez.
-  Future<void> _seciliIkram() async {
+  Future<void> _seciliIkram({bool iade = false}) async {
     if (_mesgul || !(_detay?.acik ?? false)) return;
     // _seciliKalemler yalnız ücretli satırları verir (ödenmiş / ikram hariç).
     final secim = [
@@ -934,7 +934,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         if (!x.kalem.odendi && !x.kalem.ikram) (kalem: x.kalem, adet: x.adet.clamp(1, x.kalem.adet)),
     ];
     if (secim.isEmpty) return;
-    await _ikramOnayi(secim);
+    await _ikramOnayi(secim, iade: iade);
   }
 
   /// Satırları sırayla ikram eder; her çağrı bir öncekinin döndürdüğü
@@ -942,7 +942,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// adisyon yeniden yüklenir, seçim temizlenir. Liste bir kez tazelenir.
   /// Dönüş: null = pencere kapanabilir (işlendi ya da kısmen işlendi, bildirim
   /// verildi); metin = HİÇBİRİ işlenmedi, hata pencerede gösterilir, seçim kalır.
-  Future<String?> _ikramlariIsle(List<({Kalem kalem, int adet})> secim, String neden, int? surum) async {
+  Future<String?> _ikramlariIsle(List<({Kalem kalem, int adet})> secim, String neden, int? surum, {bool iade = false}) async {
+    // İPTAL / İADE (2026-10-30): aynı akış, uç /iade; sunucu ayrı raporlar.
+    final uc = iade ? 'iade' : 'comp';
+    final ad = iade ? 'İptal / iade' : 'İkram';
     final s = _secili;
     if (s == null || secim.isEmpty) return null;
     if (_mesgul) return 'Başka bir işlem sürüyor; birazdan tekrar deneyin.';
@@ -956,7 +959,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       for (final x in secim) {
         final k = x.kalem;
         final v = guncelSurum;
-        son = await _yetkiliIstek((p) => _api.post('$yol/items/${k.id}/comp', {'reason': neden, 'expected_version': v, 'qty': x.adet, ...p}), pin);
+        son = await _yetkiliIstek((p) => _api.post('$yol/items/${k.id}/$uc', {'reason': neden, 'expected_version': v, 'qty': x.adet, ...p}), pin);
         islenen++;
         final o = son is Map && son['order'] is Map ? son['order'] as Map : null;
         guncelSurum = o == null ? null : _versiyon(o.cast<String, dynamic>());
@@ -964,8 +967,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       if (!mounted) return null;
       _secim.temizle();
       _acikKalem.value = null;
-      context.bildir2('İkram işlendi',
-          secim.length == 1 ? '${secim.single.adet} × ${secim.single.kalem.ad} ücretsiz' : '${secim.length} kalem ücretsiz');
+      context.bildir2('$ad işlendi',
+          secim.length == 1
+              ? '${secim.single.adet} × ${secim.single.kalem.ad} ${iade ? 'adisyondan düşüldü' : 'ücretsiz'}'
+              : '${secim.length} kalem ${iade ? 'adisyondan düşüldü' : 'ücretsiz'}');
       // Seçim temizlenince tahsil tutarı kalan tutara döner.
       await _degisimSonrasi(yanit: son);
       return null;
@@ -980,7 +985,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       _secim.temizle();
       _acikKalem.value = null;
       context.bildir2(
-          'İkram edilemedi', islenen > 0 ? '${e.mesaj} ($islenen / ${secim.length} kalem ikram edildi; kalanlar işlenmedi.)' : e.mesaj,
+          '${iade ? 'İptal / iade işlenemedi' : 'İkram edilemedi'}',
+          islenen > 0 ? '${e.mesaj} ($islenen / ${secim.length} kalem ${iade ? 'iade' : 'ikram'} edildi; kalanlar işlenmedi.)' : e.mesaj,
           hata: true);
       await _degisimSonrasi();
       return null;
@@ -992,7 +998,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   Future<void> _ikramKaldir(Kalem k) {
     final surum = _surum;
     return _islem(() => _yetkiliIstek((p) => _api.delete('$_oyol/items/${k.id}/comp', {'expected_version': surum, ...p}), <String, dynamic>{}),
-        ok: 'İkram kaldırıldı', okMetin: '${k.ad} yeniden ücretli', hataBaslik: 'İşlenemedi', yanittan: true);
+        ok: k.iade ? 'İade geri alındı' : 'İkram kaldırıldı', okMetin: '${k.ad} yeniden ücretli', hataBaslik: 'İşlenemedi', yanittan: true);
   }
 
   /// İstek yetki reddiyle dönerse yetkili personelin PIN'i sorulur ve istek
@@ -1245,7 +1251,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       }
       cesit++;
       adet += k.adet;
-      satirlar.add({'name': '${k.adet}x ${k.ad}${k.varyant != null ? ' (${k.varyant})' : ''}', 'amount': k.ikram ? 'İKRAM' : tl(k.tutar)});
+      satirlar.add({'name': '${k.adet}x ${k.ad}${k.varyant != null ? ' (${k.varyant})' : ''}', 'amount': k.iade ? 'İADE' : (k.ikram ? 'İKRAM' : tl(k.tutar))});
       if (k.adet > 1 && !k.ikram) satirlar.add({'name': '    ${k.adet} × ${tl(k.birimFiyat)}', 'amount': ''});
       if (k.secenekler.isNotEmpty) satirlar.add({'name': '    ${k.secenekler.join(' · ')}', 'amount': ''});
       if (k.not != null && k.not!.isNotEmpty) satirlar.add({'name': '    » ${k.not}', 'amount': ''});
@@ -1256,6 +1262,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final toplamlar = <Json>[
       {'label': 'Ara toplam', 'value': tl(tamSayi(h['items_total_minor']))},
       if (tamSayi(h['comp_total_minor']) > 0) {'label': 'İkram', 'value': '-${tl(tamSayi(h['comp_total_minor']))}'},
+      if (tamSayi(h['iade_total_minor']) > 0) {'label': 'İptal / iade', 'value': '-${tl(tamSayi(h['iade_total_minor']))}'},
       if (tamSayi(h['discount_minor']) > 0) {'label': 'İndirim', 'value': '-${tl(tamSayi(h['discount_minor']))}'},
       if (tamSayi(h['iskonto_minor']) > 0)
         {'label': 'İskonto${h['iskonto_reason'] != null ? ' (${h['iskonto_reason']})' : ''}', 'value': '-${tl(tamSayi(h['iskonto_minor']))}'},
@@ -2389,7 +2396,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               child: Text(
                   s.acik
                       ? 'Tahsil edilecek tutar yok — adisyonu ödeme bölmesinden kapatın.'
-                      : (s.toplam == 0 && s.odenen == 0 ? 'Adisyon kapatıldı — tüm kalemler ikram.' : 'Adisyon tamamen ödendi — fiş verip kapatabilirsiniz.'),
+                      : (s.toplam == 0 && s.odenen == 0 ? 'Adisyon kapatıldı — tüm kalemler ikram / iade.' : 'Adisyon tamamen ödendi — fiş verip kapatabilirsiniz.'),
                   style: TextStyle(color: Renk.basari, fontWeight: FontWeight.w600, fontSize: 13)),
             ),
           ]),
@@ -2502,12 +2509,16 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final ikramAdet = _seciliKalemler.where((x) => !x.kalem.odendi && !x.kalem.ikram).fold<int>(0, (t, x) => t + x.adet.clamp(1, x.kalem.adet));
     final kutu = c.findRenderObject() as RenderBox;
     final p = kutu.localToGlobal(Offset.zero);
-    PopupMenuItem<String> oge(String d, IconData i, String ad, {bool etkin = true, Key? key}) => PopupMenuItem<String>(
+    PopupMenuItem<String> oge(String d, IconData i, String ad, {bool etkin = true, Key? key, Color? renk}) => PopupMenuItem<String>(
           key: key,
           value: d,
           enabled: etkin,
           height: 40,
-          child: Row(children: [Icon(i, size: 17, color: etkin ? Renk.yazi : Renk.soluk), const SizedBox(width: 10), Text(ad, style: const TextStyle(fontSize: 13.5))]),
+          child: Row(children: [
+            Icon(i, size: 17, color: etkin ? (renk ?? Renk.yazi) : Renk.soluk),
+            const SizedBox(width: 10),
+            Text(ad, style: TextStyle(fontSize: 13.5, color: etkin ? renk : null, fontWeight: renk != null ? FontWeight.w600 : null)),
+          ]),
         );
     final secim = await _penceredeyken(() => showMenu<String>(
           context: context,
@@ -2519,6 +2530,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             if (_ikramGorunur && (_detay?.acik ?? false) && !_duzelt)
               oge('ikram', Icons.card_giftcard_rounded, ikramAdet > 0 ? 'İkram et ($ikramAdet)' : 'İkram et — önce ürün seçin',
                   etkin: ikramAdet > 0 && !_mesgul, key: const ValueKey('kasa-secim-ikram')),
+            // İPTAL / İADE (2026-10-30 işletme): müşteri iade etti / ödemeden
+            // gitti. İkramdan ayrı raporlanır; kırmızı.
+            if (_ikramGorunur && (_detay?.acik ?? false) && !_duzelt)
+              oge('iade', Icons.undo_rounded, ikramAdet > 0 ? 'İptal / İade ($ikramAdet)' : 'İptal / İade — önce ürün seçin',
+                  etkin: ikramAdet > 0 && !_mesgul, key: const ValueKey('kasa-secim-iade'), renk: Renk.hata),
             if (fis && s.odenen > 0) oge('fis', Icons.receipt_long_outlined, 'Ödeme fişi yazdır'),
             oge('yazici', Icons.print_outlined, 'Fiş yazıcısı · ${_yaziciAdi ?? 'seçilmedi'}'),
             // "Hesap fişini önizle" ve "İndirim / iskonto" buradan kaldırıldı
@@ -2532,6 +2548,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     switch (secim) {
       case 'ikram':
         _seciliIkram();
+      case 'iade':
+        _seciliIkram(iade: true);
       case 'fis':
         _fisYazdir('payment');
       case 'yazici':
@@ -2695,6 +2713,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final Widget kutu;
     if (k.odendi) {
       kutu = Tooltip(message: 'Ödendi', child: SizedBox(width: 32, child: Icon(Icons.check_circle_rounded, size: 22, color: Renk.basari)));
+    } else if (k.iade) {
+      kutu = Tooltip(message: 'İptal / iade', child: SizedBox(width: 32, child: Icon(Icons.undo_rounded, size: 20, color: Renk.hata)));
     } else if (k.ikram) {
       kutu = Tooltip(message: 'İkram', child: SizedBox(width: 32, child: Icon(Icons.card_giftcard_rounded, size: 20, color: Renk.bilgi)));
     } else if (secilebilir) {
@@ -2770,8 +2790,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           else if (k.ikram)
             Row(children: [
               Flexible(
-                child: Text('İkram${k.ikramNedeni != null && k.ikramNedeni!.isNotEmpty ? ' · ${k.ikramNedeni}' : ''}',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.bilgi)),
+                child: Text('${k.iade ? 'İade' : 'İkram'}${k.ikramNedeni != null && k.ikramNedeni!.isNotEmpty ? ' · ${k.ikramNedeni}' : ''}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: k.iade ? Renk.hata : Renk.bilgi)),
               ),
               // Düzelt kipinde alt çubukta zaten var; burada sade küçük düğme.
               if (!_duzelt && _ikramGorunur && (_detay?.acik ?? false)) ...[
@@ -2786,7 +2806,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                     textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   onPressed: _mesgul ? null : () => _ikramKaldir(k),
-                  child: const Text('İkramı kaldır'),
+                  child: Text(k.iade ? 'İadeyi geri al' : 'İkramı kaldır'),
                 ),
               ],
             ]),
@@ -2890,7 +2910,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               label: const Text('Çıkar'),
             ),
           if (k.ikram && _ikramEder)
-            TextButton.icon(onPressed: _mesgul ? null : () => _ikramKaldir(k), icon: const Icon(Icons.undo_rounded, size: 15), label: const Text('İkramı kaldır')),
+            TextButton.icon(
+                onPressed: _mesgul ? null : () => _ikramKaldir(k),
+                icon: const Icon(Icons.undo_rounded, size: 15),
+                label: Text(k.iade ? 'İadeyi geri al' : 'İkramı kaldır')),
         ]),
       );
 
@@ -2929,6 +2952,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       child: Column(children: [
         satir('Kalem toplamı', para(tamSayi(h['items_total_minor']))),
         if (ikram > 0) satir('İkram', '−${para(ikram)}', renk: Renk.bilgi),
+        if (tamSayi(h['iade_total_minor']) > 0) satir('İptal / iade', '−${para(tamSayi(h['iade_total_minor']))}', renk: Renk.hata),
         if (indirim > 0) satir('İndirim', '−${para(indirim)}', renk: Renk.hata),
         if (iskonto > 0) satir('İskonto', '−${para(iskonto)}', renk: Renk.uyari),
         if (servis > 0) satir('Servis bedeli', para(servis)),
@@ -2971,10 +2995,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               'Tahsil edilecek tutar yok',
               s.odenen > 0
                   ? 'Toplam ${para(s.toplam)} tahsil edildi; adisyon henüz kapanmadı. Kapatınca masa boşalır.'
-                  : 'Tüm kalemler ikram edildi; adisyon henüz kapanmadı. Kapatınca masa boşalır.',
+                  : 'Tüm kalemler ikram / iade edildi; adisyon henüz kapanmadı. Kapatınca masa boşalır.',
             )
           : hepsiIkram
-              ? ('Adisyon kapatıldı', 'Tüm kalemler ikram — tahsilat yapılmadı.')
+              ? ('Adisyon kapatıldı', 'Tüm kalemler ikram / iade — tahsilat yapılmadı.')
               : ('Adisyon tamamen ödendi', 'Toplam ${para(s.toplam)} tahsil edildi.');
       return SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -4077,7 +4101,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Wrap(spacing: 6, children: [
                         Text('${k['qty']}× ${k['name']}', style: const TextStyle(fontSize: 13)),
-                        if (k['is_comp'] == true) Rozet('İkram', renk: Renk.bilgi),
+                        if (k['is_iade'] == true)
+                          Rozet('İade', renk: Renk.hata)
+                        else if (k['is_comp'] == true)
+                          Rozet('İkram', renk: Renk.bilgi),
                       ]),
                       Text('${para(tamSayi(k['unit_minor']))} / adet · KDV ${_oran(k['tax_rate'])} dahil', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
                     ]),
