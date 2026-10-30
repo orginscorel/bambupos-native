@@ -2811,7 +2811,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     ]);
 
     return Material(
-      color: secAdet > 0 ? Renk.markaAcik.carp(.55) : (soluk ? Renk.ic : (_yeniKalemler.contains(k.id) ? Renk.markaAcik.carp(.35) : Renk.yuzey)),
+      color: secAdet > 0 ? Renk.markaAcik.carp(.55) : (_yeniKalemler.contains(k.id) ? Renk.markaAcik.carp(.35) : Renk.ic) /* gri zemin: adisyonla aynı */,
       child: InkWell(
         onTap: secilebilir ? () => _kalemDokun(k) : null,
         child: Container(
