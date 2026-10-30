@@ -1,3 +1,5 @@
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -48,9 +50,25 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
   @override
   void initState() {
     super.initState();
-    _yasam = AppLifecycleListener(onResume: widget.durum.onPlanaGeldi);
+    _yasam = AppLifecycleListener(
+      onResume: widget.durum.onPlanaGeldi,
+      // ÇEREZLER DİSKE (2026-10-30): arka plana geçerken / kapanırken bekleyen
+      // çerez yazmaları bitirilir (yazma zaten atomik; bu son durumu da korur).
+      onHide: _diskeYaz,
+      onPause: _diskeYaz,
+      onDetach: _diskeYaz,
+      // Masaüstü: pencere kapatılınca önce yazmalar biter, sonra çıkılır (en çok 2 sn).
+      onExitRequested: () async {
+        try {
+          await widget.durum.api.diskeYaz().timeout(const Duration(seconds: 2));
+        } catch (_) {}
+        return AppExitResponse.exit;
+      },
+    );
     HardwareKeyboard.instance.addHandler(_tus);
   }
+
+  void _diskeYaz() => widget.durum.api.diskeYaz().ignore();
 
   bool _tus(KeyEvent _) {
     widget.durum.etkinlik();

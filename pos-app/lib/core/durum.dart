@@ -12,10 +12,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ajan.dart';
 import 'bildirim_merkezi.dart';
 import 'api.dart';
+import 'kalici_dosya.dart';
 import 'modeller.dart';
 import 'senkron_merkezi.dart';
 
 enum Asama { acilis, baglantiYok, aktivasyon, pin, calisma }
+
+/// Kurtarma denemesinin sonucu (bkz. UygulamaDurumu._kurtar).
+enum KurtarmaSonucu { basarili, anahtarYok, reddedildi, gecici }
 
 /// Uygulamanın tek durum kaynağı.
 ///
@@ -23,6 +27,11 @@ enum Asama { acilis, baglantiYok, aktivasyon, pin, calisma }
 /// PIN'le giren KİŞİ yetkiyi belirler. Cihazda "çıkış" yoktur; eşleme
 /// yalnız yönetim konsolunda Cihazlar → Kaldır ile düşer (sunucu 401/403
 /// döner, uygulama kendiliğinden aktivasyon ekranına geçer).
+///
+/// KURTARMA (2026-10-30): 401 tek başına "cihaz kaldırıldı" demek DEĞİLDİR —
+/// çerezler cihazda kaybolmuş da olabilir. Cihaz elindeki kurtarma
+/// anahtarıyla önce oturumunu geri almayı dener; yalnız sunucu reddederse
+/// (403/404/422) aktivasyona geçilir. Bağlantı yoksa bekleme ekranı.
 class UygulamaDurumu extends ChangeNotifier {
   UygulamaDurumu._(this.api, this.surum, this._tercih, this._onbellekDizini);
 
@@ -47,6 +56,23 @@ class UygulamaDurumu extends ChangeNotifier {
 
   Timer? _kalpAtisi;
   Timer? _yenidenDene;
+
+  /* ───────── Kurtarma anahtarı durumu ───────── */
+  late final KurtarmaDeposu _kurtarmaDeposu = KurtarmaDeposu(_onbellekDizini);
+  KurtarmaAnahtari? _anahtar;
+  bool _anahtarOkundu = false;
+  bool _anahtarAliniyor = false;
+  DateTime? _anahtarSonDeneme;
+  /// Sunucu bu cihaz için anahtar üretmiyor (eski /baglan eşlemesi): bu çalışmada tekrar sorma.
+  int? _anahtarDesteklenmiyor;
+  Future<KurtarmaSonucu>? _kurtarmaSuruyor;
+  bool _kayipIsleniyor = false;
+  DateTime? _sonBasariliKurtarma;
+
+  /// Kurtarma "geçici" bittiğinde (bağlantı yok / kilitli / askı) yeniden deneme aralığı.
+  @visibleForTesting
+  Duration kurtarmaBekleme = const Duration(seconds: 30);
+  Duration _geciciBekleme = const Duration(seconds: 30);
   Timer? _bostaDenetim;
 
   /// BOŞTA KİLİT (web useTerminalIdleLock ile aynı, 3 dk): personel girişliyken
@@ -182,6 +208,7 @@ class UygulamaDurumu extends ChangeNotifier {
       ajan = YazdirmaAjani(api, surum);
       ajan!.baslat();
     }
+    _anahtarGerekirseAl(oturum!.cihazId);
     // UYGULAMA KAPANIP AÇILINCA PIN (2026-10-26 işletme isteği): soğuk
     // açılışta önceki personel oturumu düşürülür, cihaz eşli kalır. Öne
     // gelme (arka plandan dönüş) bunu YAPMAZ — yalnız ilk açılış.
@@ -195,12 +222,14 @@ class UygulamaDurumu extends ChangeNotifier {
   }
 
   Future<void> _oturumHatasi(ApiHata e, {bool ilk = false}) async {
-    if (e.oturumYok || e.yetkiYok) {
-      // Cihaz hiç eşlenmemiş ya da yönetici cihazı kaldırmış.
-      if (e.yetkiYok) await api.cerezleriSil();
-      oturum = null;
-      _sonOturumHam = null;
-      _gec(Asama.aktivasyon);
+    if (e.yetkiYok) {
+      // 403: oturum açık ama cihaz kaydı yok / cihaz değil → yönetici cihazı kaldırmış.
+      await api.cerezleriSil();
+      await _anahtariSil();
+      _aktivasyonaGec();
+    } else if (e.oturumYok) {
+      // 401: çerez kaybı da olabilir → önce kurtarma.
+      _oturumKayip();
     } else if (e.baglantiYok || (e.kod ?? 0) >= 500) {
       sonHata = e.mesaj;
       // Çalışırken kısa kopma ekranı DEĞİŞTİRMEZ; yalnız ilk açılışta bekleme ekranı.
@@ -256,14 +285,143 @@ class UygulamaDurumu extends ChangeNotifier {
     }
   }
 
+  /// Api kancası: herhangi bir istekte 401.
   void _oturumDustu() {
     if (asama == Asama.aktivasyon) return;
+    _oturumKayip();
+  }
+
+  void _aktivasyonaGec() {
     oturum = null;
     _sonOturumHam = null;
     ajan?.dispose();
     ajan = null;
-    _gec(Asama.aktivasyon);
+    if (asama != Asama.aktivasyon) _gec(Asama.aktivasyon);
   }
+
+  /* ───────── Kurtarma (2026-10-30) ───────── */
+
+  /// Oturum kayboldu (401). Aynı anda gelen birden çok 401 TEK işlem başlatır.
+  void _oturumKayip() {
+    if (_kayipIsleniyor || asama == Asama.aktivasyon) return;
+    _kayipIsleniyor = true;
+    unawaited(_oturumKayipIsle().whenComplete(() => _kayipIsleniyor = false));
+  }
+
+  Future<void> _oturumKayipIsle() async {
+    final sonuc = await _kurtar();
+    switch (sonuc) {
+      case KurtarmaSonucu.basarili:
+        // Yeni oturum: soğuk açılıştaki gibi PIN ekranı. Bu işlem bitince
+        // (iç içe 401 kendini beklemesin diye) ayrı turda yenilenir.
+        oturum = null;
+        _sonOturumHam = null;
+        _yenidenDene?.cancel();
+        _yenidenDene = Timer(Duration.zero, () => oturumuYenile(ilk: true));
+      case KurtarmaSonucu.anahtarYok:
+      case KurtarmaSonucu.reddedildi:
+        _aktivasyonaGec();
+      case KurtarmaSonucu.gecici:
+        // Aktivasyona GİDİLMEZ: bekleme ekranı + kendiliğinden yeniden deneme.
+        oturum = null;
+        _sonOturumHam = null;
+        _gec(Asama.baglantiYok);
+        _yenidenDene?.cancel();
+        _yenidenDene = Timer(_geciciBekleme, () => oturumuYenile(ilk: true));
+    }
+  }
+
+  /// Elindeki anahtarla oturumu geri almayı BİR KEZ dener (eşzamanlı çağrılar aynı sonucu bekler).
+  Future<KurtarmaSonucu> _kurtar() =>
+      _kurtarmaSuruyor ??= _kurtarIc().whenComplete(() => _kurtarmaSuruyor = null);
+
+  Future<KurtarmaSonucu> _kurtarIc() async {
+    final a = await _anahtariOku();
+    if (a == null) return KurtarmaSonucu.anahtarYok;
+
+    // DÖNGÜ KORUMASI: az önce kurtardık ve oturum yine düştüyse sunucuyu
+    // dövme; bekleme ekranından sonra tekrar denenir.
+    final son = _sonBasariliKurtarma;
+    if (son != null && DateTime.now().difference(son) < const Duration(seconds: 30)) {
+      sonHata = 'Cihaz oturumu yenilenemedi. Birazdan kendiliğinden yeniden denenecek.';
+      _geciciBekleme = kurtarmaBekleme;
+      return KurtarmaSonucu.gecici;
+    }
+
+    try {
+      await api.kurtar(a);
+      _sonBasariliKurtarma = DateTime.now();
+      sonHata = null;
+      return KurtarmaSonucu.basarili;
+    } on ApiHata catch (e) {
+      // Yalnız AÇIK RET anahtarı düşürür: cihaz kaldırılmış / anahtar geçersiz.
+      if (e.kod == 403 || e.kod == 404 || e.kod == 422) {
+        await _anahtariSil();
+        return KurtarmaSonucu.reddedildi;
+      }
+      // Bağlantı yok, 5xx, 429, 423 (kilitli), 402 (askı): anahtar KORUNUR.
+      sonHata = e.mesaj;
+      // Bağlantı kopukluğunda sık, diğerlerinde (kilit/askı/hız sınırı) seyrek dene.
+      _geciciBekleme = e.baglantiYok
+          ? (kurtarmaBekleme < const Duration(seconds: 5) ? kurtarmaBekleme : const Duration(seconds: 5))
+          : kurtarmaBekleme;
+      return KurtarmaSonucu.gecici;
+    } catch (_) {
+      sonHata = 'Sunucuya ulaşılamıyor. İnternet bağlantısını kontrol edin.';
+      _geciciBekleme = kurtarmaBekleme;
+      return KurtarmaSonucu.gecici;
+    }
+  }
+
+  Future<KurtarmaAnahtari?> _anahtariOku() async {
+    if (!_anahtarOkundu) {
+      try {
+        _anahtar = await _kurtarmaDeposu.oku();
+      } catch (_) {}
+      _anahtarOkundu = true;
+    }
+    return _anahtar;
+  }
+
+  Future<void> _anahtariSil() async {
+    _anahtar = null;
+    _anahtarOkundu = true;
+    try {
+      await _kurtarmaDeposu.sil();
+    } catch (_) {}
+  }
+
+  /// Oturum açıkken cihazın kurtarma anahtarı yoksa (ya da başka bir terminale
+  /// aitse) sunucudan bir kez alır. Mevcut kurulumlar güncellemeden sonraki
+  /// ilk açılışta anahtarını böyle edinir — yeniden aktivasyon gerekmez.
+  void _anahtarGerekirseAl(int cihazId) {
+    if (cihazId <= 0 || _anahtarAliniyor || _anahtarDesteklenmiyor == cihazId) return;
+    if (_anahtarOkundu && _anahtar?.terminalId == cihazId) return;
+    final son = _anahtarSonDeneme;
+    if (son != null && DateTime.now().difference(son) < const Duration(minutes: 5)) return;
+    _anahtarAliniyor = true;
+    unawaited(() async {
+      try {
+        final mevcut = await _anahtariOku();
+        if (mevcut != null && mevcut.terminalId == cihazId) return;
+        _anahtarSonDeneme = DateTime.now();
+        final yeni = await api.kurtarmaAnahtariAl();
+        await _kurtarmaDeposu.yaz(yeni);
+        _anahtar = yeni;
+        _anahtarOkundu = true;
+      } on ApiHata catch (e) {
+        if (e.kod == 403 || e.kod == 404) _anahtarDesteklenmiyor = cihazId;
+      } catch (_) {
+        // disk yazılamadı: bir sonraki denemede
+      } finally {
+        _anahtarAliniyor = false;
+      }
+    }());
+  }
+
+  /// Test: cihazın elindeki kurtarma anahtarı.
+  @visibleForTesting
+  Future<KurtarmaAnahtari?> kurtarmaAnahtari() => _kurtarmaDeposu.oku();
 
   Future<void> _nabiz({bool yenile = true}) async {
     if (asama == Asama.aktivasyon || asama == Asama.acilis) return;

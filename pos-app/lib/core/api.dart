@@ -8,6 +8,8 @@ import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import 'kalici_dosya.dart';
+
 /// Uygulama ekranda mı? Arka plandayken (simge durumunda / başka uygulama
 /// önde) ekran yoklamaları atlanır: pil, işlemci ve veri harcanmaz. Masaüstünde
 /// pencere yalnız odağı kaybedince ("inactive") yoklama SÜRER.
@@ -20,14 +22,18 @@ bool uygulamaOnde() {
 /// yazılır. Laravel her yanıtta XSRF/oturum çerezini tazelediği için
 /// PersistCookieJar her istekte dosya yazıyordu ve yanıt, yazma bitene kadar
 /// ekrana ulaşmıyordu (PIN girişi dahil). Okuma bekleyen yazmayı görür.
+/// Diske yazan iç depo ATOMİKTİR (bkz. DayanikliCerezDeposu, 2026-10-30).
 class _ArkaPlanDepo implements Storage {
   _ArkaPlanDepo(this._ic);
-  final FileStorage _ic;
+  final Storage _ic;
   final Map<String, String> _bekleyen = {};
   Future<void> _zincir = Future.value();
   bool _planli = false;
 
   Future<void> _sirala(Future<void> Function() is_) => _zincir = _zincir.then((_) => is_()).catchError((_) {});
+
+  /// Bekleyen bütün yazmalar diske inene kadar bekler (uygulama kapanırken).
+  Future<void> bosalt() => _zincir;
 
   @override
   Future<void> init(bool persistSession, bool ignoreExpires) => _ic.init(persistSession, ignoreExpires);
@@ -95,16 +101,18 @@ DateTime? sunucuSonYanit;
 /// kapanıp açılınca cihaz eşleşmesi düşmez. Yazma isteklerinde Laravel'in
 /// XSRF-TOKEN çerezi X-XSRF-TOKEN başlığına konur.
 class Api {
-  Api._(this._dio, this._jar, this.taban);
+  Api._(this._dio, this._jar, this.taban, [this._depo]);
 
   static const varsayilanTaban = 'https://bambumpos.com';
 
   final Dio _dio;
   final CookieJar _jar;
+  final _ArkaPlanDepo? _depo;
   final Uri taban;
   final _uuid = const Uuid();
 
-  /// 401 gelince (oturum düştü / cihaz kaldırıldı) kabuk aktivasyona döner.
+  /// 401 gelince (oturum düştü / cihaz kaldırıldı): önce kurtarma anahtarı
+  /// denenir; reddedilirse kabuk aktivasyona döner.
   void Function()? oturumDustu;
 
   /// Başarılı her YAZMA isteğinden sonra (POST/PUT/PATCH/DELETE) çağrılır:
@@ -119,11 +127,14 @@ class Api {
     String? destekDizini,
   }) async {
     final dizin = destekDizini ?? (await getApplicationSupportDirectory()).path;
+    final depo = _ArkaPlanDepo(DayanikliCerezDeposu('$dizin${Platform.pathSeparator}cerezler${Platform.pathSeparator}'));
     final jar = PersistCookieJar(
-      storage: _ArkaPlanDepo(FileStorage('$dizin${Platform.pathSeparator}cerezler${Platform.pathSeparator}')),
+      storage: depo,
+      // Okunamayan çerez dosyası SİLİNMEZ (yedekten okunur; bozuksa yok sayılır).
+      deleteHostCookiesWhenLoadFailed: false,
     );
 
-    return _kur(tabanUrl, kullaniciAjani, jar, ekBasliklar);
+    return _kur(tabanUrl, kullaniciAjani, jar, ekBasliklar, depo);
   }
 
   /// Test: istekler gerçek ağa değil verilen bağdaştırıcıya gider.
@@ -131,7 +142,8 @@ class Api {
   static Api bellekte(HttpClientAdapter bagdastirici, {String tabanUrl = varsayilanTaban}) =>
       _kur(tabanUrl, 'BamBumPOS-Test', CookieJar()).._dio.httpClientAdapter = bagdastirici;
 
-  static Api _kur(String tabanUrl, String kullaniciAjani, CookieJar jar, [Map<String, String> ekBasliklar = const {}]) {
+  static Api _kur(String tabanUrl, String kullaniciAjani, CookieJar jar,
+      [Map<String, String> ekBasliklar = const {}, _ArkaPlanDepo? depo]) {
     final dio = Dio(BaseOptions(
       baseUrl: tabanUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -148,7 +160,7 @@ class Api {
       },
     ));
 
-    final api = Api._(dio, jar, Uri.parse(tabanUrl));
+    final api = Api._(dio, jar, Uri.parse(tabanUrl), depo);
     dio.interceptors.add(CookieManager(jar));
     dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) async {
       if (o.method != 'GET') {
@@ -180,6 +192,31 @@ class Api {
 
   /// Cihaz kaldırıldığında / yeniden eşlemede eski oturumu siler.
   Future<void> cerezleriSil() => _jar.deleteAll();
+
+  /// Bekleyen çerez yazmalarını diske indirir (uygulama kapanırken / arka plana geçerken).
+  Future<void> diskeYaz() => _depo?.bosalt() ?? Future<void>.value();
+
+  /* ───────── Cihaz kurtarma (2026-10-30) ───────── */
+
+  /// Oturumlu cihaz: sunucudan kurtarma anahtarı alır (sunucu yalnız özetini saklar).
+  Future<KurtarmaAnahtari> kurtarmaAnahtariAl() async {
+    final v = await post('/api/v1/uygulama/kurtarma-anahtari');
+    final a = KurtarmaAnahtari.jsondan(v);
+    if (a == null) throw ApiHata(500, 'Kurtarma anahtarı alınamadı.');
+    return a;
+  }
+
+  /// Çerezleri kaybolmuş cihaz: anahtarla oturumunu geri alır. 401 gelse bile
+  /// [oturumDustu] TETİKLENMEZ (kurtarma kendi sonucunu kendisi yorumlar).
+  Future<void> kurtar(KurtarmaAnahtari a) async {
+    final govde = {'terminal_id': a.terminalId, 'anahtar': a.anahtar};
+    var r = await _gonder('POST', '/api/v1/uygulama/kurtar', govde: govde);
+    if (r.statusCode == 419) {
+      await _xsrfTazele();
+      r = await _gonder('POST', '/api/v1/uygulama/kurtar', govde: govde);
+    }
+    _denetle(r, oturumKancasi: false);
+  }
 
   String yeniIslemKimligi() => _uuid.v4();
 
@@ -251,12 +288,12 @@ class Api {
     }
   }
 
-  void _denetle(Response<dynamic> r) {
+  void _denetle(Response<dynamic> r, {bool oturumKancasi = true}) {
     final kod = r.statusCode ?? 0;
     if (kod >= 200 && kod < 300) return;
 
     final govde = r.data is Map<String, dynamic> ? r.data as Map<String, dynamic> : null;
-    if (kod == 401) oturumDustu?.call();
+    if (kod == 401 && oturumKancasi) oturumDustu?.call();
     throw ApiHata(kod, _mesaj(kod, govde), govde);
   }
 
