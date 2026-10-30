@@ -54,6 +54,10 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
   Map<String, dynamic>? _s;
   List<Map<String, dynamic>> _saatler = const [];
   List<Map<String, dynamic>> _tahsilatlar = const [];
+
+  /// Self Satış özeti (sales-self › summary); eklenti kapalıysa null.
+  Map<String, dynamic>? _self;
+  bool get _selfAcik => context.durum.oturum?.eklenti('self_satis', varsayilan: false) ?? false;
   String? _hata;
   int _istekNo = 0;
   bool _basiliyor = false;
@@ -155,6 +159,16 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
       if (mounted && no == _istekNo) setState(() => _saatler = _liste(_harita(r is Map ? r['data'] : null)['hours']));
     } on ApiHata {
       // sessiz
+    }
+    if (_selfAcik) {
+      try {
+        final r = await al('sales-self');
+        if (mounted && no == _istekNo) setState(() => _self = _harita(_harita(r is Map ? r['data'] : null)['summary']));
+      } on ApiHata {
+        // sessiz
+      }
+    } else if (_self != null) {
+      setState(() => _self = null);
     }
     try {
       final r = await al('receivables-collections');
@@ -745,6 +759,12 @@ class _GunSonuEkraniState extends State<GunSonuEkrani> {
       _Kutu('Kapanan adisyon', '${tamSayi(s['orders_closed'])}', 'tam ödenip kapandı'),
       _Kutu('Ortalama sepet', siparis > 0 ? _tl(tamSayi(s['avg_basket_minor'])) : '—', ''),
       _Kutu('Kişi başı', s['per_guest_minor'] == null ? '—' : _tl(tamSayi(s['per_guest_minor'])), misafir > 0 ? '$misafir misafir' : 'misafir girilmemiş'),
+      // SELF SATIŞ (web EodTab ile aynı): yalnız eklenti açıkken.
+      if (_selfAcik && _self != null) ...[
+        _Kutu('Self satış', _tl(tamSayi(_self!['revenue_minor'])), '${tamSayi(_self!['orders'])} adisyon · ciroya dahil'),
+        _Kutu('Self iptal', _tl(tamSayi(_self!['cancelled_minor'])),
+            tamSayi(_self!['cancelled']) > 0 ? '${tamSayi(_self!['cancelled'])} adisyon · ciroya girmez' : 'yok'),
+      ],
       _Kutu('Açık masa', _tl(tamSayi(s['open_table_minor'])), '${tamSayi(s['open_table_orders'])} adisyon · ciro DEĞİL'),
       _Kutu('İndirim', _tl(tamSayi(s['discount_total_minor'])), 'kapanan adisyonlarda'),
       _Kutu('İkram', _tl(tamSayi(s['comp_minor'])), tamSayi(s['comp_count']) > 0 ? '${tamSayi(s['comp_count'])} adet · maliyet ${_tl(tamSayi(s['comp_cost_minor']))}' : 'yok'),

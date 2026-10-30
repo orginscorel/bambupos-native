@@ -120,6 +120,8 @@ class AdisyonOzet {
   String? get acilis => _metin(ham['placed_at']) ?? _metin(ham['created_at']);
   bool get hesapIstendi => durum == 'bill_requested';
   bool get onayBekliyor => durum == 'pending_approval';
+  /// Self (gel-al / telefon) adisyonu: masasız 'pickup' kanalı (2026-10-30).
+  bool get selfMi => kanal == 'pickup' && ham['table_id'] == null;
 
   String get baslik => masaAdi ?? cariAdi ?? musteri ?? (kanalEtiket.isNotEmpty ? '$kanalEtiket #$id' : 'Adisyon #$id');
 }

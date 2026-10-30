@@ -69,6 +69,12 @@ IconData webSimge(String? ad) => switch (ad) {
   'monitor' => Icons.desktop_windows_outlined,
   'globe' => Icons.public_rounded,
   'users' => Icons.people_outline_rounded,
+  // 2026-10-30 alt şerit simgeleri (web AppIcon ile aynı anlam).
+  'basket' => Icons.shopping_basket_outlined,
+  'bag' => Icons.shopping_bag_outlined,
+  'package' => Icons.inventory_2_outlined,
+  'list-checks' => Icons.checklist_rounded,
+  'calendar-clock' => Icons.calendar_month_outlined,
   _ => Icons.circle_outlined,
 };
 

@@ -738,3 +738,27 @@ class _DetayState extends State<_Detay> {
     );
   }
 }
+
+/// Başka ekrandan (ör. Self Satış › kapalı self) önceki adisyon detayını
+/// açar — fişi yeniden basma dahil, Önceki adisyonlar penceresinin aynısı.
+Future<void> oncekiAdisyonDetayi(BuildContext context, int id) {
+  final api = context.api;
+  var basiliyor = false;
+  Future<void> fisBas(int i) async {
+    if (basiliyor) return;
+    basiliyor = true;
+    try {
+      final r = await api.post('/api/v1/orders/gecmis/$i/fis');
+      if (context.mounted) context.bildir2('Fiş gönderildi', r is Map ? '${r['mesaj'] ?? ''}' : '');
+    } on ApiHata catch (e) {
+      if (context.mounted) context.bildir2('Fiş basılamadı', e.mesaj, hata: true);
+    } finally {
+      basiliyor = false;
+    }
+  }
+
+  return pencereAc<void>(
+    context: context,
+    builder: (_) => _Detay(id: id, api: api, fisBas: fisBas, basiliyor: () => basiliyor),
+  );
+}

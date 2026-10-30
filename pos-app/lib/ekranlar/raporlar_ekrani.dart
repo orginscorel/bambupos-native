@@ -110,6 +110,8 @@ const _yapraklar = <(String, String, String)>[
   ('satis-ciro', 'Satış', 'Ciro'),
   ('satis-urun', 'Satış', 'Ürünler'),
   ('satis-kar', 'Satış', 'Kârlılık'),
+  // SELF SATIŞ (2026-10-30): yalnız eklentisi (self_satis) açık işletmede listelenir.
+  ('self-satis', 'Satış', 'Self satış'),
   ('gunsonu', 'Kasa', 'Gün sonu'),
   ('tahsilat', 'Kasa', 'Tahsilat'),
   ('mutabakat', 'Kasa', 'Mutabakat'),
@@ -408,7 +410,9 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
             'finance-collected',
             'receivables-summary',
             _borcListesi,
+            if (_selfAcik) 'sales-self',
           ],
+        'self-satis' => ['sales-self'],
         'satis-ciro' => ['sales-summary', 'receivables-summary', 'sales-hourly', if (!_tekGun) 'sales-daily', 'sales-channels', 'sales-service'],
         'satis-urun' => ['sales-open-items', 'sales-category-products', 'sales-products', 'sales-variants', 'sales-tables'],
         'satis-kar' => ['product-profitability'],
@@ -689,7 +693,7 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
   }
 
   Future<void> _raporAc() async {
-    final s = await _secimAc('Rapor', [for (final (k, grup, ad) in _yapraklar) (grup, k, ad)], _aktif);
+    final s = await _secimAc('Rapor', [for (final (k, grup, ad) in _yapraklar) if (k != 'self-satis' || _selfAcik) (grup, k, ad)], _aktif);
     if (s != null) _raporSec(s);
   }
 
@@ -801,6 +805,7 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
       'satis-ciro' => _ciro(g),
       'satis-urun' => _urunler(g),
       'satis-kar' => _karlilik(g),
+      'self-satis' => _selfSatis(g),
       'tahsilat' => _tahsilat(g),
       'mutabakat' => _mutabakat(g),
       'borclar' => _borclar(g),
@@ -907,6 +912,15 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
         ('Ödeme Tutarı', _tl(fi('collected_minor'))),
         // BİZİM EKİMİZ: onuncu kutu (referansın boş yuvası).
         ('Borca Yazılan', '${_tl(borcAcik ? tamSayi(borc!['total_minor']) : 0)} · ${_sayi(borcAcik ? borc!['count'] ?? 0 : 0)} adisyon'),
+        // SELF SATIŞ (web OzetTab ile aynı üç kutu; yalnız eklenti açıkken).
+        if (_selfAcik) ...() {
+          final so = _harita(_veri('sales-self')?['summary']);
+          return [
+            ('Self Satış Adedi', '${_sayi(tamSayi(so['orders']))} Adet'),
+            ('Self Satış Tutarı', _tl(tamSayi(so['revenue_minor']))),
+            ('Self İptal Tutarı', '${_tl(tamSayi(so['cancelled_minor']))} · ${_sayi(tamSayi(so['cancelled']))} adisyon'),
+          ];
+        }(),
       ],
       kategoriler: kategoriler,
       odemeler: odemeler,
@@ -926,9 +940,9 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
 
     final kutular = _Izgara(sutun: genis ? 5 : 2, bosluk: 10, children: [
       if (v != null)
-        for (final (ad, deger) in v.kutular) _Kutucuk(ad: ad, deger: deger)
+        for (final (ad, deger) in v.kutular) _Kutucuk(ad: ad, deger: deger, vurgu: ad == 'Ödeme Tutarı')
       else
-        for (final ad in _kutuAdlari) _Kutucuk(ad: ad, deger: null),
+        for (final ad in [..._kutuAdlari, if (_selfAcik) ...['Self Satış Adedi', 'Self Satış Tutarı', 'Self İptal Tutarı']]) _Kutucuk(ad: ad, deger: null),
     ]);
 
     List<List<String>> satirlar(List<_Pay> l) => [for (final s in l) [_oran(s.pay), s.ad, '${_sayi(s.adet)} Adet', _tl(s.tutar)]];
@@ -1565,6 +1579,58 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
 
   /* ───────────────────────── PERSONEL (web StaffTab) ───────────────────────── */
 
+  /// Self Satış eklentisi açık mı (oturumdaki eklentiler; ≤10 sn'de tazelenir).
+  bool get _selfAcik => context.durum.oturum?.eklenti('self_satis', varsayilan: false) ?? false;
+
+  /// SELF SATIŞ (web Raporlar › Self satış — SelfSatisTab). Kaynak sales-self.
+  List<Widget> _selfSatis(double g) {
+    if (!_selfAcik) return [_bosDonem('Self Satış kapalı', 'Bu rapor Self Satış eklentisi açık işletmelerde görünür.')];
+    final v = _veri('sales-self');
+    final oz = v == null ? null : _harita(v['summary']);
+    final iptal = tamSayi(oz?['cancelled']);
+    return [
+      _kpiler([
+        _Kpi('Self ciro', oz == null ? null : _tl(tamSayi(oz['revenue_minor'])),
+            alt: oz == null ? null : '${_sayi(tamSayi(oz['orders']))} ödenen self · toplamın ${_yuzde(oz['share_of_total'])}', ton: Kabuk.success),
+        _Kpi('Ortalama sepet', oz == null ? null : _tl(tamSayi(oz['avg_minor'])), alt: 'ödenen self sipariş başına'),
+        _Kpi('Toplam ciro', oz == null ? null : _tl(tamSayi(oz['total_revenue_minor'])), alt: 'masa + self + diğer — self ciro buna dahil'),
+        _Kpi('Self iptal tutarı', oz == null ? null : _tl(tamSayi(oz['cancelled_minor'])),
+            alt: iptal > 0 ? '${_sayi(iptal)} iptal edilen self · ciroya girmez' : 'iptal yok'),
+      ], g, xl: 4),
+      ..._diz([
+        _tabloBolumu('Self siparişler', 'sales-self', const [
+          _Sutun('closed_at', 'Zaman', _Tur.saat),
+          _Sutun('no', 'No'),
+          _Sutun('customer', 'Müşteri'),
+          _Sutun('phone', 'Telefon'),
+          _Sutun('qty', 'Ürün', _Tur.sayi, true),
+          _Sutun('amount_minor', 'Tutar', _Tur.para, true),
+          _Sutun('methods', 'Ödeme'),
+          _Sutun('status_label', 'Durum'),
+          _Sutun('by', 'Açan'),
+        ], bos: 'Bu dönemde self satış yok.'),
+        _tabloBolumu('Ürüne göre', 'sales-self', const [
+          _Sutun('label', 'Ürün'),
+          _Sutun('qty', 'Adet', _Tur.sayi, true),
+          _Sutun('value_minor', 'Tutar', _Tur.para, true),
+          _Sutun('share', 'Pay', _Tur.yuzde),
+        ], anahtar: 'by_product', genis: false, bos: 'Kayıt yok.'),
+        _tabloBolumu('Saate göre', 'sales-self', const [
+          _Sutun('label', 'Saat'),
+          _Sutun('qty', 'Sipariş', _Tur.sayi, true),
+          _Sutun('value_minor', 'Tutar', _Tur.para, true),
+          _Sutun('share', 'Pay', _Tur.yuzde),
+        ], anahtar: 'by_hour', genis: false, bos: 'Kayıt yok.'),
+        _tabloBolumu('Personele göre', 'sales-self', const [
+          _Sutun('label', 'Açan'),
+          _Sutun('qty', 'Sipariş', _Tur.sayi, true),
+          _Sutun('value_minor', 'Tutar', _Tur.para, true),
+          _Sutun('share', 'Pay', _Tur.yuzde),
+        ], anahtar: 'by_staff', genis: false, bos: 'Kayıt yok.'),
+      ], g, ilkSira: 1),
+    ];
+  }
+
   List<Widget> _personel(double g) => _diz([
         _tabloBolumu('Personel performansı', 'staff-performance', const [
           _Sutun('name', 'Personel'),
@@ -1788,8 +1854,11 @@ class _Izgara extends StatelessWidget {
 
 /// Referans kutusu: 1. satır kalın etiket, 2. satır gri değer. Renk/nokta yok.
 class _Kutucuk extends StatelessWidget {
-  const _Kutucuk({required this.ad, required this.deger});
+  const _Kutucuk({required this.ad, required this.deger, this.vurgu = false});
   final String ad;
+
+  /// Ödeme Tutarı: diğerlerinden bir tık belirgin (yeşil, yarı kalın) — web oz-odeme.
+  final bool vurgu;
 
   /// null = yükleniyor.
   final String? deger;
@@ -1807,7 +1876,15 @@ class _Kutucuk extends StatelessWidget {
               child: Container(width: 80, height: 13, decoration: BoxDecoration(color: Kabuk.sunken, borderRadius: koseYuvarlak)),
             )
           else
-            Text(deger!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, height: 1.4, color: Kabuk.soft, fontFeatures: _tabular)),
+            Text(deger!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.4,
+                    color: vurgu ? Kabuk.success : Kabuk.soft,
+                    fontWeight: vurgu ? FontWeight.w600 : null,
+                    fontFeatures: _tabular)),
         ]),
       );
 }

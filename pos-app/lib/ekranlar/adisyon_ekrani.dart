@@ -1384,8 +1384,8 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
               _hepsiSecili
                   ? _menuOgesi('tumunu_sec', Icons.close_rounded, 'Seçimi kaldır')
                   : _menuOgesi('tumunu_sec', Icons.check_rounded, 'Tüm ürünleri seç'),
-            if (a.acik && _can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Adisyonu başka masaya taşı'),
-            if (a.acik && _can('orders.merge_tables')) _menuOgesi('birlestir', Icons.merge_rounded, 'Masayı birleştir'),
+            if (a.acik && !a.selfMi && _can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Adisyonu başka masaya taşı'),
+            if (a.acik && !a.selfMi && _can('orders.merge_tables')) _menuOgesi('birlestir', Icons.merge_rounded, 'Masayı birleştir'),
             if (a.acik && _canOrPin('orders.discount')) _menuOgesi('indirim', Icons.sell_outlined, indirimVar ? 'İndirimi kaldır' : 'İndirim uygula'),
             if (a.durum == 'paid' && _can('orders.refund')) _menuOgesi('iade', Icons.arrow_back_rounded, 'İade et', tehlikeli: true),
           ],

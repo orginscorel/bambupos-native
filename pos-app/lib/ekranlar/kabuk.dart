@@ -21,6 +21,7 @@ import 'masalar_ekrani.dart';
 import 'mesailer_ekrani.dart';
 import 'mesai_qr_ekrani.dart';
 import 'raporlar_ekrani.dart';
+import 'self_ekrani.dart';
 import 'teslimat_ekrani.dart';
 import 'usb_cihazlar.dart';
 import 'ortak.dart';
@@ -44,6 +45,8 @@ enum PosEkrani {
       izin: 'kds.view', istasyonlar: ['hookah'], ozellik: 'nargile', serit: 'nargile'),
   komi('runner', 'Komi', 'Servis ekranı', Icons.notifications_none_rounded, '/panel/komi', izin: 'kds.deliver', ozellik: 'hazirlik_takibi'),
   teslimat('delivery', 'Teslimat', 'Teslimat', Icons.local_shipping_outlined, '/panel/teslimat', izin: 'delivery.view', ozellik: 'delivery'),
+  /// SELF SATIŞ (2026-10-30): gel-al / telefon siparişleri — yalnız eklentisi açık işletmede.
+  self('self', 'Self Satış', 'Self satış', Icons.shopping_bag_outlined, '/panel/self', izin: 'orders.view', ozellik: 'self_satis'),
   gorevler('tasks', 'Görevler', 'Görevler', Icons.assignment_outlined, '/panel/gorevler', izin: 'tasks.view'),
   mesailer('mesailer', 'Mesailer', 'Mesailer', Icons.schedule_rounded, '/panel/mesai', izin: 'staff.view', ozellik: 'shifts'),
   /// Tüm personel: mesai başlatmak yetki değil zorunluluk (web ile aynı karar).
@@ -390,6 +393,7 @@ class _KabukState extends State<Kabuk> {
         PosEkrani.gecmis => const GecmisEkrani(),
         PosEkrani.kasaKapanis => const KasaKapanisiEkrani(),
         PosEkrani.teslimat => const TeslimatEkrani(),
+        PosEkrani.self => const SelfEkrani(),
         PosEkrani.borclar => const BorclarEkrani(),
         PosEkrani.giderler => const GiderlerEkrani(),
         PosEkrani.gunSonu => const GunSonuEkrani(),

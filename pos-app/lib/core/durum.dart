@@ -423,15 +423,27 @@ class UygulamaDurumu extends ChangeNotifier {
   @visibleForTesting
   Future<KurtarmaAnahtari?> kurtarmaAnahtari() => _kurtarmaDeposu.oku();
 
+  /// Son nabızda gelen eklenti imzası (değişince oturum hemen tazelenir).
+  String? _eklentiImza;
+
   Future<void> _nabiz({bool yenile = true}) async {
     if (asama == Asama.aktivasyon || asama == Asama.acilis) return;
+    var imzaDegisti = false;
     try {
-      await api.post('/terminal/heartbeat');
+      final r = await api.post('/terminal/heartbeat');
+      // EKLENTİ İMZASI (2026-10-30): İşletme Yönetimi'nde bir eklenti
+      // açılıp kapanınca imza değişir → oturum 40 sn beklemeden tazelenir
+      // (Self Satış vb. menüye/şeride ≤10 sn'de gelir ya da kalkar).
+      final imza = r is Map ? r['eklenti_imza'] : null;
+      if (imza is String && imza.isNotEmpty) {
+        imzaDegisti = _eklentiImza != null && _eklentiImza != imza;
+        _eklentiImza = imza;
+      }
     } on ApiHata {
       // Kalp atışı kaçarsa bir sonraki turda denenir.
     }
     // Operatörün boşta kalma süresi dolduysa / yetkisi değiştiyse yansısın.
-    if (yenile) await oturumuYenile();
+    if (yenile || imzaDegisti) await oturumuYenile();
   }
 
   static final _adisyonYolu = RegExp(r'/orders/(\d+)(?:/|$)');
