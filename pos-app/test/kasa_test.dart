@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:bambumpos_pos/app/tema.dart';
 import 'package:bambumpos_pos/core/api.dart';
+import 'package:bambumpos_pos/core/bicim.dart';
 import 'package:bambumpos_pos/core/durum.dart';
 import 'package:bambumpos_pos/core/modeller.dart';
 import 'package:bambumpos_pos/ekranlar/adisyon_ekrani.dart';
@@ -112,7 +113,7 @@ Map<String, (int, String)> _kasaYanitlari() {
 }
 
 Future<(UygulamaDurumu, _Sunucu)> _kur(WidgetTester t,
-    {required bool manuel, Map<String, (int, String)> ek = const {}, Size boyut = const Size(1280, 800), Widget? ekran}) async {
+    {required bool manuel, Map<String, (int, String)> ek = const {}, Size boyut = const Size(1280, 800), Widget? ekran, List<String> ekYetki = const []}) async {
   // Test yazı tipi (Ahem) her harfi kare çizer; dar kartlardaki taşma
   // uyarıları gerçek cihazda yoktur — bu testin konusu değil.
   final onceki = FlutterError.onError;
@@ -126,7 +127,7 @@ Future<(UygulamaDurumu, _Sunucu)> _kur(WidgetTester t,
   addTearDown(t.view.reset);
   SharedPreferences.setMockInitialValues({});
   final ham = (jsonDecode(_veri('oturum')) as Map).cast<String, dynamic>();
-  ham['yetkiler'] = [...(ham['yetkiler'] as List), 'payments.take', 'orders.discount', 'orders.view', 'orders.update'];
+  ham['yetkiler'] = [...(ham['yetkiler'] as List), 'payments.take', 'orders.discount', 'orders.view', 'orders.update', ...ekYetki];
   ham['eklentiler'] = {...(ham['eklentiler'] as Map), 'manuel_iskonto': manuel};
   final sunucu = _Sunucu({..._kasaYanitlari(), '/api/v1/uygulama/oturum': (200, jsonEncode(ham)), ...ek});
   final d = UygulamaDurumu.test(Api.bellekte(sunucu), await SharedPreferences.getInstance(), Directory.systemTemp.createTempSync('bbpos').path);
@@ -673,56 +674,161 @@ void main() {
       };
     }
 
-    Future<void> ikisiniSecVeIkramEt(WidgetTester t, {String neden = 'Geç servis'}) async {
+    final menu = find.byKey(const ValueKey('kasa-secim-menu'));
+    final onayliyorum = find.byKey(const ValueKey('ikram-onayliyorum'));
+    Finder hazir(String ad) => find.byKey(ValueKey('ikram-hazir-$ad'));
+    List<(String, String, Map<String, dynamic>?)> compIstekleri(_Sunucu s) => s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/comp')).toList();
+
+    /// ⋮ → İkram et → onay penceresi.
+    Future<void> menudenIkram(WidgetTester t) async {
+      await t.ensureVisible(menu);
+      await t.pump();
+      await t.tap(menu);
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
+      await t.pumpAndSettle();
+    }
+
+    Future<void> ikisiniSec(WidgetTester t) async {
       await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
       await t.pump();
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
-      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
-      await t.pumpAndSettle();
-      await t.tap(find.text(neden).first);
+    }
+
+    Future<void> ikisiniSecVeIkramEt(WidgetTester t, {String neden = 'Ürün geç geldi'}) async {
+      await ikisiniSec(t);
+      await menudenIkram(t);
+      await t.tap(hazir(neden));
       await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await t.tap(onayliyorum);
       await _bekle(t);
     }
 
-    testWidgets('2 çay seç → İkram et → neden → POST comp {reason, expected_version, qty: 2}', (t) async {
+    testWidgets('seçim şeridinde ayrı "İkram et" düğmesi yok; ⋮ menüsünde, adet sayısıyla', (t) async {
+      final (d, _) = await _kur(t, manuel: false, ek: yanit());
+      expect(menu, findsNothing); // seçim yokken şerit yok
+      await ikisiniSec(t);
+      expect(menu, findsOneWidget);
+      expect(find.text('Tutara yaz'), findsOneWidget);
+      expect(find.text('Temizle'), findsOneWidget);
+      expect(find.text('İkram et (6)'), findsNothing); // menü kapalıyken görünmez
+      await t.tap(menu);
+      await t.pumpAndSettle();
+      expect(find.text('İkram et (6)'), findsOneWidget);
+      expect(t.widget<PopupMenuItem<String>>(find.byKey(const ValueKey('kasa-secim-ikram'))).enabled, isTrue);
+      await _bitir(t, d);
+    });
+
+    testWidgets('⋮ → İkram et: pencere ürünleri, tutarları ve toplamı listeler', (t) async {
       final (d, s) = await _kur(t, manuel: false, ek: yanit());
-      final dugme = find.byKey(const ValueKey('kasa-secim-ikram'));
-      // İki farklı satır seçiliyken de etkin; sayı düğmede.
-      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+      await ikisiniSec(t);
+      await menudenIkram(t);
+      expect(find.text('İkram onayı'), findsOneWidget);
+      expect(find.text('Bu ürünleri ikram etmek istediğinizden emin misiniz?'), findsOneWidget);
+      expect(find.textContaining('4× Çay', findRichText: true), findsWidgets);
+      expect(find.textContaining('2× Kaşarlı Tost', findRichText: true), findsWidgets);
+      expect(find.text('2 kalem · 6 adet ikram edilecek'), findsOneWidget);
+      expect(t.widget<Text>(find.byKey(const ValueKey('ikram-toplam'))).data, para(28000));
+      // Hazır açıklamalar + Diğer.
+      for (final a in [...ikramHazirAciklamalar, 'Diğer']) {
+        expect(hazir(a), findsOneWidget);
+      }
+      // Pencere açılınca hiçbir şey gitmez.
+      expect(compIstekleri(s), isEmpty);
+      await _bitir(t, d);
+    });
+
+    testWidgets('Onaylamıyorum → POST yok, pencere kapanır, seçim kalır', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      await ikisiniSec(t);
+      await menudenIkram(t);
+      await t.tap(hazir('Müşteri memnuniyeti'));
       await t.pump();
+      await t.tap(find.byKey(const ValueKey('ikram-onaylamiyorum')));
+      await _bekle(t);
+      expect(find.text('İkram onayı'), findsNothing);
+      expect(compIstekleri(s), isEmpty);
+      expect(menu, findsOneWidget); // seçim yerinde
+      expect(find.textContaining('6 adet', findRichText: true), findsWidgets);
+      await _bitir(t, d);
+    });
+
+    testWidgets('dışarı dokunuş da Onaylamıyorum gibi: POST yok', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      await ikisiniSec(t);
+      await menudenIkram(t);
+      await t.tap(hazir('Müşteri memnuniyeti'));
+      await t.pump();
+      await t.tapAt(const Offset(5, 5));
+      await _bekle(t);
+      expect(find.text('İkram onayı'), findsNothing);
+      expect(compIstekleri(s), isEmpty);
+      expect(menu, findsOneWidget);
+      await _bitir(t, d);
+    });
+
+    testWidgets('açıklamasız / 3 karakterden kısa açıklamayla Onaylıyorum kapalı', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      await ikisiniSec(t);
+      await menudenIkram(t);
+      expect(t.widget<FilledButton>(onayliyorum).onPressed, isNull);
+      await t.tap(onayliyorum, warnIfMissed: false);
+      await _bekle(t);
+      expect(compIstekleri(s), isEmpty);
+      final alan = find.descendant(of: find.byKey(const ValueKey('ikram-aciklama')), matching: find.byType(TextField));
+      await t.enterText(alan, 'ab');
+      await t.pump();
+      expect(t.widget<FilledButton>(onayliyorum).onPressed, isNull);
+      expect(find.text('Açıklama en az 3 karakter olmalı.'), findsOneWidget);
+      await t.enterText(alan, '   ');
+      await t.pump();
+      expect(t.widget<FilledButton>(onayliyorum).onPressed, isNull);
+      expect(find.text('İkram onayı'), findsOneWidget);
+      expect(compIstekleri(s), isEmpty);
+      await _bitir(t, d);
+    });
+
+    testWidgets('elle yazılan açıklama gider; hazır seçilip düzenlenebilir', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
-      expect(t.widget<TextButton>(dugme).onPressed, isNotNull);
-      expect(find.text('İkram et (2)'), findsOneWidget);
-      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await menudenIkram(t);
+      await t.tap(hazir('İşletme ikramı'));
       await t.pump();
-      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
+      final alan = find.descendant(of: find.byKey(const ValueKey('ikram-aciklama')), matching: find.byType(TextField));
+      expect(t.widget<TextField>(alan).controller!.text, 'İşletme ikramı');
+      await t.enterText(alan, 'İşletme ikramı - doğum günü');
       await t.pump();
-      expect(dugme, findsNothing);
+      await t.tap(onayliyorum);
+      await _bekle(t);
+      expect(compIstekleri(s).single.$3, {'reason': 'İşletme ikramı - doğum günü', 'expected_version': 9, 'qty': 2});
+      await _bitir(t, d);
+    });
+
+    testWidgets('kısmi adet: 4 çaydan 2si → hazır açıklama → POST comp {reason, expected_version, qty: 2}', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
       await t.tap(find.text('Çay'));
       await t.pump();
       await t.tap(find.byKey(const ValueKey('kasa-birim-901-0')));
       await t.pump();
       await t.tap(find.byKey(const ValueKey('kasa-birim-901-2')));
       await t.pump();
-      expect(t.widget<TextButton>(dugme).onPressed, isNotNull);
-      await t.ensureVisible(dugme);
+      await menudenIkram(t);
+      expect(find.textContaining('2× Çay', findRichText: true), findsWidgets);
+      expect(find.text('2 adet adisyonda ücretli kalır'), findsOneWidget);
+      expect(t.widget<Text>(find.byKey(const ValueKey('ikram-toplam'))).data, para(5000));
+      await t.tap(hazir('Müşteri ürünü tüketmedi'));
       await t.pump();
-      await t.tap(dugme);
-      await t.pumpAndSettle();
-      expect(find.textContaining('2 × Çay', findRichText: true), findsWidgets);
-      expect(find.text('2 adet adisyonda kalır.'), findsOneWidget);
-      await t.tap(find.text('Geç servis').first);
-      await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await t.tap(onayliyorum);
+      await t.tap(onayliyorum, warnIfMissed: false); // çift dokunuş ikinci istek atmaz
       await _bekle(t);
       final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/901/comp').toList();
       expect(r, hasLength(1));
-      expect(r.single.$3, {'reason': 'Geç servis', 'expected_version': 9, 'qty': 2});
-      // Başarıdan sonra seçim temizlenir.
-      expect(find.byKey(const ValueKey('kasa-secim-ikram')), findsNothing);
+      expect(r.single.$3, {'reason': 'Müşteri ürünü tüketmedi', 'expected_version': 9, 'qty': 2});
+      // Başarıdan sonra pencere kapanır, seçim temizlenir.
+      expect(find.text('İkram onayı'), findsNothing);
+      expect(menu, findsNothing);
       await _bitir(t, d);
     });
 
@@ -730,15 +836,14 @@ void main() {
       final (d, s) = await _kur(t, manuel: false, ek: yanit());
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
-      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
-      await t.pumpAndSettle();
-      expect(find.textContaining('adisyonda kalır'), findsNothing);
-      await t.tap(find.text('Müşteri memnuniyeti').first);
+      await menudenIkram(t);
+      expect(find.textContaining('adisyonda ücretli kalır'), findsNothing);
+      await t.tap(hazir('Müşteri ürünü iade etti'));
       await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await t.tap(onayliyorum);
       await _bekle(t);
       final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/902/comp').single;
-      expect(r.$3, {'reason': 'Müşteri memnuniyeti', 'expected_version': 9, 'qty': 2});
+      expect(r.$3, {'reason': 'Müşteri ürünü iade etti', 'expected_version': 9, 'qty': 2});
       await _bitir(t, d);
     });
 
@@ -752,7 +857,7 @@ void main() {
       await _bitir(t, d);
     });
 
-    testWidgets('çok satır: tek neden, satırlar SIRAYLA; sonraki çağrı önceki yanıtın sürümüyle', (t) async {
+    testWidgets('çok satır: tek açıklama, satır başına bir POST SIRAYLA; sonraki çağrı önceki yanıtın sürümüyle', (t) async {
       final y = yanit();
       final o = _adisyon(y);
       Map<String, dynamic> sonrasi(int surum, Set<int> ikramlar) => {
@@ -768,28 +873,19 @@ void main() {
         'POST /api/v1/orders/300/items/901/comp': (200, jsonEncode({'order': sonrasi(10, {901})})),
         'POST /api/v1/orders/300/items/902/comp': (200, jsonEncode({'order': sonrasi(11, {901, 902})})),
       });
-      await t.tap(find.byKey(const ValueKey('kasa-kutu-901')));
-      await t.pump();
-      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
-      await t.pump();
-      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
-      await t.pumpAndSettle();
-      expect(find.textContaining('4 × Çay, 2 × Kaşarlı Tost', findRichText: true), findsWidgets);
-      await t.tap(find.text('Geç servis').first);
-      await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
-      await _bekle(t);
-      final comp = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/comp')).toList();
+      await ikisiniSecVeIkramEt(t);
+      final comp = compIstekleri(s);
       expect(comp.map((r) => r.$2), ['/api/v1/orders/300/items/901/comp', '/api/v1/orders/300/items/902/comp']);
-      expect(comp[0].$3, {'reason': 'Geç servis', 'expected_version': 9, 'qty': 4});
-      expect(comp[1].$3, {'reason': 'Geç servis', 'expected_version': 10, 'qty': 2});
+      expect(comp[0].$3, {'reason': 'Ürün geç geldi', 'expected_version': 9, 'qty': 4});
+      expect(comp[1].$3, {'reason': 'Ürün geç geldi', 'expected_version': 10, 'qty': 2});
       // Yanıttaki adisyon ekrana basılır: ödemeler / detay yeniden sorulmaz;
       // liste bir kez tazelenir.
       final sonra = s.istekler.skipWhile((r) => !(r.$1 == 'POST' && r.$2.endsWith('/comp'))).toList();
       expect(sonra.where((r) => r.$1 == 'GET' && r.$2.startsWith('/api/v1/orders/300')), isEmpty);
       expect(sonra.where((r) => r.$1 == 'GET' && r.$2 == '/api/v1/payments/pending-orders'), hasLength(1));
       expect(find.text('İkram · Geç servis'), findsNWidgets(2));
-      expect(find.byKey(const ValueKey('kasa-secim-ikram')), findsNothing);
+      expect(find.text('İkram onayı'), findsNothing);
+      expect(menu, findsNothing);
       await _bitir(t, d);
     });
 
@@ -799,12 +895,64 @@ void main() {
         'POST /api/v1/orders/300/items/902/comp': (422, jsonEncode({'message': 'Ödenmiş kalem ikram edilemez.'})),
       });
       await ikisiniSecVeIkramEt(t);
-      final comp = s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/comp')).toList();
-      expect(comp, hasLength(2));
+      expect(compIstekleri(s), hasLength(2));
       expect(find.textContaining('Ödenmiş kalem ikram edilemez. (1 / 2 kalem ikram edildi'), findsOneWidget);
-      expect(find.byKey(const ValueKey('kasa-secim-ikram')), findsNothing);
+      expect(find.text('İkram onayı'), findsNothing);
+      expect(menu, findsNothing);
       final sonra = s.istekler.skipWhile((r) => !(r.$1 == 'POST' && r.$2.endsWith('/902/comp'))).skip(1);
       expect(sonra.any((r) => r.$1 == 'GET' && r.$2 == '/api/v1/orders/300'), isTrue);
+      await _bitir(t, d);
+    });
+
+    testWidgets('409 (hiçbiri işlenmedi): pencere açık kalır, hata içinde; yeniden onay güncel sürümle gider', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit());
+      s.sirali['POST /api/v1/orders/300/items/902/comp'] = [
+        (409, jsonEncode({'message': 'Adisyon değişti.'})),
+      ];
+      await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
+      await t.pump();
+      await menudenIkram(t);
+      await t.tap(hazir('Yanlış sipariş'));
+      await t.pump();
+      await t.tap(onayliyorum);
+      await _bekle(t);
+      expect(find.text('İkram onayı'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ikram-hata')), findsOneWidget);
+      expect(find.textContaining('başka bir cihazda değişti'), findsOneWidget);
+      expect(t.widget<FilledButton>(onayliyorum).onPressed, isNotNull);
+      // Sunucuda sürüm ilerledi; ikinci deneme yeni sürümle.
+      final y2 = yanit();
+      final o2 = _adisyon(y2)
+        ..['is_open'] = true
+        ..['version'] = 14;
+      s.yanitlar['/api/v1/orders/300'] = (200, jsonEncode({'order': o2}));
+      s.sirali['POST /api/v1/orders/300/items/902/comp'] = [(422, jsonEncode({'message': 'Açıklama geçersiz.'}))];
+      await t.tap(onayliyorum);
+      await _bekle(t);
+      expect(find.text('Açıklama geçersiz.'), findsOneWidget);
+      expect(find.text('İkram onayı'), findsOneWidget);
+      await t.tap(onayliyorum);
+      await _bekle(t);
+      final r = s.istekler.where((r) => r.$1 == 'POST' && r.$2 == '/api/v1/orders/300/items/902/comp').toList();
+      expect(r, hasLength(3));
+      expect(r[0].$3?['expected_version'], 9);
+      expect(r[2].$3, {'reason': 'Yanlış sipariş', 'expected_version': 14, 'qty': 2});
+      expect(find.text('İkram onayı'), findsNothing);
+      await _bitir(t, d);
+    });
+
+    testWidgets('düzelt kipindeki İkram yap da aynı onay penceresini açar', (t) async {
+      final (d, s) = await _kur(t, manuel: false, ek: yanit(), ekYetki: const ['orders.comp']);
+      await t.tap(find.byKey(const ValueKey('kasa-duzelt')));
+      await t.pump();
+      await t.tap(find.text('İkram yap').first);
+      await t.pumpAndSettle();
+      expect(find.text('İkram onayı'), findsOneWidget);
+      await t.tap(hazir('Personel / sahip ikramı'));
+      await t.pump();
+      await t.tap(onayliyorum);
+      await _bekle(t);
+      expect(compIstekleri(s).single.$3, {'reason': 'Personel / sahip ikramı', 'expected_version': 9, 'qty': 4});
       await _bitir(t, d);
     });
 
@@ -822,14 +970,13 @@ void main() {
       ];
       await t.tap(find.byKey(const ValueKey('kasa-kutu-902')));
       await t.pump();
-      await t.tap(find.byKey(const ValueKey('kasa-secim-ikram')));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Müşteri memnuniyeti').first);
+      await menudenIkram(t);
+      await t.tap(hazir('Müşteri memnuniyeti'));
       await t.pump();
-      await t.tap(find.widgetWithText(FilledButton, 'İkram et'));
+      await t.tap(onayliyorum);
       await _bekle(t);
       expect(find.text('Personel PIN'), findsOneWidget);
-      await t.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), '1234');
+      await t.enterText(find.descendant(of: find.widgetWithText(AlertDialog, 'Personel PIN'), matching: find.byType(TextField)), '1234');
       await t.pump();
       await t.tap(find.widgetWithText(FilledButton, 'Onayla'));
       await _bekle(t);

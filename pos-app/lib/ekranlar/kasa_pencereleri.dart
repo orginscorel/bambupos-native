@@ -454,34 +454,236 @@ Future<(String, String, num)?> servisBedeliPenceresi(BuildContext context, {requ
 
 /* ───────── İkram / Ödemeyi kaldır / İade ───────── */
 
-/// [kalir] > 0: satırın bir kısmı ikram ediliyor — kalan adet bilgisi
-/// gösterilir ("2 × Çay · 2 adet adisyonda kalır", web kasa ikramı gibi).
-Future<String?> ikramPenceresi(BuildContext context, String ad, {int kalir = 0}) {
-  var neden = '';
-  return kasaPenceresi<String>(
-    context,
-    baslik: 'İkram (ücretsiz yap)',
-    icerik: (ctx, yenile) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text.rich(TextSpan(children: [
-        TextSpan(text: ad, style: const TextStyle(fontWeight: FontWeight.w700)),
-        const TextSpan(text: ' ikram edilecek; tutarı sıfırlanır ve Z raporunda ikram olarak izlenir.'),
-      ])),
-      if (kalir > 0) ...[
-        const SizedBox(height: 6),
-        Text('$kalir adet adisyonda kalır.', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Renk.ikinci)),
-      ],
-      const SizedBox(height: 12),
-      FormAlani(
-        etiket: 'Neden',
-        ipucu: 'Listeden seçin; farklıysa “Diğer…”.',
-        child: NedenSecici(tur: 'item_comp', degisti: (v) => yenile(() => neden = v)),
-      ),
-    ]),
-    dugmeler: (ctx, yenile) => [
-      OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
-      FilledButton(onPressed: neden.trim().length < 3 ? null : () => Navigator.pop(ctx, neden.trim()), child: const Text('İkram et')),
-    ],
+/// İkram onay penceresindeki bir satır: [adet] × [ad] ([detay] = varyant /
+/// seçenekler), [satirAdedi] satırın toplam adedi, [tutar] ikram edilen
+/// adetlerin tutarı (kuruş).
+typedef IkramSatiri = ({String ad, String detay, int adet, int satirAdedi, int tutar});
+
+/// Hazır ikram açıklamaları (2026-10-30 işletme talebi). "Diğer" ayrıca
+/// gösterilir: alanı boşaltır, serbest metin yazılır.
+const ikramHazirAciklamalar = [
+  'Müşteri ürünü tüketmedi',
+  'Müşteri ürünü iade etti',
+  'Müşteri memnuniyeti',
+  'Ürün geç geldi',
+  'Yanlış sipariş',
+  'İşletme ikramı',
+  'Personel / sahip ikramı',
+];
+
+/// İKRAM ONAYI (2026-10-30 işletme talebi; web IkramOnayDialog.vue ile
+/// aynı): "Bu ürünleri ikram etmek istediğinizden emin misiniz?" — ürünler
+/// (adet × ad, seçenekler, tutar) ve toplam listelenir; AÇIKLAMA zorunlu
+/// (hazır açıklamalar + serbest metin + ekran klavyesi, en az 3 karakter).
+///
+/// "Onaylıyorum" → [gonder] açıklamayla çağrılır; pencere o sürede kilitli
+/// (yükleniyor, düğmeler kapalı, geri/dışarı dokunuş kapatmaz → çift
+/// gönderim yok). [gonder] null dönerse pencere kapanır (işlendi); metin
+/// dönerse hata pencere İÇİNDE gösterilir, pencere açık kalır.
+/// "Onaylamıyorum", ✕, dışarı dokunuş, Esc ve geri: hiçbir şey gönderilmez.
+/// Dönüş: true = gönderildi, false = vazgeçildi.
+Future<bool> ikramOnayPenceresi(BuildContext context, List<IkramSatiri> satirlar, {required Future<String?> Function(String neden) gonder}) async {
+  final aciklama = TextEditingController();
+  String? secili; // seçili hazır açıklama ya da 'Diğer'
+  var mesgul = false;
+  String? hata;
+  final toplamAdet = satirlar.fold<int>(0, (t, x) => t + x.adet);
+  final toplamTutar = satirlar.fold<int>(0, (t, x) => t + x.tutar);
+
+  final r = await pencereAc<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, yenile) {
+      final metin = aciklama.text.trim();
+      final gecerli = metin.length >= 3;
+      final dar = MediaQuery.sizeOf(ctx).width < 600;
+
+      void vazgec() {
+        if (mesgul) return;
+        EkranKlavyesi.kapat();
+        Navigator.pop(ctx, false);
+      }
+
+      Future<void> onayla() async {
+        if (mesgul || !gecerli) return;
+        EkranKlavyesi.kapat();
+        yenile(() {
+          mesgul = true;
+          hata = null;
+        });
+        String? sonuc;
+        try {
+          sonuc = await gonder(metin);
+        } catch (_) {
+          sonuc = 'Beklenmeyen hata. Bağlantıyı kontrol edip tekrar deneyin.';
+        }
+        if (!ctx.mounted) return;
+        if (sonuc == null) {
+          Navigator.pop(ctx, true);
+        } else {
+          yenile(() {
+            mesgul = false;
+            hata = sonuc;
+          });
+        }
+      }
+
+      Widget hazir(String ad, {bool diger = false}) {
+        final secik = secili == ad;
+        return SizedBox(
+          width: dar ? (MediaQuery.sizeOf(ctx).width - 32 - 48 - 8) / 2 : 136,
+          child: OutlinedButton(
+            key: ValueKey('ikram-hazir-$ad'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 46),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              alignment: Alignment.centerLeft,
+              shape: RoundedRectangleBorder(borderRadius: koseYuvarlak),
+              side: BorderSide(color: secik ? Renk.marka : Renk.cizgi),
+              backgroundColor: secik ? Renk.markaAcik : Renk.yuzey,
+              foregroundColor: secik ? Renk.marka : Renk.yazi,
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+            onPressed: mesgul
+                ? null
+                : () => yenile(() {
+                      secili = ad;
+                      hata = null;
+                      if (diger) {
+                        if (ikramHazirAciklamalar.contains(aciklama.text)) aciklama.clear();
+                      } else {
+                        aciklama.text = ad;
+                        aciklama.selection = TextSelection.collapsed(offset: ad.length);
+                      }
+                    }),
+            child: Text(ad, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
+        );
+      }
+
+      return PopScope(
+        canPop: !mesgul,
+        child: ValueListenableBuilder<bool>(
+          valueListenable: EkranKlavyesi.acik,
+          builder: (ctx, klavye, _) => AlertDialog(
+            key: const ValueKey('ikram-onay'),
+            alignment: klavye ? Alignment.topCenter : null,
+            scrollable: true,
+            insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: dar ? 12 : 24),
+            title: Row(children: [
+              const Expanded(child: Text('İkram onayı')),
+              IconButton(onPressed: mesgul ? null : vazgec, icon: const Icon(Icons.close_rounded, size: 20), tooltip: 'Kapat'),
+            ]),
+            content: SizedBox(
+              width: 640,
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('Bu ürünleri ikram etmek istediğinizden emin misiniz?', style: TextStyle(fontSize: 15)),
+                const SizedBox(height: 12),
+                // Ürünler
+                Container(
+                  decoration: BoxDecoration(borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgi)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: SingleChildScrollView(
+                        child: Column(children: [
+                          for (var i = 0; i < satirlar.length; i++)
+                            Container(
+                              key: ValueKey('ikram-satir-$i'),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                              decoration: BoxDecoration(color: Renk.ic, border: i == 0 ? null : Border(top: BorderSide(color: Renk.cizgi))),
+                              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Expanded(
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text.rich(TextSpan(children: [
+                                      TextSpan(text: '${satirlar[i].adet}× ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                      TextSpan(text: satirlar[i].ad),
+                                    ]), style: const TextStyle(fontSize: 14)),
+                                    if (satirlar[i].detay.isNotEmpty)
+                                      Text(satirlar[i].detay, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Renk.ikinci)),
+                                    if (satirlar[i].adet < satirlar[i].satirAdedi)
+                                      Text('${satirlar[i].satirAdedi - satirlar[i].adet} adet adisyonda ücretli kalır',
+                                          style: TextStyle(fontSize: 12.5, color: Renk.ikinci)),
+                                  ]),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(para(satirlar[i].tutar), style: const TextStyle(fontSize: 14, fontFeatures: [FontFeature.tabularFigures()])),
+                              ]),
+                            ),
+                        ]),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(color: Renk.yuzey, border: Border(top: BorderSide(color: Renk.cizgi))),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text('${satirlar.length} kalem · $toplamAdet adet ikram edilecek', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+                        ),
+                        Text(para(toplamTutar),
+                            key: const ValueKey('ikram-toplam'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 16),
+                Text.rich(TextSpan(children: [
+                  const TextSpan(text: 'Açıklama'),
+                  TextSpan(text: ' *', style: TextStyle(color: Renk.hata)),
+                ]), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final a in ikramHazirAciklamalar) hazir(a),
+                  hazir('Diğer', diger: true),
+                ]),
+                const SizedBox(height: 10),
+                KlavyeliAlan(
+                  key: const ValueKey('ikram-aciklama'),
+                  controller: aciklama,
+                  maxLength: 190,
+                  decoration: const InputDecoration(hintText: 'Açıklamayı yazın ya da yukarıdan seçin…', counterText: ''),
+                  onChanged: (v) => yenile(() {
+                    hata = null;
+                    secili = ikramHazirAciklamalar.contains(v) ? v : (v.trim().isEmpty ? (secili == 'Diğer' ? 'Diğer' : null) : 'Diğer');
+                  }),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  metin.isNotEmpty && !gecerli ? 'Açıklama en az 3 karakter olmalı.' : 'Açıklama zorunlu; Z raporunda ve denetim kaydında görünür.',
+                  style: TextStyle(fontSize: 12.5, color: metin.isNotEmpty && !gecerli ? Renk.hata : Renk.ikinci),
+                ),
+                if (hata != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    key: const ValueKey('ikram-hata'),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(color: Renk.hataZemin, borderRadius: koseYuvarlak, border: Border.all(color: Renk.hataKenar)),
+                    child: Text(hata!, style: TextStyle(fontSize: 13.5, color: Renk.hata)),
+                  ),
+                ],
+              ]),
+            ),
+            actions: [
+              OutlinedButton(
+                key: const ValueKey('ikram-onaylamiyorum'),
+                onPressed: mesgul ? null : vazgec,
+                child: const Text('Onaylamıyorum'),
+              ),
+              FilledButton(
+                key: const ValueKey('ikram-onayliyorum'),
+                onPressed: mesgul || !gecerli ? null : onayla,
+                child: mesgul
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Onaylıyorum'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }),
   );
+  EkranKlavyesi.kapat();
+  return r ?? false;
 }
 
 Future<String?> odemeyiKaldirPenceresi(BuildContext context) {

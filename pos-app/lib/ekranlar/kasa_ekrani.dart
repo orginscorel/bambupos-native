@@ -888,11 +888,32 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /// `qty` her zaman açıkça gider). Sürüm pencere açılmadan alınır.
   Future<void> _ikram(Kalem k) async {
     if (k.odendi || k.ikram) return;
-    final surum = _surum;
-    final n = k.adet;
-    final neden = await _penceredeyken(() => ikramPenceresi(context, '$n × ${k.ad}'));
-    if (neden == null || !mounted) return;
-    await _ikramlariIsle([(kalem: k, adet: n)], neden, surum);
+    await _ikramOnayi([(kalem: k, adet: k.adet)]);
+  }
+
+  /// İKRAM ONAYI (2026-10-30): seçim / adetler pencere açılmadan dondurulur;
+  /// "Onaylıyorum" denince [_ikramlariIsle] pencere açıkken çalışır (yükleniyor),
+  /// hiçbiri işlenmediyse hata pencerede gösterilir ve güncel sürümle
+  /// yeniden denenebilir. "Onaylamıyorum" hiçbir şey göndermez, seçim kalır.
+  Future<void> _ikramOnayi(List<({Kalem kalem, int adet})> secim) async {
+    if (secim.isEmpty || _mesgul) return;
+    var surum = _surum;
+    final satirlar = <IkramSatiri>[
+      for (final x in secim)
+        (
+          ad: x.kalem.ad,
+          detay: [if (x.kalem.varyant != null) x.kalem.varyant!, ...x.kalem.secenekler].join(' · '),
+          adet: x.adet,
+          satirAdedi: x.kalem.adet,
+          tutar: _payTutari(x.kalem, x.adet),
+        ),
+    ];
+    await _penceredeyken(() => ikramOnayPenceresi(context, satirlar, gonder: (neden) async {
+          final h = await _ikramlariIsle(secim, neden, surum);
+          // Hata sonrası adisyon yeniden okundu → yeniden denemede güncel sürüm.
+          if (h != null) surum = _surum;
+          return h;
+        }));
   }
 
   /// web canOrPin('orders.comp'): uygulama her zaman terminal oturumudur;
@@ -913,20 +934,18 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         if (!x.kalem.odendi && !x.kalem.ikram) (kalem: x.kalem, adet: x.adet.clamp(1, x.kalem.adet)),
     ];
     if (secim.isEmpty) return;
-    final surum = _surum;
-    final ad = secim.map((x) => '${x.adet} × ${x.kalem.ad}').join(', ');
-    final kalir = secim.fold<int>(0, (t, x) => t + x.kalem.adet - x.adet);
-    final neden = await _penceredeyken(() => ikramPenceresi(context, ad, kalir: kalir));
-    if (neden == null || !mounted) return;
-    await _ikramlariIsle(secim, neden, surum);
+    await _ikramOnayi(secim);
   }
 
   /// Satırları sırayla ikram eder; her çağrı bir öncekinin döndürdüğü
   /// sürümle gider. Hata olursa durur: kaç satırın işlendiği söylenir,
   /// adisyon yeniden yüklenir, seçim temizlenir. Liste bir kez tazelenir.
-  Future<void> _ikramlariIsle(List<({Kalem kalem, int adet})> secim, String neden, int? surum) async {
+  /// Dönüş: null = pencere kapanabilir (işlendi ya da kısmen işlendi, bildirim
+  /// verildi); metin = HİÇBİRİ işlenmedi, hata pencerede gösterilir, seçim kalır.
+  Future<String?> _ikramlariIsle(List<({Kalem kalem, int adet})> secim, String neden, int? surum) async {
     final s = _secili;
-    if (s == null || _mesgul || secim.isEmpty) return;
+    if (s == null || secim.isEmpty) return null;
+    if (_mesgul) return 'Başka bir işlem sürüyor; birazdan tekrar deneyin.';
     setState(() => _mesgul = true);
     final yol = '/api/v1/orders/${s.id}';
     final pin = <String, dynamic>{};
@@ -942,21 +961,29 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         final o = son is Map && son['order'] is Map ? son['order'] as Map : null;
         guncelSurum = o == null ? null : _versiyon(o.cast<String, dynamic>());
       }
-      if (!mounted) return;
+      if (!mounted) return null;
       _secim.temizle();
       _acikKalem.value = null;
       context.bildir2('İkram işlendi',
           secim.length == 1 ? '${secim.single.adet} × ${secim.single.kalem.ad} ücretsiz' : '${secim.length} kalem ücretsiz');
       // Seçim temizlenince tahsil tutarı kalan tutara döner.
       await _degisimSonrasi(yanit: son);
+      return null;
     } on ApiHata catch (e) {
-      if (!mounted) return;
+      if (!mounted) return null;
+      if (islenen == 0) {
+        // Hiçbiri işlenmedi: pencere açık kalır, seçim korunur, adisyon
+        // yeniden okunur (yeniden denemede güncel sürüm gider).
+        await _degisimSonrasi();
+        return e.kod == 409 ? 'Adisyon başka bir cihazda değişti; güncel hali yüklendi. Kontrol edip tekrar onaylayın.' : e.mesaj;
+      }
       _secim.temizle();
       _acikKalem.value = null;
       context.bildir2(
           'İkram edilemedi', islenen > 0 ? '${e.mesaj} ($islenen / ${secim.length} kalem ikram edildi; kalanlar işlenmedi.)' : e.mesaj,
           hata: true);
       await _degisimSonrasi();
+      return null;
     } finally {
       if (mounted) setState(() => _mesgul = false);
     }
@@ -2120,7 +2147,6 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final d = _detay;
     final h = d?.ham ?? s.ham;
     final bagli = s.bagliMasalar.length;
-    final indirimVar = tamSayi(h['discount_minor']) > 0;
     final servisVar = tamSayi(h['service_charge_minor']) > 0;
     final urunAdedi = d?.aktifKalemler.fold<int>(0, (t, k) => t + k.adet);
 
@@ -2230,9 +2256,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ipucu: indirimToplam > 0
               ? 'Uygulanan: −${para(indirimToplam)}'
               : (_o.manuelIskonto ? 'Hazır indirim ya da manuel iskonto' : 'Hazır indirim uygula'),
-          renk: indirimToplam > 0 ? Renk.uyari : Renk.ikinci,
-          zemin: indirimToplam > 0 ? Renk.uyariZemin : Renk.ic,
-          kenar: indirimToplam > 0 ? Renk.uyariKenar : Renk.cizgi,
+          // Dolu yeşil + beyaz yazı/simge (2026-10-30 işletme: "okunabilsin").
+          // durumUstu: açık temada beyaz; koyu temada yeşil açık tonda
+          // olduğundan koyu yazı (tema eşlemesi, okunur kalsın).
+          renk: Renk.durumUstu,
+          zemin: Renk.basari,
+          kenar: Renk.basari,
           bas: indirimEtkin ? _indirimDiyalogu : null,
         ),
       // Adisyona ürün ekle: İndirim'in yanında (eskiden kalem listesinin altındaydı).
@@ -2292,7 +2321,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                       renk: Renk.ikinci,
                       zemin: Renk.ic,
                       kenar: Renk.cizgi,
-                      bas: () => _digerMenu(c, indirimVar: indirimVar, servisVar: servisVar, fis: fisMenude),
+                      bas: () => _digerMenu(c, servisVar: servisVar, fis: fisMenude),
                     ),
                   ),
                 ),
@@ -2320,7 +2349,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               renk: Renk.ikinci,
               zemin: Renk.ic,
               kenar: Renk.cizgi,
-              bas: () => _digerMenu(c, indirimVar: indirimVar, servisVar: servisVar),
+              bas: () => _digerMenu(c, servisVar: servisVar),
             ),
           ),
         ),
@@ -2467,7 +2496,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _digerMenu(BuildContext c, {required bool indirimVar, required bool servisVar, bool fis = false}) async {
+  Future<void> _digerMenu(BuildContext c, {required bool servisVar, bool fis = false}) async {
     final s = _secili!;
     final kutu = c.findRenderObject() as RenderBox;
     final p = kutu.localToGlobal(Offset.zero);
@@ -2484,9 +2513,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           items: [
             if (fis && s.odenen > 0) oge('fis', Icons.receipt_long_outlined, 'Ödeme fişi yazdır'),
             oge('yazici', Icons.print_outlined, 'Fiş yazıcısı · ${_yaziciAdi ?? 'seçilmedi'}'),
-            oge('onBill', Icons.preview_outlined, 'Hesap fişini önizle'),
+            // "Hesap fişini önizle" ve "İndirim / iskonto" buradan kaldırıldı
+            // (2026-10-30 işletme): ikisi de kendi düğmesinde (Hesap / İndirim).
             if (s.odenen > 0) oge('onPay', Icons.preview_outlined, 'Ödeme fişini önizle'),
-            if (_indirimYetkisi) oge('indirim', Icons.sell_outlined, 'İndirim / iskonto', etkin: _duzenlenebilir),
             if (_kalemDuzenler) oge('servis', Icons.room_service_outlined, servisVar ? 'Servis bedeli kaldır' : 'Servis bedeli ekle'),
             if (s.kalan > 0 && s.durum == 'bill_requested' && _odemeYetkisi) oge('geri', Icons.arrow_back_rounded, 'Tekrar siparişe gönder', etkin: !_mesgul),
             if (s.kalan > 0) oge('borc', Icons.person_add_alt_outlined, 'Borca yaz (şahıs)'),
@@ -2497,12 +2526,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         _fisYazdir('payment');
       case 'yazici':
         _yaziciSec();
-      case 'onBill':
-        _fisOnizle('bill');
       case 'onPay':
         _fisOnizle('payment');
-      case 'indirim':
-        _indirimDiyalogu();
       case 'servis':
         _servisBedeli();
       case 'geri':
@@ -2594,20 +2619,54 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           },
           child: const Text('Temizle'),
         ),
-        if (_ikramGorunur && (_detay?.acik ?? false))
-          TextButton.icon(
-            key: const ValueKey('kasa-secim-ikram'),
-            style: TextButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 10), foregroundColor: Renk.bilgi),
-            onPressed: secim.isNotEmpty && !_mesgul ? _seciliIkram : null,
-            icon: const Icon(Icons.card_giftcard_rounded, size: 16),
-            label: Text(secim.length > 1 ? 'İkram et (${secim.length})' : 'İkram et'),
-          ),
         const SizedBox(width: 2),
         FilledButton(
           style: FilledButton.styleFrom(minimumSize: const Size(0, 34), padding: const EdgeInsets.symmetric(horizontal: 12)),
           onPressed: _seciminiYaz,
           child: const Text('Tutara yaz'),
         ),
+        // SEÇİMDEN İKRAM → ⋮ MENÜSÜ (2026-10-30 işletme): "İkram et" üç nokta
+        // menüsüne taşındı; tekli, çoklu ve kısmi adet seçimde aynı. Doğrudan
+        // ikram ETMEZ — onay penceresi (ikramOnayPenceresi) açılır.
+        if (_ikramGorunur && (_detay?.acik ?? false)) ...[
+          const SizedBox(width: 4),
+          PopupMenuButton<String>(
+            key: const ValueKey('kasa-secim-menu'),
+            tooltip: 'Seçim işlemleri',
+            icon: Icon(Icons.more_vert_rounded, size: 20, color: Renk.ikinci),
+            style: IconButton.styleFrom(
+              minimumSize: const Size(34, 34),
+              fixedSize: const Size(34, 34),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
+              backgroundColor: Renk.yuzey,
+            ),
+            shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
+            onSelected: (v) {
+              if (v == 'ikram') _seciliIkram();
+            },
+            itemBuilder: (_) {
+              final adet = secim.fold<int>(0, (t, x) => t + x.adet);
+              final etkin = secim.isNotEmpty && !_mesgul;
+              return [
+                PopupMenuItem<String>(
+                  key: const ValueKey('kasa-secim-ikram'),
+                  value: 'ikram',
+                  enabled: etkin,
+                  child: Row(children: [
+                    Icon(Icons.card_giftcard_rounded, size: 17, color: etkin ? Renk.yazi : Renk.soluk),
+                    const SizedBox(width: 10),
+                    Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(adet > 0 ? 'İkram et ($adet)' : 'İkram et', style: const TextStyle(fontSize: 13.5)),
+                      if (secim.isEmpty)
+                        Text('İkram edilebilir ürün seçili değil', style: TextStyle(fontSize: 12, color: Renk.soluk)),
+                    ]),
+                  ]),
+                ),
+              ];
+            },
+          ),
+        ],
       ]),
     );
   }
