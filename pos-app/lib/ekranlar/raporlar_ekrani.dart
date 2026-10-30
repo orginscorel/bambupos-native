@@ -308,10 +308,13 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
   Future<void> _isGunuOku() async {
     try {
       final d = _harita(await _api.get('/api/v1/reports/eod/durum'));
-      final g = '${d['is_gunu'] ?? ''}';
+      // Bugün / Dün = TAKVİME göre iş günü (2026-10-30 düzeltmesi, web ile
+      // aynı). is_gunu son Z'den beri açık pencerenin günüdür: gün sonu gece
+      // 23:59'da alınınca ertesi gün "Bugün" yine önceki günü gösteriyordu.
+      final g = '${d['takvim_bugun'] ?? d['is_gunu'] ?? ''}';
       if (g.length >= 10) _bugun = g.substring(0, 10);
       _gunSaati = tamSayi(d['gun_baslangic_saati']).clamp(0, 23);
-      final dun = _harita(d['son_kapanis'])['is_gunu'];
+      final dun = d['takvim_dun'] ?? _harita(d['son_kapanis'])['is_gunu'];
       _dun = dun == null ? null : '$dun'.substring(0, math.min(10, '$dun'.length));
     } on ApiHata {
       // takvim günüyle devam (web ile aynı)
@@ -347,7 +350,10 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
 
   bool get _aralikTers => !_tBit.isAfter(_tBas);
 
-  /// Filtrele: taslak pencere rapora gider.
+  /// Taslak pencere rapora gider (2026-10-30: Filtrele düğmesi kalktı; tarih
+  /// ya da saat seçilince kendiliğinden çalışır). Aralık bir hazır dönemle
+  /// birebir aynıysa (gün başlangıç saatleri) o dönem seçili kalır — "Dün"
+  /// seçip tarihe dokununca "Özel aralık"a dönmez.
   void _filtrele() {
     if (_aralikTers) return;
     final eski = _donem;
@@ -356,12 +362,24 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
       _bas = _tBas;
       _bit = _tBit;
       if (degisti) {
-        _hazir = 'ozel';
-        _pencereli = true;
+        final sinirda = _bas.hour == _gunSaati && _bas.minute == 0 && _bit.hour == _gunSaati && _bit.minute == 0;
+        final esles = sinirda ? _eslesenHazir(_from, _to) : null;
+        _hazir = esles ?? 'ozel';
+        _pencereli = esles == null && !sinirda;
       }
       _hatalar.clear();
     });
     _yukle(zorla: _donem == eski);
+  }
+
+  /// from/to bir hazır dönemle aynıysa onun anahtarı.
+  String? _eslesenHazir(String from, String to) {
+    for (final (k, _) in _hazirlar) {
+      if (k == 'ozel') continue;
+      final a = _aralik(k);
+      if (a != null && a.$1 == from && a.$2 == to) return k;
+    }
+    return null;
   }
 
   /// İş günü: pencere başlangıç saatinden önceki an bir önceki güne yazılır.
@@ -528,8 +546,6 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
             bas,
             ara,
             bit,
-            ara,
-            _Dugme(metin: 'Filtrele', ikon: Icons.search_rounded, yukseklik: h, onTap: _aralikTers ? null : _filtrele),
           ],
           if (ozet) ...[ara, yazdir],
         ]),
@@ -545,8 +561,6 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
             Expanded(child: bas),
             ara,
             Expanded(child: bit),
-            ara,
-            _Dugme(metin: g >= 440 ? 'Filtrele' : null, ipucu: 'Filtrele', ikon: Icons.search_rounded, yukseklik: h, onTap: _aralikTers ? null : _filtrele),
           ]),
         ],
       ]),
@@ -578,7 +592,16 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
         );
         if (t == null) return;
         final yeni = DateTime(t.year, t.month, t.day, simdi.hour, simdi.minute);
-        setState(() => basMi ? _tBas = yeni : _tBit = yeni);
+        setState(() {
+          if (basMi) {
+            _tBas = yeni;
+            // Başlangıç bitişi geçerse bitiş bir gün ileri kayar.
+            if (!_tBit.isAfter(_tBas)) _tBit = DateTime(yeni.year, yeni.month, yeni.day + 1, _tBit.hour, _tBit.minute);
+          } else {
+            _tBit = yeni;
+          }
+        });
+        if (!_aralikTers) _filtrele();
         yenile(() {});
       }
 
@@ -593,6 +616,7 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
         if (t == null) return;
         final yeni = DateTime(simdi.year, simdi.month, simdi.day, t.hour, t.minute);
         setState(() => basMi ? _tBas = yeni : _tBit = yeni);
+        if (!_aralikTers) _filtrele();
         yenile(() {});
       }
 
@@ -636,20 +660,8 @@ class _RaporlarEkraniState extends State<RaporlarEkrani> {
             ),
           const SizedBox(height: 4),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            _Dugme(metin: 'Kapat', yukseklik: 40, onTap: () => Navigator.pop(c)),
-            const SizedBox(width: 6),
-            _Dugme(
-              metin: 'Filtrele',
-              ikon: Icons.search_rounded,
-              yukseklik: 40,
-              ana: true,
-              onTap: _aralikTers
-                  ? null
-                  : () {
-                      Navigator.pop(c);
-                      _filtrele();
-                    },
-            ),
+            // Seçilen tarih / saat anında uygulanır; düğme yalnız kapatır.
+            _Dugme(metin: 'Tamam', yukseklik: 40, ana: true, onTap: () => Navigator.pop(c)),
           ]),
         ]),
       );
