@@ -64,6 +64,12 @@ class DemoSunucu implements HttpClientAdapter {
       _gorev('Vitrin tatlılarını yenile', null, 4, 'low', at(1, 9), 'open'),
       _gorev('Kasa raporunu kontrol et', null, 5, 'normal', at(-1, 23), 'done'),
       _gorev('Menü panosunu güncelle', 'Kış içecekleri eklenecek', null, 'low', null, 'open'),
+      // Fotoğraflı onay (2026-10-30): personel bitirip onaya gönderdi.
+      {
+        ..._gorev('Bar tezgahını temizle', 'Raflar dahil', 3, 'normal', at(0, 16), 'review'),
+        'onay_destekli': true,
+        'onay': {'durum': 'pending', 'bekliyor': true, 'gonderim': _utc(_an.subtract(const Duration(minutes: 12))), 'not': 'Tezgah ve raflar silindi', 'inceleyen': null, 'inceleme': null, 'gerekce': null},
+      },
     ];
     _vardiyalar = [];
     final hb = g.subtract(Duration(days: g.weekday - 1));
@@ -365,6 +371,23 @@ class DemoSunucu implements HttpClientAdapter {
           b['due_at'] == null ? null : DateTime.parse(b['due_at'].toString()).toLocal(), 'open');
       _gorevler.insert(0, t);
       return (201, {'task': t});
+    }
+    if (seg.length == 5 && seg[2] == 'tasks' && m == 'POST' && (seg[4] == 'onayla' || seg[4] == 'reddet')) {
+      final t = _gorevler.where((x) => x['id'] == id(3)).firstOrNull;
+      if (t == null) return (404, {'message': 'Görev bulunamadı'});
+      if (t['status'] != 'review') return (422, {'message': 'Bu görev onay beklemiyor.'});
+      final onay = seg[4] == 'onayla';
+      t['status'] = onay ? 'done' : 'in_progress';
+      t['completed_at'] = onay ? _utc(_an) : null;
+      t['onay'] = {
+        ...(t['onay'] as Map? ?? const {}),
+        'durum': onay ? 'approved' : 'rejected',
+        'bekliyor': false,
+        'inceleyen': {'id': 99, 'name': demoPatronAdi},
+        'inceleme': _utc(_an),
+        'gerekce': onay ? null : b['gerekce'],
+      };
+      return (200, {'task': t});
     }
     if (seg.length == 4 && seg[2] == 'tasks') {
       final t = _gorevler.where((x) => x['id'] == id(3)).firstOrNull;

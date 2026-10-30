@@ -143,6 +143,14 @@ void main() {
         await t.pumpWidget(RepaintBoundary(key: k, child: PatronUygulamasi(ana: ekran)));
         await bekle(t, 25);
         await _cek(t, k, '$isim-$ad');
+        if (isim == 'gorevler') {
+          // Fotoğraflı onay: onay bekleyen görevin ayrıntısı (Reddet / Onayla).
+          await t.tap(find.text('Onayda'));
+          await bekle(t, 5);
+          await t.tap(find.text('Bar tezgahını temizle'));
+          await bekle(t, 10);
+          await _cek(t, k, 'gorev-onay-$ad');
+        }
         if (isim == 'vardiya') {
           await t.tap(find.text('Vardiya ekle').last);
           await bekle(t, 10);

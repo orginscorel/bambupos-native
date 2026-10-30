@@ -131,6 +131,37 @@ void main() {
     await t.pumpWidget(const SizedBox());
   });
 
+  testWidgets('görevler: fotoğraflı onay — onay bekleyen süzgeci, onayla (POST onayla)', (t) async {
+    final s = SahteSunucu({
+      'GET /api/v1/tasks': (200, {
+        'tasks': [
+          {'id': 7, 'title': 'Bar tezgahı', 'status': 'review', 'priority': 'normal', 'assigned_to': _personel[0], 'onay_destekli': true,
+            'onay': {'durum': 'pending', 'bekliyor': true, 'gonderim': DateTime.now().toUtc().toIso8601String(), 'not': 'Raflar silindi', 'inceleyen': null, 'inceleme': null, 'gerekce': null}},
+          {'id': 8, 'title': 'Depo', 'status': 'open', 'priority': 'normal', 'assigned_to': _personel[1]},
+        ],
+        'staff': _personel,
+        'onay_destekli': true,
+        'onay_yetkisi': true,
+      }),
+      'POST /api/v1/tasks/7/onayla': (200, {'task': {'id': 7, 'title': 'Bar tezgahı', 'status': 'done', 'priority': 'normal', 'assigned_to': _personel[0],
+        'onay': {'durum': 'approved', 'inceleyen': {'id': 1, 'name': 'Patron'}, 'inceleme': DateTime.now().toUtc().toIso8601String()}}}),
+    });
+    await _kur(t, s);
+    await t.pumpWidget(const PatronUygulamasi(ana: GorevlerEkrani(suzgec: GorevSuzgec.onay)));
+    await _bekle(t);
+    expect(find.text('Bar tezgahı'), findsOneWidget);
+    expect(find.text('Depo'), findsNothing);
+    expect(find.text('Onay bekliyor'), findsWidgets);
+    await t.tap(find.text('Bar tezgahı'));
+    await _bekle(t);
+    expect(find.textContaining('Raflar silindi'), findsOneWidget);
+    await t.tap(find.text('Onayla'));
+    await _bekle(t);
+    expect(s.govdeler.containsKey('POST /api/v1/tasks/7/onayla'), isTrue);
+    expect(Canli.gorevler.value!.firstWhere((g) => g['id'] == 7)['status'], 'done');
+    await t.pumpWidget(const SizedBox());
+  });
+
   testWidgets('vardiya: şablonla planlar, UTC gönderir, bildirim notu görünür', (t) async {
     final s = SahteSunucu({
       '/api/v1/shifts/meta': (200, _meta()),

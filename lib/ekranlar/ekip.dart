@@ -157,7 +157,13 @@ class _EkipEkraniState extends State<EkipEkrani> {
       return Wrap(spacing: 10, runSpacing: 10, children: [
         SizedBox(width: w, child: dugme(Icons.calendar_view_week_rounded, 'Vardiya planı', 'Haftalık takvim', Marka.mor, () => _ac(const VardiyaEkrani()))),
         SizedBox(width: w, child: dugme(Icons.fact_check_rounded, 'Mesai', 'Giriş, geç, mola', Marka.zumrut, () => _ac(const MesaiEkrani()))),
-        SizedBox(width: w, child: dugme(Icons.checklist_rounded, 'Görevler', '$acikGorev açık görev', Marka.mavi, () => _ac(const GorevlerEkrani()))),
+        SizedBox(
+          width: w,
+          child: Canli.onayBekleyenGorev > 0
+              ? dugme(Icons.checklist_rounded, 'Görevler', '${Canli.onayBekleyenGorev} onay bekliyor', Marka.mavi,
+                  () => _ac(const GorevlerEkrani(suzgec: GorevSuzgec.onay)), rozet: Canli.onayBekleyenGorev)
+              : dugme(Icons.checklist_rounded, 'Görevler', '$acikGorev açık görev', Marka.mavi, () => _ac(const GorevlerEkrani())),
+        ),
         SizedBox(width: w, child: dugme(Icons.inbox_rounded, 'Talepler', 'İzin, değişim', Marka.kehribar, () => _ac(const MesaiEkrani(sekme: 1)), rozet: bekleyen)),
       ]);
     });

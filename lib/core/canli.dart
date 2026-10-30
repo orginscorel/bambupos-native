@@ -189,7 +189,13 @@ class Canli {
     }).length;
   }
 
-  static void _rozet() => ekipRozet.value = bekleyenIzin.value + bekleyenTakas.value + gecikenGorev;
+  /// Fotoğraflı onay bekleyen görev sayısı (status review, sunucu 2026-10-30).
+  static int get onayBekleyenGorev => (gorevler.value ?? const []).where((t) => t.s('status') == 'review').length;
+
+  /// Görev listesi yerinde değişince (onay/ret) Ekip rozeti hemen tazelensin.
+  static void rozetTazele() => _rozet();
+
+  static void _rozet() => ekipRozet.value = bekleyenIzin.value + bekleyenTakas.value + gecikenGorev + onayBekleyenGorev;
 
   /// Şube adı (shifts/meta `branches` — yalnız geçerli şube döner).
   static String get subeAdi {

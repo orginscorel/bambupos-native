@@ -832,9 +832,13 @@ class _OzetEkraniState extends State<OzetEkrani> {
                                 decoration: BoxDecoration(color: r.arti, shape: BoxShape.circle),
                               ),
                               const SizedBox(width: 6),
-                              Text(
-                                p.s('name', '—'),
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: r.metin),
+                              Flexible(
+                                child: Text(
+                                  p.s('name', '—'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: r.metin),
+                                ),
                               ),
                               const SizedBox(width: 6),
                               Text(Bicim.dakika(p.i('worked_minutes')), style: TextStyle(fontSize: 12, color: r.silik)),

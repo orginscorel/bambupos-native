@@ -185,6 +185,22 @@ class Api {
 
   Future<dynamic> sil(String yol, {Map<String, dynamic>? sorgu}) => _istek('DELETE', yol, sorgu: sorgu);
 
+  /// Oturumla korunan dosyayı (görev fotoğrafı …) bayt olarak indirir.
+  /// 2xx değilse ApiHata.
+  Future<Uint8List> indir(String yol) async {
+    try {
+      final r = await _dio.get<List<int>>(yol, options: Options(responseType: ResponseType.bytes, headers: {'Accept': 'image/*'}));
+      final kod = r.statusCode ?? 0;
+      if (kod < 200 || kod >= 300 || r.data == null) {
+        if (kod == 401) oturumDustu?.call(ApiHata(kod, mesajCoz(kod, null)));
+        throw ApiHata(kod, mesajCoz(kod, null));
+      }
+      return Uint8List.fromList(r.data!);
+    } on DioException {
+      throw ApiHata(null, 'Fotoğraf indirilemedi. Bağlantınızı kontrol edin.');
+    }
+  }
+
   Future<dynamic> _istek(String yontem, String yol, {Map<String, dynamic>? sorgu, Object? govde, Duration? zamanAsimi}) async {
     var r = await _gonder(yontem, yol, sorgu: sorgu, govde: govde, zamanAsimi: zamanAsimi);
 

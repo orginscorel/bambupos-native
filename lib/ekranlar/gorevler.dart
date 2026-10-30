@@ -8,14 +8,16 @@ import '../core/canli.dart';
 import '../core/durum.dart';
 import '../core/tema.dart';
 import '../ortak/form.dart';
+import '../ortak/gorev_foto.dart';
 import '../ortak/ortak.dart';
 import '../ortak/ust_serit.dart';
 
 /// Görev filtresi.
-enum GorevSuzgec { acik, devam, geciken, bugun, biten, tumu }
+enum GorevSuzgec { onay, acik, devam, geciken, bugun, biten, tumu }
 
 extension GorevSuzgecX on GorevSuzgec {
   String get ad => switch (this) {
+        GorevSuzgec.onay => 'Onayda',
         GorevSuzgec.acik => 'Açık',
         GorevSuzgec.devam => 'Sürüyor',
         GorevSuzgec.geciken => 'Geciken',
@@ -28,6 +30,7 @@ extension GorevSuzgecX on GorevSuzgec {
     final st = t.s('status');
     final d = DateTime.tryParse(t.s('due_at'))?.toLocal();
     return switch (this) {
+      GorevSuzgec.onay => st == 'review',
       GorevSuzgec.acik => st != 'done',
       GorevSuzgec.devam => st == 'in_progress',
       GorevSuzgec.geciken => st != 'done' && d != null && d.isBefore(simdi),
@@ -47,6 +50,7 @@ extension GorevSuzgecX on GorevSuzgec {
 
 String durumAdi(String s) => switch (s) {
       'in_progress' => 'Devam ediyor',
+      'review' => 'Onay bekliyor',
       'done' => 'Tamamlandı',
       _ => 'Açık',
     };
@@ -106,6 +110,48 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
     }
   }
 
+  /* ── Fotoğraflı onay (sunucu 2026-10-30): POST /api/v1/tasks/{id}/onayla|reddet ── */
+
+  void _degistir(int id, Object? r) {
+    final g = r is Map ? r.m('task') : <String, dynamic>{};
+    if (g.isEmpty) return;
+    Canli.gorevler.value = [for (final x in Canli.gorevler.value ?? const <Map<String, dynamic>>[]) x.i('id') == id ? g : x];
+    Canli.rozetTazele();
+  }
+
+  Future<void> _onayla(Map<String, dynamic> t) async {
+    final id = t.i('id');
+    setState(() => _mesgul.add(id));
+    try {
+      _degistir(id, await Uyg.api.post('/api/v1/tasks/$id/onayla'));
+      HapticFeedback.mediumImpact();
+      bildir('Görev onaylandı', mesaj: t.s('title'));
+    } on ApiHata catch (e) {
+      if (e.yetkiYok) Canli.gorevYetki.value = Yetki.yok;
+      hataBildir(e, yetkiMesaji: 'Görev onaylama (görev atama) yetkiniz yok.');
+      if (e.kod == 422) _yukle();
+    } finally {
+      if (mounted) setState(() => _mesgul.remove(id));
+    }
+  }
+
+  Future<void> _reddet(Map<String, dynamic> t) async {
+    final gerekce = await retGerekcesiSor(context, t.s('title'));
+    if (gerekce == null || !mounted) return;
+    final id = t.i('id');
+    setState(() => _mesgul.add(id));
+    try {
+      _degistir(id, await Uyg.api.post('/api/v1/tasks/$id/reddet', {'gerekce': gerekce}));
+      bildir('Görev geri gönderildi', mesaj: t.s('title'));
+    } on ApiHata catch (e) {
+      if (e.yetkiYok) Canli.gorevYetki.value = Yetki.yok;
+      hataBildir(e, yetkiMesaji: 'Görev reddetme (görev atama) yetkiniz yok.');
+      if (e.kod == 422) _yukle();
+    } finally {
+      if (mounted) setState(() => _mesgul.remove(id));
+    }
+  }
+
   Future<void> _sil(Map<String, dynamic> t) async {
     final ok = await onayIste(context, baslik: 'Görev silinsin mi?', mesaj: '"${t.s('title')}" kalıcı olarak silinir.', evet: 'Sil', tehlikeli: true);
     if (!ok) return;
@@ -134,6 +180,10 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
         if (ok == true) _yukle();
       case 'sil':
         await _sil(t);
+      case 'onayla':
+        await _onayla(t);
+      case 'reddet':
+        await _reddet(t);
       default:
         await _durum(t, secim);
     }
@@ -224,7 +274,11 @@ class _GorevlerEkraniState extends State<GorevlerEkrani> {
                       t: suzulen[i],
                       mesgul: _mesgul.contains(suzulen[i].i('id')),
                       onTap: () => _detay(suzulen[i]),
-                      onTamamla: yazabilir ? () => _durum(suzulen[i], suzulen[i].s('status') == 'done' ? 'open' : 'done') : null,
+                      onTamamla: !yazabilir
+                          ? null
+                          : suzulen[i].s('status') == 'review'
+                              ? () => _detay(suzulen[i])
+                              : () => _durum(suzulen[i], suzulen[i].s('status') == 'done' ? 'open' : 'done'),
                     ),
                   ),
                 ),
@@ -245,6 +299,7 @@ class _OzetSerit extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = context.pa;
     Color renk(GorevSuzgec f) => switch (f) {
+          GorevSuzgec.onay => r.uyari,
           GorevSuzgec.geciken => r.eksi,
           GorevSuzgec.devam => Marka.mavi,
           GorevSuzgec.biten => r.arti,
@@ -255,6 +310,7 @@ class _OzetSerit extends StatelessWidget {
       height: 64,
       child: ListView(scrollDirection: Axis.horizontal, children: [
         for (final f in GorevSuzgec.values)
+          if (f != GorevSuzgec.onay || (sayi[f] ?? 0) > 0 || secili == f)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Semantics(
@@ -330,6 +386,8 @@ class GorevKarti extends StatelessWidget {
     final r = context.pa;
     final st = t.s('status');
     final bitti = st == 'done';
+    final onayda = st == 'review';
+    final fotoSayi = gorevFotolari(t).length;
     final due = DateTime.tryParse(t.s('due_at'))?.toLocal();
     final simdi = DateTime.now();
     final gecti = due != null && !bitti && due.isBefore(simdi);
@@ -340,16 +398,22 @@ class GorevKarti extends StatelessWidget {
       child: mesgul
           ? const Center(child: Yukleyici(boyut: 20))
           : IconButton(
-              tooltip: bitti ? 'Yeniden aç' : 'Tamamlandı işaretle',
+              tooltip: onayda ? 'Fotoğrafları incele' : bitti ? 'Yeniden aç' : 'Tamamlandı işaretle',
               onPressed: onTamamla,
               icon: AnimatedSwitcher(
                 duration: Hareket.kapali(context) ? Duration.zero : Hareket.kisa,
                 transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
                 child: Icon(
-                  bitti ? Icons.check_circle_rounded : st == 'in_progress' ? Icons.timelapse_rounded : Icons.radio_button_unchecked_rounded,
+                  bitti
+                      ? Icons.check_circle_rounded
+                      : onayda
+                          ? Icons.pending_actions_rounded
+                          : st == 'in_progress'
+                              ? Icons.timelapse_rounded
+                              : Icons.radio_button_unchecked_rounded,
                   key: ValueKey(st),
                   size: 26,
-                  color: bitti ? r.arti : st == 'in_progress' ? Marka.mavi : oRenk,
+                  color: bitti ? r.arti : onayda ? r.uyari : st == 'in_progress' ? Marka.mavi : oRenk,
                 ),
               ),
             ),
@@ -393,9 +457,12 @@ class GorevKarti extends StatelessWidget {
                           renk: gecti ? r.eksi : null,
                         ),
                       if (t.s('priority') == 'high') _Etiket(ikon: Icons.priority_high_rounded, yazi: oAd, renk: oRenk),
-                      if (st == 'in_progress') _Etiket(ikon: Icons.timelapse_rounded, yazi: 'Devam ediyor', renk: Marka.mavi),
-                      if ((t['photos'] is List && (t['photos'] as List).isNotEmpty) || t.s('foto_url').isNotEmpty)
-                        const _Etiket(ikon: Icons.photo_camera_rounded, yazi: 'Fotoğraf'),
+                      if (st == 'in_progress' && gorevOnay(t)?['durum'] == 'rejected')
+                        _Etiket(ikon: Icons.undo_rounded, yazi: 'Geri gönderildi', renk: r.eksi)
+                      else if (st == 'in_progress')
+                        _Etiket(ikon: Icons.timelapse_rounded, yazi: 'Devam ediyor', renk: Marka.mavi),
+                      if (onayda) _Etiket(ikon: Icons.pending_actions_rounded, yazi: 'Onay bekliyor', renk: r.uyari),
+                      if (fotoSayi > 0) _Etiket(ikon: Icons.photo_camera_rounded, yazi: fotoSayi == 1 ? 'Fotoğraf' : '$fotoSayi fotoğraf'),
                     ]),
                   ]),
                 ),
@@ -449,6 +516,15 @@ class _GorevDetay extends StatelessWidget {
     final (oAd, oRenk) = oncelikBilgi(t.s('priority'), r);
     final olusturma = DateTime.tryParse(t.s('created_at'))?.toLocal();
     final bitis = DateTime.tryParse(t.s('completed_at'))?.toLocal();
+    final onay = gorevOnay(t);
+    final onayda = st == 'review';
+    final fotolar = gorevFotolari(t);
+    DateTime? zmn(Object? v) => DateTime.tryParse(v?.toString() ?? '')?.toLocal();
+    final gonderim = zmn(onay?['gonderim']);
+    final inceleme = zmn(onay?['inceleme']);
+    final inceleyen = onay?['inceleyen'] is Map ? (onay!['inceleyen'] as Map)['name']?.toString() : null;
+    final pNot = onay?['not']?.toString() ?? '';
+    final gerekce = onay?['gerekce']?.toString() ?? '';
     Widget bilgi(String ad, String deger, {Color? renk}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(children: [
@@ -462,6 +538,8 @@ class _GorevDetay extends StatelessWidget {
       ikon: Icons.assignment_rounded,
       dugmeler: !yazabilir
           ? null
+          : onayda
+          ? OnayDugmeleri(onOnayla: () => Navigator.of(context).pop('onayla'), onReddet: () => Navigator.of(context).pop('reddet'))
           : Row(children: [
               IconButton.outlined(
                 tooltip: 'Sil',
@@ -489,6 +567,22 @@ class _GorevDetay extends StatelessWidget {
           Text(t.s('description'), style: TextStyle(color: r.metin, fontSize: 14, height: 1.45)),
           const SizedBox(height: 8),
         ],
+        if (onayda || fotolar.isNotEmpty) ...[
+          if (onayda && gonderim != null) bilgi('Gönderildi', Bicim.tarihSaat(gonderim)),
+          if (pNot.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text('“$pNot”', style: TextStyle(color: r.metin, fontSize: 14, height: 1.4)),
+            ),
+          if (onayda && gerekce.isNotEmpty) bilgi('Önceki ret', gerekce),
+          if (fotolar.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            FotoSeridi(fotolar: fotolar, boyut: 104),
+            const SizedBox(height: 8),
+          ],
+        ],
+        if (st == 'in_progress' && onay?['durum'] == 'rejected' && gerekce.isNotEmpty)
+          bilgi('Geri gönderildi', gerekce, renk: r.eksi),
         Divider(color: r.kenar),
         bilgi('Atanan', t.m('assigned_to').s('name', t.b('herkese_acik') ? 'Herkes (ilk alan)' : 'Atanmamış')),
         bilgi('Öncelik', oAd, renk: oRenk),
@@ -496,6 +590,8 @@ class _GorevDetay extends StatelessWidget {
         if (t.m('created_by').isNotEmpty) bilgi('Oluşturan', t.m('created_by').s('name')),
         if (olusturma != null) bilgi('Oluşturulma', Bicim.tarihSaat(olusturma)),
         if (bitis != null) bilgi('Tamamlanma', Bicim.tarihSaat(bitis), renk: r.arti),
+        if (st == 'done' && onay?['durum'] == 'approved' && inceleyen != null)
+          bilgi('Onaylayan', inceleme != null ? '$inceleyen · ${Bicim.tarihSaat(inceleme)}' : inceleyen),
         if (yazabilir && st == 'open') ...[
           const SizedBox(height: 10),
           OutlinedButton.icon(
