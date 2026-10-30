@@ -115,8 +115,13 @@ List<PosEkrani> ekranlariHesapla(Oturum o) {
 }
 
 /// "Tümü" kutusu: web çekmecesi (aynı sıra, gizli anahtarlar hariç).
-List<PosEkrani> cekmeceEkranlari(Oturum o) =>
-    PosEkrani.values.where((e) => ekranGorunur(o, e) && !_cekmeceGizli.contains(e.anahtar)).toList();
+/// Kasa cihazında Görevler şeritte değil (Kasa · Siparişler · Self), bu
+/// yüzden "Tümü" kutusunda görünür.
+List<PosEkrani> cekmeceEkranlari(Oturum o) => PosEkrani.values
+    .where((e) =>
+        ekranGorunur(o, e) &&
+        (!_cekmeceGizli.contains(e.anahtar) || (e.anahtar == 'tasks' && o.istasyon == 'kasa')))
+    .toList();
 
 /// Başka bir ekrandan (ör. adisyon "Kasaya git") kabuğa ekran değiştirme isteği.
 final ekranIstegi = ValueNotifier<PosEkrani?>(null);
