@@ -85,7 +85,7 @@ enum PosEkrani {
 
 /// usePanelNav CEKMECE_GIZLI_ANAHTAR: "Tümü" kutusunda görünmeyenler
 /// (şeritte kısayolu olan ya da yönetimde duran bölümler).
-const _cekmeceGizli = {'inventory', 'wifi', 'discounts', 'catalog', 'runner', 'barista', 'kds', 'tables', 'staff', 'shifts', 'tasks', 'mesailer', 'settings'};
+const _cekmeceGizli = {'inventory', 'wifi', 'discounts', 'catalog', 'runner', 'barista', 'kds', 'tables', 'staff', 'shifts', 'tasks', 'mesailer', 'settings', 'self'};
 
 /// Cihazın istasyonu → açılışta gelen ana ekran.
 PosEkrani anaEkran(Oturum o) => switch (o.istasyon) {
