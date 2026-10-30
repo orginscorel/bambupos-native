@@ -226,3 +226,25 @@ class KalemNotu extends StatelessWidget {
         ]),
       );
 }
+
+/// Tek adetli kalemde saat + personel satırı (açılan adet kartındaki simgelerle).
+List<Widget> tekAdetEkleyen(Kalem k) {
+  final b = birimDokumu(k).first;
+  if (b.saat == null && b.kisi == null) return const [];
+  final kisi = b.kisi ?? (b.devir ? 'devir / aktarım' : '—');
+  return [
+    Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(children: [
+        Icon(Icons.schedule_rounded, size: 14, color: Renk.ikinci),
+        const SizedBox(width: 4),
+        Text(b.saat == null ? '—' : saatMetni(b.saat),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Renk.yazi, fontFeatures: const [FontFeature.tabularFigures()])),
+        const SizedBox(width: 10),
+        Icon(Icons.person_outline_rounded, size: 14, color: Renk.soluk),
+        const SizedBox(width: 3),
+        Flexible(child: Text(kisi, key: ValueKey('kalem-ekleyen-${k.id}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Renk.ikinci))),
+      ]),
+    ),
+  ];
+}

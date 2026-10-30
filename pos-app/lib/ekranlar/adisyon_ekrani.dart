@@ -1673,7 +1673,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   if (k.secenekler.isNotEmpty) Text(k.secenekler.join(', '), style: TextStyle(fontSize: 12, color: Renk.ikinci)),
                   // Kim, kaçta (2026-10-30 işletme): TEK adetli üründe açılan karttaki
                   // gibi saat + personel satırda; 1'den fazla adette yalnız açılan kartlarda.
-                  if (k.adet == 1 && !acik) ..._tekAdetEkleyen(k),
+                  if (k.adet == 1 && !acik) ...tekAdetEkleyen(k),
                   if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
                   if (k.ikram) Text('İkram — ${k.ikramNedeni ?? ''}', style: TextStyle(fontSize: 12, color: Renk.basari)),
                 ]),
@@ -2132,24 +2132,3 @@ class _UrunKarti extends StatelessWidget {
   }
 }
 
-/// Tek adetli kalemde saat + personel satırı (açılan adet kartındaki simgelerle).
-List<Widget> _tekAdetEkleyen(Kalem k) {
-  final b = birimDokumu(k).first;
-  if (b.saat == null && b.kisi == null) return const [];
-  final kisi = b.kisi ?? (b.devir ? 'devir / aktarım' : '—');
-  return [
-    Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Row(children: [
-        Icon(Icons.schedule_rounded, size: 14, color: Renk.ikinci),
-        const SizedBox(width: 4),
-        Text(b.saat == null ? '—' : saatMetni(b.saat),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Renk.yazi, fontFeatures: const [FontFeature.tabularFigures()])),
-        const SizedBox(width: 10),
-        Icon(Icons.person_outline_rounded, size: 14, color: Renk.soluk),
-        const SizedBox(width: 3),
-        Flexible(child: Text(kisi, key: ValueKey('kalem-ekleyen-${k.id}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: Renk.ikinci))),
-      ]),
-    ),
-  ];
-}

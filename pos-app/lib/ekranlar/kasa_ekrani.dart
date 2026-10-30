@@ -2751,6 +2751,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                 color: soluk ? Renk.soluk : Renk.yazi,
               )),
           if (meta.isNotEmpty) Text(meta.join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          // Kim, kaçta: tek adette satırda (adisyon ekranıyla aynı).
+          if (k.adet == 1) ...tekAdetEkleyen(k),
           if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
           if (secilebilir && k.odenmemisAdet < k.adet)
             Text('${k.adet - k.odenmemisAdet} adet ödendi${secAdet > 0 ? ' · $secAdet seçili' : ''}',
