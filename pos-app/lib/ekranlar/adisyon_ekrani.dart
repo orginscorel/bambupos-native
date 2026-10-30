@@ -1671,6 +1671,13 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                     style: const TextStyle(fontSize: 15),
                   ),
                   if (k.secenekler.isNotEmpty) Text(k.secenekler.join(', '), style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+                  // Kim, kaçta: her ekleme saat + personel (açıkken kartlarda var).
+                  if (!acik && ekleyenOzeti(k).isNotEmpty)
+                    Text(ekleyenOzeti(k),
+                        key: ValueKey('kalem-ekleyen-${k.id}'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: Renk.ikinci)),
                   if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
                   if (k.ikram) Text('İkram — ${k.ikramNedeni ?? ''}', style: TextStyle(fontSize: 12, color: Renk.basari)),
                 ]),

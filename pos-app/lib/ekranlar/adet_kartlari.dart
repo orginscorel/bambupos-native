@@ -24,6 +24,32 @@ List<BirimDokum> birimDokumu(Kalem k) {
   return l;
 }
 
+/// EKLEYEN ÖZETİ (2026-10-30 işletme talebi: "adetli ürünlerin hepsinde
+/// zaman ve personel adı yazmalı, kim sipariş vermiş görelim"). Satırın her
+/// eklemesi saat + PIN'le girmiş personel olarak tek satırda; aynı dakikada
+/// aynı kişinin eklemeleri birleşir:
+///   "2× 14:02 Ahmet Yılmaz · 14:20 Ayşe Kaya"
+/// Tek ekleme (ya da hepsi aynı kişi/dakika) → "14:02 Ahmet Yılmaz".
+/// Sunucu döküm vermezse boş metin (satır çizilmez).
+String ekleyenOzeti(Kalem k) {
+  final gruplar = <({String saat, String kisi, int adet})>[];
+  for (final b in birimDokumu(k)) {
+    final saat = b.saat == null ? '' : saatMetni(b.saat);
+    final kisi = (b.kisi ?? '').trim();
+    if (saat.isEmpty && kisi.isEmpty) continue;
+    if (gruplar.isNotEmpty && gruplar.last.saat == saat && gruplar.last.kisi == kisi) {
+      final g = gruplar.removeLast();
+      gruplar.add((saat: g.saat, kisi: g.kisi, adet: g.adet + 1));
+    } else {
+      gruplar.add((saat: saat, kisi: kisi, adet: 1));
+    }
+  }
+  final cok = gruplar.length > 1;
+  return gruplar
+      .map((g) => [if (cok && g.adet > 1) '${g.adet}×', if (g.saat.isNotEmpty) g.saat, if (g.kisi.isNotEmpty) g.kisi].join(' '))
+      .join(' · ');
+}
+
 /// ADET KARTLARI (web sipariş detayı gibi; Kasa ve Adisyon ortak): çok
 /// adetli satır açılınca her adet ayrı kart —
 ///   [ ] 🕒 19:40 │ Çay / 👤 Muhammet Ali Yeni      30,00 ₺
