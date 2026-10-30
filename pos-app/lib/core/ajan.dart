@@ -7,8 +7,10 @@ import 'package:flutter/foundation.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ag_teshis.dart';
 import 'api.dart';
 import 'usb.dart';
+import 'yazici_kimlik.dart';
 
 /// UYGULAMA = YAZDIRMA AJANI.
 ///
@@ -42,6 +44,16 @@ class YazdirmaAjani extends ChangeNotifier {
   bool _kapandi = false;
   bool _isAliniyor = false;
   bool _taraniyor = false;
+
+  /* YAZICI KİMLİĞİ (2026-10-30): IP değişince yazıcıyı kimliğinden bulma.
+     Aynı IP'ye aynı anda hem fiş hem kimlik sorusu gitmesin: her ağ
+     yazıcısı bağlantısı IP başına sıraya girer. */
+  final Map<String, Future<void>> _ipSirasi = {};
+  final Map<String, DateTime> _sonBaski = {};
+  final Map<int, DateTime> _kurtarmaZamani = {};
+  final Map<int, DateTime> _baglamaZamani = {};
+  final Map<int, (String, int)> _baglanacak = {};
+  Timer? _baglamaSaat;
 
   /// Ekranda gösterilebilecek son durum.
   String durum = 'Bekliyor';
@@ -148,7 +160,12 @@ class YazdirmaAjani extends ChangeNotifier {
     _isAliniyor = true;
     try {
       final r = await _api.get('/api/v1/print/agent/jobs',
-          sorgu: {'yalniz_ag': 1, 'limit': 5, if (_usb.destekli) 'usb': 1}, basliklar: _baslik);
+          sorgu: {'yalniz_ag': 1, 'limit': 5, if (_usb.destekli) 'usb': 1, 'teshis': 1}, basliklar: _baslik);
+      // "Bu adreste ne var?" / "Ağı tara" istekleri (konsoldan). Arka planda.
+      if (r is Map && r['teshis'] is List && !_teshisCalisiyor) {
+        final t = (r['teshis'] as List).whereType<Map>().toList();
+        if (t.isNotEmpty) unawaited(_teshisYap(t.first));
+      }
       final isler = (r is Map && r['jobs'] is List) ? (r['jobs'] as List).whereType<Map>().toList() : const <Map>[];
       for (final is_ in isler) {
         await _bas(is_);
@@ -183,9 +200,30 @@ class YazdirmaAjani extends ChangeNotifier {
           final c = usbCihazlar.firstWhere((c) => c.anahtar == yon.anahtar);
           await _usb.yaz(c, base64Decode(is_['payload_base64']?.toString() ?? ''), kopya: kopya);
         case IsYonu.ag:
-          final port = (yazici!['port'] as num?)?.toInt() ?? 9100;
+          var port = (yazici!['port'] as num?)?.toInt() ?? 9100;
+          var hedef = yazici['ip'].toString();
           final bayt = base64Decode(is_['payload_base64']?.toString() ?? '');
-          await agaYaz(yazici['ip'].toString(), port, bayt, kopya: kopya);
+          try {
+            await _sirayla(hedef, () => agaYaz(hedef, port, bayt, kopya: kopya));
+          } on BaglantiKurulamadi catch (e) {
+            // Yazıcıya hiç bağlanılamadı (fiş kâğıda gitmedi): IP değişmiş
+            // olabilir. Sunucu kimlikten KESİN bulursa adres güncellenir ve
+            // fiş bir kez yeni adrese denenir; bulamazsa eski hata kalır.
+            final yeni = await _agKurtar(yazici);
+            if (yeni == null) rethrow;
+            hedef = yeni.ip;
+            port = yeni.port;
+            try {
+              await _sirayla(hedef, () => agaYaz(hedef, port, bayt, kopya: kopya));
+            } catch (_) {
+              throw e;
+            }
+          }
+          // Kimliği henüz bağlanmamış yazıcı: işler bitince sessizce sorulur.
+          final pid = (yazici['id'] as num?)?.toInt();
+          if (pid != null && yazici['kimlik_eksik'] == true && yazici['aday_testi'] != true) {
+            _kimlikBaglaPlanla(pid, hedef, port);
+          }
       }
       basilanFis++;
     } catch (e) {
@@ -199,9 +237,15 @@ class YazdirmaAjani extends ChangeNotifier {
     }
   }
 
-  /// Ham baytı (ESC/POS) ağ yazıcısına gönderir.
+  /// Ham baytı (ESC/POS) ağ yazıcısına gönderir. Bağlantı HİÇ kurulamazsa
+  /// [BaglantiKurulamadi] atar (fişin hiçbir parçası gitmedi demektir).
   static Future<void> agaYaz(String ip, int port, List<int> bayt, {int kopya = 1}) async {
-    final s = await Socket.connect(ip, port, timeout: const Duration(seconds: 5));
+    final Socket s;
+    try {
+      s = await Socket.connect(ip, port, timeout: const Duration(seconds: 5));
+    } catch (e) {
+      throw BaglantiKurulamadi(e);
+    }
     try {
       for (var i = 0; i < kopya; i++) {
         s.add(bayt);
@@ -210,6 +254,160 @@ class YazdirmaAjani extends ChangeNotifier {
     } finally {
       await s.close();
       s.destroy();
+    }
+  }
+
+  /// Aynı IP'ye bağlantıları sıraya koyar (fiş ↔ kimlik sorusu çakışmasın).
+  Future<T> _sirayla<T>(String ip, Future<T> Function() f) async {
+    final onceki = _ipSirasi[ip] ?? Future<void>.value();
+    final bitti = Completer<void>();
+    final benim = bitti.future;
+    _ipSirasi[ip] = benim;
+    try {
+      await onceki;
+    } catch (_) {}
+    try {
+      return await f();
+    } finally {
+      _sonBaski[ip] = DateTime.now();
+      bitti.complete();
+      if (identical(_ipSirasi[ip], benim)) _ipSirasi.remove(ip);
+    }
+  }
+
+  /// Yazıcı az önce iş bastıysa / basıyorsa kimlik sorulmaz.
+  bool _yoklanabilir(String ip) {
+    if (_ipSirasi.containsKey(ip)) return false;
+    final s = _sonBaski[ip];
+    return s == null || DateTime.now().difference(s) > const Duration(seconds: 5);
+  }
+
+  /// Kimlik sorusu (sıraya girerek). Meşgulse boş döner.
+  Future<YaziciKimlik> _kimlikSor(String ip, int port, Map<String, String> arp) async {
+    if (!_yoklanabilir(ip)) return YaziciKimlik(mac: arp[ip]);
+    final k = await _sirayla(ip, () => KimlikYoklayici.sor(ip, port));
+    return k.macIle(arp[ip]);
+  }
+
+  /// BAĞLANTI KURULAMADI → kendini onarma. Aynı ağ hızlıca (yalnız yazıcının
+  /// portu) taranır, bulunan cihazların kimliği sunucuya gönderilir. Karar
+  /// SUNUCUNUNDUR: kayıtlı kimlikle KESİN eşleşen (MAC ya da seri no) TEK
+  /// cihaz varsa ve adres başka yazıcıya ait değilse IP güncellenir; aksi
+  /// hâlde yalnız öneri yazılır. Yazıcı başına 3 dakikada bir.
+  Future<({String ip, int port})?> _agKurtar(Map yazici) async {
+    final id = (yazici['id'] as num?)?.toInt();
+    if (id == null || yazici['aday_testi'] == true || _jeton == null) return null;
+    final simdi = DateTime.now();
+    final son = _kurtarmaZamani[id];
+    if (son != null && simdi.difference(son) < const Duration(minutes: 3)) return null;
+    _kurtarmaZamani[id] = simdi;
+    try {
+      final yerel = await _yerelIp();
+      if (yerel == null) return null;
+      final eski = yazici['ip'].toString();
+      final port = (yazici['port'] as num?)?.toInt() ?? 9100;
+      final onek = yerel.substring(0, yerel.lastIndexOf('.') + 1);
+      final acik = await _paralelYokla([
+        for (var h = 1; h < 255; h++)
+          if ('$onek$h' != yerel && '$onek$h' != eski) ('$onek$h', port),
+      ]);
+      final arp = await KimlikYoklayici.arpTablosu();
+      final cihazlar = <Map<String, dynamic>>[];
+      for (final (a, p) in acik) {
+        final k = await _kimlikSor(a, p, arp);
+        cihazlar.add({'ip': a, 'port': p, if (!k.bos) 'kimlik': k.toJson()});
+      }
+      final r = await _api.post('/api/v1/print/agent/kurtar', {
+        'printer_id': id,
+        'eski_ip': eski,
+        'cihaz_ip': yerel,
+        'cihazlar': cihazlar,
+      }, _baslik);
+      if (r is Map && r['degisti'] == true && r['ip'] is String) {
+        return (ip: r['ip'] as String, port: (r['port'] as num?)?.toInt() ?? port);
+      }
+    } catch (_) {
+      // Eski sunucu (uç yok) / ağ hatası: eski davranış sürer.
+    }
+    return null;
+  }
+
+  /// Başarılı fişten sonra, işler durulunca yazıcının kimliği sorulur ve
+  /// sunucuya bağlanır (yazıcı başına 30 dakikada en çok bir kez).
+  void _kimlikBaglaPlanla(int id, String ip, int port) {
+    final son = _baglamaZamani[id];
+    if (son != null && DateTime.now().difference(son) < const Duration(minutes: 30)) return;
+    _baglanacak[id] = (ip, port);
+    _baglamaSaat?.cancel();
+    _baglamaSaat = Timer(const Duration(seconds: 6), _kimlikleriBagla);
+  }
+
+  Future<void> _kimlikleriBagla() async {
+    if (_kapandi || _jeton == null || _baglanacak.isEmpty) return;
+    if (_isAliniyor) {
+      _baglamaSaat = Timer(const Duration(seconds: 6), _kimlikleriBagla);
+      return;
+    }
+    final liste = Map.of(_baglanacak);
+    _baglanacak.clear();
+    final arp = await KimlikYoklayici.arpTablosu();
+    for (final e in liste.entries) {
+      final (ip, port) = e.value;
+      if (!_yoklanabilir(ip)) {
+        _kimlikBaglaPlanla(e.key, ip, port);
+        continue;
+      }
+      _baglamaZamani[e.key] = DateTime.now();
+      final k = await _kimlikSor(ip, port, arp);
+      if (k.bos) continue;
+      try {
+        await _api.post('/api/v1/print/agent/kimlik', {
+          'printer_id': e.key,
+          'ip': ip,
+          'port': port,
+          'kimlik': k.toJson(),
+        }, _baslik);
+      } catch (_) {
+        // Eski sunucu: bir sonraki denemede.
+      }
+    }
+  }
+
+  bool _teshisCalisiyor = false;
+
+  /// Konsoldan istenen ağ teşhisi: tek adres ya da tüm ağ. Sonuç ham
+  /// ipuçlarıdır; türü sunucu tahmin eder. Yazıcıya baskı gitmez.
+  Future<void> _teshisYap(Map istek) async {
+    final id = (istek['id'] as num?)?.toInt();
+    if (id == null || _jeton == null) return;
+    _teshisCalisiyor = true;
+    try {
+      final yerel = await _yerelIp();
+      Map<String, dynamic> govde;
+      if (yerel == null) {
+        govde = {'hata': 'Cihazın yerel ağ adresi bulunamadı'};
+      } else if (istek['tur'] == 'ag') {
+        final l = await AgTeshis.ag(yerel, arpOku: KimlikYoklayici.arpTablosu, kimlikSor: (ip, port) async {
+          return _kimlikSor(ip, port, await KimlikYoklayici.arpTablosu());
+        });
+        govde = {'cihaz_ip': yerel, 'cihazlar': l};
+      } else {
+        final ip = '${istek['ip'] ?? ''}';
+        final ayniAg = ip.contains('.') && ip.substring(0, ip.lastIndexOf('.')) == yerel.substring(0, yerel.lastIndexOf('.'));
+        if (!ayniAg) {
+          govde = {'cihaz_ip': yerel, 'hata': 'Bu cihaz farklı bir ağda'};
+        } else {
+          final c = await AgTeshis.cihaz(ip, arpOku: KimlikYoklayici.arpTablosu, kimlikSor: (a, p) async {
+            return _kimlikSor(a, p, await KimlikYoklayici.arpTablosu());
+          });
+          govde = {'cihaz_ip': yerel, 'cihazlar': [c]};
+        }
+      }
+      await _api.post('/api/v1/print/agent/teshis/$id', govde, _baslik);
+    } catch (_) {
+      // Sunucu isteği zaman aşımında başka cihaza verir.
+    } finally {
+      _teshisCalisiyor = false;
     }
   }
 
@@ -248,6 +446,16 @@ class YazdirmaAjani extends ChangeNotifier {
       final tekil = <String, Map<String, dynamic>>{};
       for (final y in yazicilar..sort((a, b) => (a['port'] == 9100 ? 0 : 1).compareTo(b['port'] == 9100 ? 0 : 1))) {
         tekil.putIfAbsent(y['ip'] as String, () => y);
+      }
+
+      // Kimlik (yalnız 9100 fiş yazıcıları; meşgul olan atlanır).
+      if (tekil.values.any((y) => y['port'] == 9100)) {
+        final arp = await KimlikYoklayici.arpTablosu();
+        for (final y in tekil.values) {
+          if (y['port'] != 9100) continue;
+          final k = await _kimlikSor(y['ip'] as String, 9100, arp);
+          if (!k.bos) y['kimlik'] = k.toJson();
+        }
       }
 
       bulunanYazicilar = tekil.values.toList();
@@ -342,7 +550,7 @@ class YazdirmaAjani extends ChangeNotifier {
       if (degisti) notifyListeners();
       // Liste değişince hemen; değişmese de 10 dk'da bir canlılık bildirimi.
       final eski = _usbSonBildirim == null || DateTime.now().difference(_usbSonBildirim!) > const Duration(minutes: 10);
-      if (sunucuyaDegisti || eski || bildir) await _usbBildir();
+      if (sunucuyaDegisti || eski || bildir) await _usbBildir(acil: bildir);
     } catch (e) {
       usbHata = e is UsbHata ? e.mesaj : 'USB cihazlar okunamadı';
       notifyListeners();
@@ -358,8 +566,15 @@ class YazdirmaAjani extends ChangeNotifier {
   /// USB listesi bu cihazın TAM listesidir (sunucu yerine koyar). Eski sunucu
   /// `discovered` alanını `printers` gelmezse boşalttığı için son ağ taraması
   /// da birlikte gönderilir.
-  Future<void> _usbBildir() async {
+  Future<void> _usbBildir({bool acil = false}) async {
     if (_jeton == null) return;
+    // İlk ağ taraması henüz bitmediyse olağan bildirim beklenir: tarama USB
+    // listesini de taşır. (Eski sunucu `printers` gelmeyince ağda bulunan
+    // listeyi boşaltıyordu.) Kullanıcı eylemi (Yenile / Ekle) beklemez.
+    if (!acil && sonTarama == null && !_taraniyor) {
+      _tekSefer ??= Timer(const Duration(seconds: 60), tara);
+      return;
+    }
     try {
       final r = await _api.post('/api/v1/print/agent/discovered', {
         'usb': [for (final c in usbCihazlar) c.sunucuyaJson()],
@@ -427,7 +642,7 @@ class YazdirmaAjani extends ChangeNotifier {
     if ((tur ?? c.tur) == 'yazici' && c.izinGerekli) await usbIzinIste(c);
     try {
       // Önce güncel listeyi bildir: sunucu anahtarı tanısın.
-      await _usbBildir();
+      await _usbBildir(acil: true);
       final r = await _api.post('/api/v1/print/agent/usb/benimse', {
         'anahtar': c.anahtar,
         if (ad != null && ad.trim().isNotEmpty) 'ad': ad.trim(),
@@ -602,8 +817,17 @@ class YazdirmaAjani extends ChangeNotifier {
     _tarama?.cancel();
     _usbSaat?.cancel();
     _usbErteleme?.cancel();
+    _baglamaSaat?.cancel();
     _usbOlay?.cancel();
     _usb.kapat();
     super.dispose();
   }
+}
+
+/// Ağ yazıcısına bağlantı hiç kurulamadı (fiş gönderilmedi).
+class BaglantiKurulamadi implements Exception {
+  BaglantiKurulamadi(this.neden);
+  final Object neden;
+  @override
+  String toString() => neden.toString();
 }
