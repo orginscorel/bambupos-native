@@ -8,6 +8,7 @@ import '../core/api.dart';
 import '../core/durum.dart';
 import '../core/tema.dart';
 import '../ortak/ortak.dart';
+import '../ortak/gorev_onay.dart';
 import 'gorevler.dart';
 
 /// EKİBİM — yönetici modu. Yalnız `staff.view` / `staff.manage` /
@@ -46,6 +47,9 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
   List<Map<String, dynamic>>? _gorevler;
   ApiHata? _gorevHata;
   int _gorevSekme = 0; // 0 aktif, 1 tamamlanan
+  /// Fotoğraflı onay: karar yetkisi (tasks.assign) + karar süren görev.
+  bool _onayYetkisi = false;
+  int _kararMesgul = 0;
 
   Timer? _yokla;
   bool _onde = true;
@@ -103,6 +107,7 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() {
         _gorevler = l(r['gorevler']);
+        _onayYetkisi = r['onay_yetkisi'] == true;
         _gorevHata = null;
       });
     } on ApiHata catch (e) {
@@ -317,6 +322,20 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
 
   /* ───────────── Görevler ───────────── */
 
+  Future<void> _karar(Map<String, dynamic> g, bool onay) async {
+    if (_kararMesgul != 0) return;
+    final id = (g['id'] as num).toInt();
+    if (onay) setState(() => _kararMesgul = id);
+    final yeni = onay ? await gorevOnayla(id) : await gorevReddet(context, g);
+    if (!mounted) return;
+    setState(() {
+      _kararMesgul = 0;
+      final i = _gorevler?.indexWhere((t) => t['id'] == id) ?? -1;
+      if (yeni != null && i >= 0) _gorevler![i] = yeni;
+    });
+    if (yeni != null) _gorevYukle(true);
+  }
+
   Widget _gorevlerSekmesi() {
     final r = context.pa;
     if (_gorevler == null && _gorevHata != null) return HataDurum(hata: _gorevHata!, onTekrar: () => _gorevYukle());
@@ -335,6 +354,9 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
     const pr = {'urgent': 0, 'high': 1, 'normal': 2, 'low': 3};
     final liste = tum.where((t) => _gorevSekme == 0 ? t['status'] != 'done' : t['status'] == 'done').toList()
       ..sort((a, b) {
+        // Onay bekleyenler en üstte.
+        final o = (a['status'] == 'review' ? 0 : 1).compareTo(b['status'] == 'review' ? 0 : 1);
+        if (o != 0) return o;
         if (_gorevSekme == 1) return (b['completed_at']?.toString() ?? '').compareTo(a['completed_at']?.toString() ?? '');
         final p = (pr[a['priority']] ?? 2).compareTo(pr[b['priority']] ?? 2);
         return p != 0 ? p : (a['due_at']?.toString() ?? '9').compareTo(b['due_at']?.toString() ?? '9');
@@ -345,7 +367,7 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
         child: Row(children: [
           kutu(_i(g, 'acik'), 'Bekleyen', r.ic, r.soluk),
           const SizedBox(width: 8),
-          kutu(_i(g, 'devam'), 'Sürüyor', r.birincilYumusak, r.birincil),
+          kutu(_i(g, 'devam') + _i(g, 'onay_bekleyen'), 'Sürüyor', r.birincilYumusak, r.birincil),
           const SizedBox(width: 8),
           kutu(_i(g, 'bugun_biten'), 'Bugün biten', Marka.zumrut.withValues(alpha: .14), r.koyu ? const Color(0xFF6EE7B7) : const Color(0xFF047857)),
         ]),
@@ -373,7 +395,13 @@ class _EkibimEkraniState extends State<EkibimEkrani> with WidgetsBindingObserver
             child: Belir(
               key: ValueKey('yg${liste[i]['id']}${liste[i]['status']}'),
               gecikme: math.min(i, 6) * 50,
-              child: GorevKarti(g: liste[i], atananGoster: true),
+              child: GorevKarti(
+                g: liste[i],
+                atananGoster: true,
+                mesgul: _kararMesgul == (liste[i]['id'] as num).toInt(),
+                onOnayla: _onayYetkisi ? () => _karar(liste[i], true) : null,
+                onReddet: _onayYetkisi ? () => _karar(liste[i], false) : null,
+              ),
             ),
           ),
     ]);

@@ -18,6 +18,7 @@ import 'package:bambumpos_personel/ekranlar/destek.dart';
 import 'package:bambumpos_personel/ekranlar/ekibim.dart';
 import 'package:bambumpos_personel/ekranlar/eslesme.dart';
 import 'package:bambumpos_personel/ekranlar/gorevler.dart';
+import 'package:bambumpos_personel/ortak/gorev_onay.dart';
 import 'package:bambumpos_personel/ekranlar/hedefler.dart';
 import 'package:bambumpos_personel/ekranlar/kabuk.dart';
 import 'package:bambumpos_personel/ekranlar/konum_kapisi.dart';
@@ -69,11 +70,19 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
         'tasks': [
           {'id': 1, 'title': 'Teras masalarını hazırla', 'description': 'Akşam rezervasyonları için 6 masa.', 'priority': 'high', 'status': 'open', 'due_at': _iso(const Duration(hours: 2)), 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'created_at': _iso(const Duration(hours: -3)), 'completed_at': null},
           {'id': 2, 'title': 'Kasa raporunu kontrol et', 'description': null, 'priority': 'normal', 'status': 'in_progress', 'due_at': _iso(const Duration(hours: 5)), 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'created_at': _iso(const Duration(hours: -5)), 'completed_at': null,
-            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/2/foto/a.jpg'}, {'ad': 'b.jpg', 'url': '/api/v1/portal/tasks/2/foto/b.jpg'}]},
+            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/2/foto/a.jpg'}, {'ad': 'b.jpg', 'url': '/api/v1/portal/tasks/2/foto/b.jpg'}],
+            'onay_destekli': true,
+            'onay': {'durum': 'rejected', 'bekliyor': false, 'gonderim': _iso(const Duration(hours: -2)), 'not': null, 'inceleyen': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'inceleme': _iso(const Duration(hours: -1)), 'gerekce': 'Z raporu fotoğrafı okunmuyor, yeniden çek.'}},
+          {'id': 5, 'title': 'Bar tezgahını temizle', 'description': null, 'priority': 'normal', 'status': 'review', 'due_at': null, 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'created_at': _iso(const Duration(hours: -4)), 'completed_at': null,
+            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/5/foto/a.jpg'}],
+            'onay_destekli': true,
+            'onay': {'durum': 'pending', 'bekliyor': true, 'gonderim': _iso(const Duration(minutes: -20)), 'not': 'Tezgah ve raflar silindi', 'inceleyen': null, 'inceleme': null, 'gerekce': null}},
           {'id': 3, 'title': 'Peçete ve pipet stoğu', 'description': 'Depodan bar tezgahına taşı.', 'priority': 'low', 'status': 'open', 'due_at': null, 'created_by': null, 'herkese_acik': true, 'created_at': _iso(const Duration(hours: -1)), 'completed_at': null},
-          {'id': 4, 'title': 'Menü panosunu sil', 'description': null, 'priority': 'normal', 'status': 'done', 'due_at': null, 'created_by': null, 'herkese_acik': false, 'created_at': _iso(const Duration(days: -1)), 'completed_at': _iso(const Duration(hours: -20))},
+          {'id': 4, 'title': 'Menü panosunu sil', 'description': null, 'priority': 'normal', 'status': 'done', 'due_at': null, 'created_by': null, 'herkese_acik': false, 'created_at': _iso(const Duration(days: -1)), 'completed_at': _iso(const Duration(hours: -20)),
+            'onay_destekli': true,
+            'onay': {'durum': 'approved', 'bekliyor': false, 'gonderim': _iso(const Duration(hours: -21)), 'not': null, 'inceleyen': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'inceleme': _iso(const Duration(hours: -20)), 'gerekce': null}},
         ],
-        'counts': {'open': 2, 'in_progress': 1, 'done': 1},
+        'counts': {'open': 2, 'in_progress': 1, 'review': 1, 'done': 1},
       };
     case '/api/v1/portal/reports':
       final ay = sorgu.contains('month');
@@ -189,13 +198,17 @@ Map<String, dynamic> _yanit(String yol, String sorgu) {
     case '/api/v1/portal/yonetici/gorevler':
       return {
         'gorevler': [
-          {'id': 21, 'title': 'Teras masalarını hazırla', 'description': 'Akşam rezervasyonları için 6 masa.', 'priority': 'high', 'status': 'in_progress', 'due_at': _iso(const Duration(hours: 2)), 'assigned_to': {'id': 12, 'name': 'Burak Demir', 'position': 'Garson'}, 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'completed_at': null,
-            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/21/foto/a.jpg'}]},
+          {'id': 21, 'title': 'Teras masalarını hazırla', 'description': 'Akşam rezervasyonları için 6 masa.', 'priority': 'high', 'status': 'review', 'due_at': _iso(const Duration(hours: 2)), 'assigned_to': {'id': 12, 'name': 'Burak Demir', 'position': 'Garson'}, 'created_by': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'herkese_acik': false, 'completed_at': null,
+            'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/21/foto/a.jpg'}],
+            'onay_destekli': true,
+            'onay': {'durum': 'pending', 'bekliyor': true, 'gonderim': _iso(const Duration(minutes: -8)), 'not': 'Masalar ve mumlar hazır', 'inceleyen': null, 'inceleme': null, 'gerekce': null}},
           {'id': 22, 'title': 'Peçete ve pipet stoğu', 'description': null, 'priority': 'low', 'status': 'open', 'due_at': null, 'assigned_to': null, 'created_by': null, 'herkese_acik': true, 'completed_at': null},
           {'id': 23, 'title': 'Kasa raporunu kontrol et', 'description': null, 'priority': 'normal', 'status': 'open', 'due_at': _iso(const Duration(hours: 5)), 'assigned_to': {'id': 11, 'name': 'Ayşe Kaya', 'position': 'Kasiyer'}, 'created_by': null, 'herkese_acik': false, 'completed_at': null},
           {'id': 24, 'title': 'Menü panosunu sil', 'description': null, 'priority': 'normal', 'status': 'done', 'due_at': null, 'assigned_to': {'id': 15, 'name': 'Elif Şahin', 'position': 'Garson'}, 'created_by': null, 'herkese_acik': false, 'completed_at': _iso(const Duration(hours: -2)),
             'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/24/foto/a.jpg'}, {'ad': 'b.jpg', 'url': '/api/v1/portal/tasks/24/foto/b.jpg'}, {'ad': 'c.jpg', 'url': '/api/v1/portal/tasks/24/foto/c.jpg'}]},
         ],
+        'onay_destekli': true,
+        'onay_yetkisi': true,
       };
     case '/api/v1/portal/shift/ekip':
       final t = RegExp(r'tarih=([0-9-]+)').firstMatch(sorgu)?.group(1) ?? _gun(0);
@@ -342,6 +355,11 @@ void main() {
     '12-puantaj': () => const PuantajEkrani(),
     '13-ekibim': () => const EkibimEkrani(),
     '14-ekibim-gorevler': () => const EkibimEkrani(ilkSekme: 1),
+    '15-onaya-gonder': () => const OnayaGonderEkrani(gorev: {
+          'id': 2, 'title': 'Kasa raporunu kontrol et', 'status': 'in_progress', 'onay_destekli': true,
+          'fotolar': [{'ad': 'a.jpg', 'url': '/api/v1/portal/tasks/2/foto/a.jpg'}],
+          'onay': {'durum': 'rejected', 'gerekce': 'Z raporu fotoğrafı okunmuyor, yeniden çek.', 'inceleyen': {'id': 2, 'name': 'Mehmet Buğra Usal'}, 'inceleme': '2026-10-30T14:10:00+03:00'},
+        }),
     '16-konum-panosu': () => const _PanoGosterici(_PanoTur.konum),
     '17-uzak-panosu': () => const _PanoGosterici(_PanoTur.uzak),
     '18-dugmeler': () => const _DugmeVitrini(),
