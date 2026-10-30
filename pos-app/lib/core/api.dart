@@ -107,6 +107,11 @@ class Api {
   /// 401 gelince (oturum düştü / cihaz kaldırıldı) kabuk aktivasyona döner.
   void Function()? oturumDustu;
 
+  /// Başarılı her YAZMA isteğinden sonra (POST/PUT/PATCH/DELETE) çağrılır:
+  /// durum, adisyon değiştiyse senkron merkezine haber verir ve pano
+  /// önbelleğini geçersiz sayar (2026-10-30).
+  void Function(String yontem, String yol)? yazmaBasarili;
+
   static Future<Api> kur({
     String tabanUrl = varsayilanTaban,
     required String kullaniciAjani,
@@ -223,6 +228,7 @@ class Api {
     }
 
     _denetle(r);
+    if (yontem != 'GET') yazmaBasarili?.call(yontem, yol);
     return r.data;
   }
 

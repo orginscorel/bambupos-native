@@ -320,6 +320,7 @@ class _KabukState extends State<Kabuk> {
   }
 
   late final _bildirim = context.durum.bildirim;
+  late final _senkron = context.durum.senkron;
 
   @override
   void initState() {
@@ -328,6 +329,7 @@ class _KabukState extends State<Kabuk> {
     _bildirim
       ..adresAc = _adresAc
       ..baslat();
+    _senkron.baslat();
   }
 
   /// Bildirimin adresi bir POS ekranıysa oraya geç (açık adisyonu kapatarak).
@@ -345,6 +347,7 @@ class _KabukState extends State<Kabuk> {
     _bildirim
       ..adresAc = null
       ..durdur();
+    _senkron.durdur();
     super.dispose();
   }
 

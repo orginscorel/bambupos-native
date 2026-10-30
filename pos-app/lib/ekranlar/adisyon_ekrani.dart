@@ -11,6 +11,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/katalog_deposu.dart';
 import '../core/modeller.dart';
+import '../core/senkron_merkezi.dart';
 import 'adet_kartlari.dart';
 import 'adisyon_pencereleri.dart';
 import 'cerceve.dart';
@@ -156,6 +157,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
   Timer? _yoklama;
   bool _yoklaniyor = false;
+
+  /// Yükleme sürerken senkron haberi geldi: bitince bir kez daha sor.
+  bool _tekrarYukle = false;
+  StreamSubscription<SenkronDegisimi>? _senkronAbone;
   String? _etag;
   String? _imza;
   late final Api _api;
@@ -181,12 +186,42 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     _yoklama = Timer.periodic(const Duration(seconds: 3), (_) {
       if (mounted && _modal == 0 && !_mesgul && !_kuyrukCalisiyor && !_yoklaniyor && context.yoklamaUygun) _yukle(sessiz: true, canli: true);
     });
+    // ANINDA SENKRON (2026-10-30): başka cihaz bu adisyonu değiştirdiyse
+    // (kalem, birleştirme, kapatma) 3 sn'lik turu beklemeden yenilenir.
+    _senkronAbone = context.durum.senkron.degisimler.listen(_senkronHaberi);
+  }
+
+  void _senkronHaberi(SenkronDegisimi d) {
+    if (!mounted || _ayrildi) return;
+    final hedef = d.birlesmeHedefi(id);
+    if (hedef != null && hedef != id && _modal == 0 && !_mesgul) {
+      _birlesmeyeGit(hedef, null);
+      return;
+    }
+    // Kendi yazmamızın yanıtı zaten ekranda; yalnız başkasının değişikliği.
+    if (d.yerel || !d.ilgilendirir(id)) return;
+    if (_modal > 0 || _mesgul || _kuyrukCalisiyor || !context.yoklamaUygun) return; // 3 sn turu yakalar
+    if (_yoklaniyor) {
+      _tekrarYukle = true;
+      return;
+    }
+    _yukle(sessiz: true, canli: true);
+  }
+
+  /// BİRLEŞTİRİLMİŞ ADİSYON: personel kapanmış kaynağa dokunduysa ya da
+  /// adisyon açıkken başka cihazda birleştirildiyse hedefe geçilir.
+  void _birlesmeyeGit(int hedef, String? masa) {
+    if (!mounted || _ayrildi) return;
+    final yer = (masa ?? '').trim().isNotEmpty ? '$masa masasına' : '#$hedef numaralı adisyona';
+    context.bildir2('Adisyon birleştirildi', 'Bu adisyon $yer birleştirildi. Hedef adisyona geçiliyor…');
+    _hedefeGit({'target_order': {'id': hedef}});
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _yoklama?.cancel();
+    _senkronAbone?.cancel();
     _aramaDenetim.dispose();
     _bosIseAt();
     super.dispose();
@@ -229,6 +264,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     } finally {
       _yoklaniyor = false;
       if (mounted && _yukleniyor) setState(() => _yukleniyor = false);
+      if (_tekrarYukle && mounted && !_ayrildi) {
+        _tekrarYukle = false;
+        _yukle(sessiz: true, canli: true);
+      }
     }
   }
 
@@ -247,6 +286,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     });
     // Arka plandayken boş adisyon atıldıysa ekranda kalmanın anlamı yok.
     if (_atildi && !a.acik && a.kalemler.isEmpty) _panoyaDon();
+    // Birleştirilerek kapanmış adisyon (bayat panodan açıldı / başka cihaz
+    // birleştirdi): "kapalı" göstermek yerine hedefe geç.
+    final hedef = a.birlestirilenHedef;
+    if (hedef != null && _modal == 0) _birlesmeyeGit(hedef.id, hedef.masa);
   }
 
   Future<void> _kataloguYukle() async {

@@ -247,6 +247,25 @@ class Adisyon extends AdisyonOzet {
   List<Kalem> get aktifKalemler => kalemler.where((k) => k.aktif).toList();
   int get gonderilmemis => aktifKalemler.fold(0, (t, k) => t + (k.hazirliksiz ? 0 : k.bekleyenAdet));
   late final List<Json> olaylar = _liste(ham['events']);
+
+  /// Bu adisyon başka bir adisyona BİRLEŞTİRİLEREK kapandıysa hedefi
+  /// (2026-10-30). Sunucu `birlestirilen_hedef_id` verir (zinciri izler);
+  /// eski sunucuda kapalı adisyonun `merged_into` olayından okunur.
+  ({int id, String? masa})? get birlestirilenHedef {
+    if (acik) return null;
+    Json? olay;
+    for (final o in olaylar) {
+      if (o['type'] == 'merged_into') {
+        olay = o;
+        break;
+      }
+    }
+    final yuk = olay == null ? null : _json(olay['payload']);
+    final sunucu = tamSayi(ham['birlestirilen_hedef_id']);
+    final id = sunucu > 0 ? sunucu : tamSayi(yuk?['target_order_id']);
+    if (id <= 0 || id == this.id) return null;
+    return (id: id, masa: _metin(yuk?['to']));
+  }
 }
 
 /* ───────────── Katalog ───────────── */

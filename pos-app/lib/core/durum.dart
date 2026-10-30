@@ -13,6 +13,7 @@ import 'ajan.dart';
 import 'bildirim_merkezi.dart';
 import 'api.dart';
 import 'modeller.dart';
+import 'senkron_merkezi.dart';
 
 enum Asama { acilis, baglantiYok, aktivasyon, pin, calisma }
 
@@ -39,6 +40,10 @@ class UygulamaDurumu extends ChangeNotifier {
 
   /// Zil + baloncuk + ses + sistem bildirimi (kabuk açıkken yoklar).
   late final BildirimMerkezi bildirim = BildirimMerkezi(api, _tercih);
+
+  /// Adisyon değişim akışı (uzun yoklama + bu cihazın yazmaları). Kabuk
+  /// açıkken çalışır; pano/adisyon/kasa ekranları abone olur.
+  late final SenkronMerkezi senkron = SenkronMerkezi(api);
 
   Timer? _kalpAtisi;
   Timer? _yenidenDene;
@@ -68,6 +73,7 @@ class UygulamaDurumu extends ChangeNotifier {
   factory UygulamaDurumu.test(Api api, SharedPreferences tercih, String dizin) {
     final d = UygulamaDurumu._(api, '1.0.0', tercih, dizin);
     api.oturumDustu = d._oturumDustu;
+    api.yazmaBasarili = d._yazmaBasarili;
     return d;
   }
 
@@ -86,6 +92,7 @@ class UygulamaDurumu extends ChangeNotifier {
     );
     final d = UygulamaDurumu._(api, bilgi.version, await tercihF, dizin.path);
     api.oturumDustu = d._oturumDustu;
+    api.yazmaBasarili = d._yazmaBasarili;
     return d;
   }
 
@@ -269,6 +276,22 @@ class UygulamaDurumu extends ChangeNotifier {
     if (yenile) await oturumuYenile();
   }
 
+  static final _adisyonYolu = RegExp(r'/orders/(\d+)(?:/|$)');
+
+  /// Masa düzenini değiştiren işlemler: pano önbelleği artık güvenilmez.
+  static final _yapisalIslem =
+      RegExp(r'/(merge|move|cariye-tasi|toplu-tasi|split|split-shares|cancel|discard-if-empty|close|pay|refund)(?:/|$)');
+
+  /// Bu cihazın adisyon/ödeme yazması başarılı oldu (Api kancası).
+  void _yazmaBasarili(String yontem, String yol) {
+    final odeme = yol.startsWith('/api/v1/payments');
+    if (!yol.startsWith('/api/v1/orders') && !odeme) return;
+    final m = _adisyonYolu.firstMatch(yol);
+    final id = m == null ? 0 : int.tryParse(m.group(1)!) ?? 0;
+    if (odeme || _yapisalIslem.hasMatch(yol)) unawaited(onbellekSil('pano'));
+    senkron.yerelDegisim(adisyonlar: [if (id > 0) id]);
+  }
+
   void _gec(Asama yeni) {
     // Çalışma ekranına her girişte sayaç baştan (PIN az önce girildi).
     if (yeni == Asama.calisma && asama != Asama.calisma) _sonEtkinlik = DateTime.now();
@@ -278,10 +301,13 @@ class UygulamaDurumu extends ChangeNotifier {
 
   /* ───────── Basit disk önbelleği (katalog, pano) ───────── */
 
-  Future<Map<String, dynamic>?> onbellekOku(String ad) async {
+  /// [enEski] verilirse bundan eski dosya yok sayılır (bayat pano açılışta
+  /// kapanmış adisyonu göstermesin).
+  Future<Map<String, dynamic>?> onbellekOku(String ad, {Duration? enEski}) async {
     try {
       final f = File('$_onbellekDizini${Platform.pathSeparator}$ad.json');
       if (!await f.exists()) return null;
+      if (enEski != null && DateTime.now().difference(await f.lastModified()) > enEski) return null;
       final metin = await f.readAsString();
       // Büyük katalog / pano dosyası ayrı iş parçacığında çözülür (açılışta takılma olmasın).
       final ham = metin.length > 64 * 1024 ? await Isolate.run(() => jsonDecode(metin)) : jsonDecode(metin);
@@ -302,6 +328,16 @@ class UygulamaDurumu extends ChangeNotifier {
     }
   }
 
+  /// Önbelleği geçersiz sayar (birleştir/taşı/kapat sonrası 'pano').
+  Future<void> onbellekSil(String ad) async {
+    try {
+      final f = File('$_onbellekDizini${Platform.pathSeparator}$ad.json');
+      if (await f.exists()) await f.delete();
+    } catch (_) {
+      // silinemezse bir sonraki pano yanıtı üstüne yazar
+    }
+  }
+
   String? tercihOku(String k) => _tercih.getString(k);
   Future<void> tercihYaz(String k, String? v) async =>
       v == null ? await _tercih.remove(k) : await _tercih.setString(k, v);
@@ -316,6 +352,7 @@ class UygulamaDurumu extends ChangeNotifier {
     _kalpAtisi?.cancel();
     _yenidenDene?.cancel();
     _bostaDenetim?.cancel();
+    senkron.dispose();
     super.dispose();
   }
 }

@@ -11,6 +11,7 @@ import '../core/bicim.dart';
 import '../core/katalog_deposu.dart';
 import '../core/modeller.dart';
 import '../core/pos_cihaz.dart';
+import '../core/senkron_merkezi.dart';
 import 'adet_kartlari.dart';
 import 'adisyon_pencereleri.dart';
 import 'kasa_pencereleri.dart';
@@ -150,6 +151,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     _yazicilariYukle();
     _tur = Timer.periodic(const Duration(seconds: 5), (_) => _kasaTuru());
     _canli = Timer.periodic(const Duration(seconds: 3), (_) => _canliTazele());
+    _senkronAbone = context.durum.senkron.degisimler.listen(_senkronHaberi);
     WidgetsBinding.instance.addObserver(this);
     _secim.addListener(_secimDegisti);
     kasaBorcIstegi.addListener(_borcIstegi);
@@ -170,6 +172,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   void dispose() {
     _tur?.cancel();
     _canli?.cancel();
+    _senkronAbone?.cancel();
     _yeniSayaci?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     kasaBorcIstegi.removeListener(_borcIstegi);
@@ -212,12 +215,45 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     }
   }
 
+  /* ANINDA SENKRON (2026-10-30): başka cihazda birleştir/taşı/ödeme olunca
+     açık adisyon listesi ve seçili adisyon 5 sn beklemeden tazelenir. */
+  StreamSubscription<SenkronDegisimi>? _senkronAbone;
+  int _listeNo = 0;
+  bool _listeYolda = false;
+  bool _listeBekleyen = false;
+
+  Future<void> _senkronHaberi(SenkronDegisimi d) async {
+    // Kasanın kendi işlemleri listeyi zaten bir kez tazeliyor (yanıt ekranda);
+    // yalnız BAŞKA cihazın değişikliği / öne gelme dinlenir.
+    if (!mounted || d.yerel || !context.yoklamaUygun) return;
+    final s = _secili;
+    final hedef = s == null ? null : d.birlesmeHedefi(s.id);
+    await _yukle(sessiz: true);
+    if (!mounted) return;
+    if (s != null && hedef != null && _secili?.id == s.id && _modal == 0 && !_mesgul && !_odeniyor) {
+      final h = _adisyonlar.where((x) => x.id == hedef).firstOrNull;
+      context.bildir2('Adisyon birleştirildi',
+          h == null ? 'Bu adisyon başka bir adisyona birleştirildi.' : 'Bu adisyon ${h.masaAdi ?? '#$hedef'} adisyonuna birleştirildi. Hedef seçildi.');
+      if (h != null) unawaited(_sec(h));
+      return;
+    }
+    if (s != null && d.ilgilendirir(s.id)) unawaited(_canliTazele());
+  }
+
   Future<void> _yukle({bool sessiz = false}) async {
+    // Sürerken gelen istek düşmez: bitince bir kez daha çalışır; eski yanıt
+    // yenisinin üstüne yazılmaz (sıra numarası).
+    if (_listeYolda) {
+      _listeBekleyen = true;
+      return;
+    }
+    _listeYolda = true;
+    final no = ++_listeNo;
     try {
       final r = await _api.get('/api/v1/payments/pending-orders', sorgu: {'q': ''});
       final l = (r is Map ? r['orders'] as List? : null) ?? const [];
       final yl = r is Map ? r['odeme_yontemleri'] : null;
-      if (!mounted) return;
+      if (!mounted || no != _listeNo) return;
       setState(() {
         if (yl is List) {
           acikKasaYontemleri = yl.map((e) => '$e').toSet();
@@ -231,6 +267,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _yukleniyor = false);
       if (!sessiz) context.bildir2('Adisyonlar yüklenemedi', e.mesaj, hata: true);
+    } finally {
+      _listeYolda = false;
+      if (_listeBekleyen && mounted) {
+        _listeBekleyen = false;
+        await _yukle(sessiz: true);
+      }
     }
   }
 

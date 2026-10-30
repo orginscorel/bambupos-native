@@ -8,6 +8,7 @@ import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
+import '../core/senkron_merkezi.dart';
 import 'adisyon_ekrani.dart';
 import 'birlestir_onay.dart';
 import 'ortak.dart';
@@ -59,6 +60,20 @@ class _MasaPanosuState extends State<MasaPanosu> {
   String? _sonHam;
   DateTime _sonCizim = DateTime.now();
 
+  /* YARIŞ DÜZELTMESİ (2026-10-30, birleştirme sonrası "adisyon yok" bildirimi):
+     Eskiden istek sürerken gelen _yenile() DÜŞÜYORDU — birleştirme/taşıma ya
+     da adisyondan dönüşte istenen tazeleme, o an yolda olan ESKİ yoklamaya
+     takılıyor; eski yanıt birleştirme öncesi panoyu basıyor, ekran 5 sn (ya
+     da daha uzun) bayat kalıyordu. Artık:
+       • istek sürerken gelen istek "bekleyen" olur, bitince bir kez daha çalışır;
+       • _tazeIste() sıra numarasını artırır → yoldaki eski yanıt yok sayılır. */
+  bool _bekleyen = false;
+  int _istekNo = 0;
+  StreamSubscription<SenkronDegisimi>? _senkronAbone;
+
+  /// Ekran görünmezken (üstte adisyon açık) gelen haber: görünür olunca tazele.
+  bool _kirli = false;
+
   @override
   void initState() {
     super.initState();
@@ -67,25 +82,55 @@ class _MasaPanosuState extends State<MasaPanosu> {
     _zamanlayici = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && context.yoklamaUygun) _yenile();
     });
+    _senkronAbone = context.durum.senkron.degisimler.listen(_senkronHaberi);
   }
 
   @override
   void dispose() {
     _zamanlayici?.cancel();
+    _senkronAbone?.cancel();
     super.dispose();
   }
 
+  /// Başka cihazda / bu cihazda adisyon değişti → pano hemen tazelenir.
+  void _senkronHaberi(SenkronDegisimi d) {
+    if (!mounted) return;
+    if (!context.yoklamaUygun) {
+      _kirli = true;
+      return;
+    }
+    _tazeIste();
+  }
+
+  /// Yoldaki yanıtı geçersiz sayıp yeni pano ister (sonuç ne olursa olsun
+  /// en son durum ekrana gelir).
+  void _tazeIste() {
+    _istekNo++;
+    _kirli = false;
+    _yenile();
+  }
+
   Future<void> _onbellektenAc() async {
-    final ham = await context.durum.onbellekOku('pano');
+    // 15 dk'dan eski pano gösterilmez (kapanmış/birleşmiş adisyon görünmesin);
+    // birleştir/taşı/kapat sonrası dosya zaten silinir (durum._yazmaBasarili).
+    final ham = await context.durum.onbellekOku('pano', enEski: const Duration(minutes: 15));
     if (ham != null && mounted && _pano == null) setState(() => _pano = Pano(ham));
   }
 
   Future<void> _yenile() async {
-    if (_yukleniyor || !mounted) return;
+    if (!mounted) return;
+    if (_yukleniyor) {
+      _bekleyen = true;
+      return;
+    }
     _yukleniyor = true;
+    _bekleyen = false;
+    if (_kirli && context.yoklamaUygun) _kirli = false;
+    final no = ++_istekNo;
     try {
       final veri = (await context.api.get('/api/v1/orders/board') as Map).cast<String, dynamic>();
-      if (!mounted) return;
+      // Bu istek yoldayken daha yeni bir tazeleme istendiyse eski yanıt yazılmaz.
+      if (!mounted || no != _istekNo) return;
       // Pano değişmediyse (5 sn'lik turların çoğu) diske yazılmaz; ızgara da
       // yalnız "… dk" süre yazıları ilerlesin diye 20 sn'de bir yeniden çizilir.
       final ham = jsonEncode(veri);
@@ -101,9 +146,14 @@ class _MasaPanosuState extends State<MasaPanosu> {
         context.durum.onbellekYaz('pano', veri, hazirMetin: ham);
       }
     } on ApiHata catch (e) {
-      if (mounted) setState(() => _baglantiYok = e.baglantiYok);
+      if (mounted && no == _istekNo) setState(() => _baglantiYok = e.baglantiYok);
     } finally {
       _yukleniyor = false;
+      // Yolda kalan istek yüzünden düşen tazeleme bir kez daha çalışır.
+      if ((_bekleyen || no != _istekNo) && mounted) {
+        _bekleyen = false;
+        _yenile();
+      }
     }
   }
 
@@ -149,7 +199,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => AdisyonEkrani(adisyonId: id, kasaKipi: widget.kasaKipi),
     ));
-    _yenile();
+    if (mounted) _tazeIste();
   }
 
   Future<void> _masayaDokun(Masa m) async {
