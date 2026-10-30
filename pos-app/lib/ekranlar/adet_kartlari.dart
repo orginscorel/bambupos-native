@@ -131,10 +131,10 @@ class AdetKartlari extends StatelessWidget {
                 Icon(Icons.schedule_rounded, size: 15, color: Renk.ikinci),
                 const SizedBox(width: 4),
                 SizedBox(
-                  width: 44,
+                  width: 50,
                   child: Text(b.saat == null ? '—' : saatMetni(b.saat),
                       style: TextStyle(
-                          fontSize: sik ? 13.5 : 14.5,
+                          fontSize: sik ? 15 : 16,
                           fontWeight: FontWeight.w800,
                           color: odendi ? Renk.soluk : Renk.yazi,
                           fontFeatures: const [FontFeature.tabularFigures()])),
@@ -155,9 +155,9 @@ class AdetKartlari extends StatelessWidget {
                                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
                             ),
                             const SizedBox(width: 10),
-                            Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk),
-                            const SizedBox(width: 3),
-                            Expanded(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci))),
+                            Icon(Icons.person_outline_rounded, size: 16, color: Renk.ikinci),
+                            const SizedBox(width: 4),
+                            Expanded(child: Text(kisi, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi))),
                           ])
                         : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                             UrunAdi(k.ad,
@@ -165,10 +165,10 @@ class AdetKartlari extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontSize: sik ? 13 : 13.5, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi)),
                             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.person_outline_rounded, size: 13, color: Renk.soluk)),
-                              const SizedBox(width: 3),
+                              Padding(padding: const EdgeInsets.only(top: 2), child: Icon(Icons.person_outline_rounded, size: 16, color: Renk.ikinci)),
+                              const SizedBox(width: 4),
                               // Dar kartta ad kırpılmasın: gerekirse iki satır.
-                              Flexible(child: Text(kisi, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, height: 1.25, color: Renk.ikinci))),
+                              Flexible(child: Text(kisi, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, height: 1.25, fontWeight: FontWeight.w600, color: odendi ? Renk.soluk : Renk.yazi))),
                             ]),
                           ]),
                   ),
