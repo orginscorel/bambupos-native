@@ -2343,6 +2343,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           width: 40,
           child: Builder(
             builder: (c) => _AracDugmesi(
+              key: const ValueKey('kasa-diger'),
               sik: sik,
               ikon: Icons.more_vert_rounded,
               ipucu: 'Diğer işlemler',
@@ -2498,9 +2499,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
   Future<void> _digerMenu(BuildContext c, {required bool servisVar, bool fis = false}) async {
     final s = _secili!;
+    final ikramAdet = _seciliKalemler.where((x) => !x.kalem.odendi && !x.kalem.ikram).fold<int>(0, (t, x) => t + x.adet.clamp(1, x.kalem.adet));
     final kutu = c.findRenderObject() as RenderBox;
     final p = kutu.localToGlobal(Offset.zero);
-    PopupMenuItem<String> oge(String d, IconData i, String ad, {bool etkin = true}) => PopupMenuItem<String>(
+    PopupMenuItem<String> oge(String d, IconData i, String ad, {bool etkin = true, Key? key}) => PopupMenuItem<String>(
+          key: key,
           value: d,
           enabled: etkin,
           height: 40,
@@ -2511,6 +2514,11 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           position: RelativeRect.fromLTRB(p.dx - 240, p.dy + kutu.size.height, 16, 0),
           shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
           items: [
+            // İKRAM ET (2026-10-30 işletme): "Ürün ekle" yanındaki ⋮ menüde; seçili
+            // ürün(ler) için (tekli/çoklu/kısmi adet). Onay penceresi açılır.
+            if (_ikramGorunur && (_detay?.acik ?? false) && !_duzelt)
+              oge('ikram', Icons.card_giftcard_rounded, ikramAdet > 0 ? 'İkram et ($ikramAdet)' : 'İkram et — önce ürün seçin',
+                  etkin: ikramAdet > 0 && !_mesgul, key: const ValueKey('kasa-secim-ikram')),
             if (fis && s.odenen > 0) oge('fis', Icons.receipt_long_outlined, 'Ödeme fişi yazdır'),
             oge('yazici', Icons.print_outlined, 'Fiş yazıcısı · ${_yaziciAdi ?? 'seçilmedi'}'),
             // "Hesap fişini önizle" ve "İndirim / iskonto" buradan kaldırıldı
@@ -2522,6 +2530,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           ],
         ));
     switch (secim) {
+      case 'ikram':
+        _seciliIkram();
       case 'fis':
         _fisYazdir('payment');
       case 'yazici':
@@ -2625,48 +2635,6 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           onPressed: _seciminiYaz,
           child: const Text('Tutara yaz'),
         ),
-        // SEÇİMDEN İKRAM → ⋮ MENÜSÜ (2026-10-30 işletme): "İkram et" üç nokta
-        // menüsüne taşındı; tekli, çoklu ve kısmi adet seçimde aynı. Doğrudan
-        // ikram ETMEZ — onay penceresi (ikramOnayPenceresi) açılır.
-        if (_ikramGorunur && (_detay?.acik ?? false)) ...[
-          const SizedBox(width: 4),
-          PopupMenuButton<String>(
-            key: const ValueKey('kasa-secim-menu'),
-            tooltip: 'Seçim işlemleri',
-            icon: Icon(Icons.more_vert_rounded, size: 20, color: Renk.ikinci),
-            style: IconButton.styleFrom(
-              minimumSize: const Size(34, 34),
-              fixedSize: const Size(34, 34),
-              padding: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
-              backgroundColor: Renk.yuzey,
-            ),
-            shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: Renk.cizgi)),
-            onSelected: (v) {
-              if (v == 'ikram') _seciliIkram();
-            },
-            itemBuilder: (_) {
-              final adet = secim.fold<int>(0, (t, x) => t + x.adet);
-              final etkin = secim.isNotEmpty && !_mesgul;
-              return [
-                PopupMenuItem<String>(
-                  key: const ValueKey('kasa-secim-ikram'),
-                  value: 'ikram',
-                  enabled: etkin,
-                  child: Row(children: [
-                    Icon(Icons.card_giftcard_rounded, size: 17, color: etkin ? Renk.yazi : Renk.soluk),
-                    const SizedBox(width: 10),
-                    Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(adet > 0 ? 'İkram et ($adet)' : 'İkram et', style: const TextStyle(fontSize: 13.5)),
-                      if (secim.isEmpty)
-                        Text('İkram edilebilir ürün seçili değil', style: TextStyle(fontSize: 12, color: Renk.soluk)),
-                    ]),
-                  ]),
-                ),
-              ];
-            },
-          ),
-        ],
       ]),
     );
   }

@@ -674,7 +674,7 @@ void main() {
       };
     }
 
-    final menu = find.byKey(const ValueKey('kasa-secim-menu'));
+    final menu = find.byKey(const ValueKey('kasa-diger'));
     final onayliyorum = find.byKey(const ValueKey('ikram-onayliyorum'));
     Finder hazir(String ad) => find.byKey(ValueKey('ikram-hazir-$ad'));
     List<(String, String, Map<String, dynamic>?)> compIstekleri(_Sunucu s) => s.istekler.where((r) => r.$1 == 'POST' && r.$2.endsWith('/comp')).toList();
@@ -705,9 +705,14 @@ void main() {
       await _bekle(t);
     }
 
-    testWidgets('seçim şeridinde ayrı "İkram et" düğmesi yok; ⋮ menüsünde, adet sayısıyla', (t) async {
+    testWidgets('seçim şeridinde "İkram et" yok; Ürün ekle yanındaki ⋮ menüsünde, adet sayısıyla', (t) async {
       final (d, _) = await _kur(t, manuel: false, ek: yanit());
-      expect(menu, findsNothing); // seçim yokken şerit yok
+      // Seçim yokken ⋮ menüde "İkram et" pasif.
+      await t.tap(menu);
+      await t.pumpAndSettle();
+      expect(t.widget<PopupMenuItem<String>>(find.byKey(const ValueKey('kasa-secim-ikram'))).enabled, isFalse);
+      await t.tapAt(const Offset(5, 5));
+      await t.pumpAndSettle();
       await ikisiniSec(t);
       expect(menu, findsOneWidget);
       expect(find.text('Tutara yaz'), findsOneWidget);
@@ -828,7 +833,7 @@ void main() {
       expect(r.single.$3, {'reason': 'Müşteri ürünü tüketmedi', 'expected_version': 9, 'qty': 2});
       // Başarıdan sonra pencere kapanır, seçim temizlenir.
       expect(find.text('İkram onayı'), findsNothing);
-      expect(menu, findsNothing);
+      expect(find.text('Tutara yaz'), findsNothing); // seçim temizlendi
       await _bitir(t, d);
     });
 
@@ -885,7 +890,7 @@ void main() {
       expect(sonra.where((r) => r.$1 == 'GET' && r.$2 == '/api/v1/payments/pending-orders'), hasLength(1));
       expect(find.text('İkram · Geç servis'), findsNWidgets(2));
       expect(find.text('İkram onayı'), findsNothing);
-      expect(menu, findsNothing);
+      expect(find.text('Tutara yaz'), findsNothing); // seçim temizlendi
       await _bitir(t, d);
     });
 
@@ -898,7 +903,7 @@ void main() {
       expect(compIstekleri(s), hasLength(2));
       expect(find.textContaining('Ödenmiş kalem ikram edilemez. (1 / 2 kalem ikram edildi'), findsOneWidget);
       expect(find.text('İkram onayı'), findsNothing);
-      expect(menu, findsNothing);
+      expect(find.text('Tutara yaz'), findsNothing); // seçim temizlendi
       final sonra = s.istekler.skipWhile((r) => !(r.$1 == 'POST' && r.$2.endsWith('/902/comp'))).skip(1);
       expect(sonra.any((r) => r.$1 == 'GET' && r.$2 == '/api/v1/orders/300'), isTrue);
       await _bitir(t, d);
