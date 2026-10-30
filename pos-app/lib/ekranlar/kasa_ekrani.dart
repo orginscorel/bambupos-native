@@ -2197,7 +2197,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           key: const ValueKey('kasa-duzelt'),
           ikon: _duzelt ? Icons.check_rounded : Icons.edit_outlined,
           ad: _duzelt ? 'Bitir' : 'Düzelt',
-          ipucu: _duzelt ? 'Düzenlemeyi bitir' : 'Kalemleri düzelt (adet, ikram, çıkar)',
+          ipucu: _duzelt ? 'Düzenlemeyi bitir' : 'Ürünleri düzelt (adet, ikram, çıkar)',
           renk: _duzelt ? Renk.durumUstu : Renk.ikinci,
           zemin: _duzelt ? Renk.marka : Renk.ic,
           kenar: _duzelt ? Renk.marka : Renk.cizgi,
@@ -2335,7 +2335,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       child: Row(children: [
         Icon(Icons.receipt_long_outlined, size: 18, color: Renk.ikinci),
         const SizedBox(width: 6),
-        const Text('Kalemler', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        const Text('Ürünler', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
         const SizedBox(width: 6),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -2521,7 +2521,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         child: Text('Kalem dökümünü görme yetkiniz yok; alttaki tutar özeti üzerinden tahsilat yapabilirsiniz.', style: TextStyle(color: Renk.ikinci)),
       );
     }
-    if (d == null) return Center(child: Text('Kalemler yükleniyor…', style: TextStyle(color: Renk.ikinci)));
+    if (d == null) return Center(child: Text('Ürünler yükleniyor…', style: TextStyle(color: Renk.ikinci)));
     final kalemler = _gorunenKalemler;
     final h = d.ham;
 
@@ -2564,26 +2564,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
 
   /// Seçim özeti: "3 adet seçili · 2 üründen · 75,00 ₺" + Temizle / Tutara yaz.
   Widget _secimSeridi() {
-    if (_secim.bos) {
-      final sik = _sikSag;
-      return Container(
-        padding: EdgeInsets.fromLTRB(12, sik ? 5 : 9, 12, sik ? 5 : 9),
-        decoration: BoxDecoration(color: Renk.yuzey, border: Border(bottom: BorderSide(color: Renk.cizgi))),
-        child: Row(children: [
-          Icon(Icons.touch_app_outlined, size: 16, color: Renk.ikinci),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-                sik
-                    ? 'Kişi kendi payını ödeyecekse kalemlere dokunun.'
-                    : 'Kişi kendi payını ödeyecekse kalemlere dokunun; adedi birden fazla olanlar açılır, istediğiniz kadarını seçin.',
-                maxLines: sik ? 1 : null,
-                overflow: sik ? TextOverflow.ellipsis : null,
-                style: TextStyle(fontSize: 12, color: Renk.ikinci)),
-          ),
-        ]),
-      );
-    }
+    // Seçim yokken ipucu satırı gösterilmez (2026-10-30 işletme).
+    if (_secim.bos) return const SizedBox.shrink();
     final secim = _seciliKalemler;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
