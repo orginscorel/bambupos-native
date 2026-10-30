@@ -102,7 +102,8 @@ bool ekranGorunur(Oturum o, PosEkrani e) {
   if (e.izin != null && !o.yetki(e.izin!)) return false;
   final ist = o.istasyonlar;
   if (e.istasyonlar.isNotEmpty && ist.isNotEmpty && !e.istasyonlar.any(ist.contains)) return false;
-  if (e.ozellik != null && !o.eklenti(e.ozellik!)) return false;
+  // Ücretli Self Satış eklentisi yalnız açıkça açıksa görünür (bilinmeyen = kapalı).
+  if (e.ozellik != null && !o.eklenti(e.ozellik!, varsayilan: e.ozellik != 'self_satis')) return false;
   if (e.para && !o.paraGorur) return false;
   return true;
 }
