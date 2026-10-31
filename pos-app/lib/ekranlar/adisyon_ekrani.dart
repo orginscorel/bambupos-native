@@ -467,6 +467,14 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   /// çıkarılabilir; gönderilmiş adede dokunulmaz.
   bool _kismenGonderilmis(Kalem k) => k.durum != 'placed' && _bekleyen(k) > 0;
 
+  /// HAZIRLIKSIZ ÜRÜN (1.2.43, Roka "Şarjmatik"): eklendiği an "servis
+  /// edildi" olur ama mutfağa gitmez. Parası alınmadıkça, ikram/iade/indirim
+  /// yoksa gönderilmemiş kalem gibi −/+ ve çıkar düğmeleri görünür
+  /// (sunucu kuralı: OrderService::hazirliksizSerbest).
+  bool _serbest(Kalem k) =>
+      k.durum == 'placed' ||
+      (k.hazirliksiz && k.durum == 'served' && !k.odendi && !k.ikram && !k.iade && tamSayi(k.ham['discount_minor']) == 0);
+
   Future<void> _bekleyeniCikar(Kalem k, [int? adet]) async {
     final n = [adet ?? _bekleyen(k), _bekleyen(k), k.adet - 1].reduce((a, b) => a < b ? a : b);
     if (n < 1) return;
@@ -477,7 +485,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
 
   /// Menüdeki "Çıkar": seçilen adet gönderilmemiş kısımdan karşılanıyorsa nedensiz.
   bool _cikarilabilir(Kalem k) {
-    if (k.durum == 'placed') return _topluAdedi(k) >= k.adet;
+    if (_serbest(k)) return _topluAdedi(k) >= k.adet;
     return _kismenGonderilmis(k) && _topluAdedi(k) <= _bekleyen(k) && _topluAdedi(k) < k.adet;
   }
 
@@ -1523,7 +1531,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                         _menuOgesi('ikram', Icons.check_circle_outline_rounded, tek?.ikram == true ? (tek!.iade ? 'İadeyi geri al' : 'İkramı kaldır') : 'İkram et', etkin: tek != null),
                       if (_can('orders.update')) _menuOgesi('tasi', Icons.arrow_forward_rounded, 'Başka masaya taşı'),
                       _menuOgesi('iptal', Icons.cancel_outlined, cikarMi ? 'Çıkar' : 'İptal et (nedenli)',
-                          tehlikeli: true, etkin: tek != null && (tek.durum == 'placed' || cikarMi || _canOrPin('orders.cancel'))),
+                          tehlikeli: true, etkin: tek != null && (_serbest(tek) || cikarMi || _canOrPin('orders.cancel'))),
                     ],
                   ));
               if (!mounted) return;
@@ -1536,7 +1544,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   if (tek != null) {
                     if (!cikarMi) {
                       _kalemIptal(tek);
-                    } else if (tek.durum == 'placed') {
+                    } else if (_serbest(tek)) {
                       _cikar(tek);
                     } else {
                       _bekleyeniCikar(tek, _topluAdedi(tek));
@@ -1741,11 +1749,11 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
             ),
             const SizedBox(width: 6),
             if (a.acik) ...[
-              if ((k.durum == 'placed' || _kismenGonderilmis(k)) && !k.ikram && !k.odendi)
+              if ((_serbest(k) || _kismenGonderilmis(k)) && !k.ikram && !k.odendi)
                 Container(
                   decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgiKoyu)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    _kucukDugme(Icons.remove_rounded, k.adet > 1 && (k.durum == 'placed' || _bekleyen(k) > 0) && !_mesgul ? () => _adet(k, -1) : null, 'Azalt'),
+                    _kucukDugme(Icons.remove_rounded, k.adet > 1 && (_serbest(k) || _bekleyen(k) > 0) && !_mesgul ? () => _adet(k, -1) : null, 'Azalt'),
                     SizedBox(width: 28, child: Text('${k.adet}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
                     _kucukDugme(Icons.add_rounded, _mesgul ? null : () => _adet(k, 1), 'Artır'),
                   ]),
@@ -1757,7 +1765,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   icon: const Icon(Icons.restaurant_rounded, size: 14),
                   label: const Text('Servis edildi'),
                 ),
-              if (k.durum == 'placed' && !k.odendi && _can('orders.update'))
+              if (_serbest(k) && !k.odendi && _can('orders.update'))
                 Padding(
                   padding: const EdgeInsets.only(left: 6),
                   child: Tooltip(
