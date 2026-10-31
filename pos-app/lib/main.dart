@@ -10,6 +10,7 @@ import 'app/hareket.dart';
 import 'app/tema.dart';
 import 'core/durum.dart';
 import 'core/eski_windows.dart';
+import 'core/gezgin_temizleyici.dart';
 import 'ekranlar/acilis.dart';
 import 'ekranlar/aktivasyon_ekrani.dart';
 import 'ekranlar/bildirim_baloncuklari.dart';
@@ -46,10 +47,17 @@ class BamBumPosUygulamasi extends StatefulWidget {
 
 class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
   late final AppLifecycleListener _yasam;
+  final _gezgin = GlobalKey<NavigatorState>();
+  late final GezginTemizleyici _temizleyici;
 
   @override
   void initState() {
     super.initState();
+    _temizleyici = GezginTemizleyici(
+      dinle: widget.durum,
+      calismada: () => widget.durum.asama == Asama.calisma,
+      gezgin: _gezgin,
+    );
     _yasam = AppLifecycleListener(
       onResume: widget.durum.onPlanaGeldi,
       // ÇEREZLER DİSKE (2026-10-30): arka plana geçerken / kapanırken bekleyen
@@ -78,6 +86,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
   @override
   void dispose() {
     _yasam.dispose();
+    _temizleyici.dispose();
     HardwareKeyboard.instance.removeHandler(_tus);
     super.dispose();
   }
@@ -89,6 +98,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
       child: ValueListenableBuilder<bool>(
         valueListenable: koyuTema,
         builder: (context, _, _) => MaterialApp(
+          navigatorKey: _gezgin,
           title: 'BamBumPOS',
           debugShowCheckedModeBanner: false,
           theme: temaKur(),
