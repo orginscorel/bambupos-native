@@ -195,7 +195,10 @@ class _PinEkraniState extends State<PinEkrani> with SingleTickerProviderStateMix
               const SizedBox(width: 10),
               const Text('Oturum aç', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
               const Spacer(),
-              Text('PIN ile', style: TextStyle(fontSize: 12, color: Renk.soluk)),
+              if (context.durum.oturum?.baskaCihazdaGirdi ?? false)
+                Text('Başka cihazda giriş yapıldı', style: TextStyle(fontSize: 12, color: Renk.uyari))
+              else
+                Text('PIN ile', style: TextStyle(fontSize: 12, color: Renk.soluk)),
             ],
           ),
           const SizedBox(height: 14),

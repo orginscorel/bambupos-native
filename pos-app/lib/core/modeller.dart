@@ -27,6 +27,9 @@ class Oturum {
 
   Json? get _operator => ham['operator'] is Map ? _json(ham['operator']) : null;
   bool get operatorVar => _operator != null;
+
+  /// Personel başka bir cihazda PIN girdiği için bu cihazdan düştü (1.2.44).
+  bool get baskaCihazdaGirdi => !operatorVar && ham['operator_dusme'] == 'baska_cihaz';
   String get operatorAd => _metin(_operator?['name']) ?? '';
   String get operatorRol => _metin(_operator?['rol']) ?? '';
 

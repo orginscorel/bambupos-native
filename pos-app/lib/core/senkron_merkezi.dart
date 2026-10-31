@@ -62,6 +62,10 @@ class SenkronMerkezi {
   final Api _api;
   final _akis = StreamController<SenkronDegisimi>.broadcast();
 
+  /// Sunucu "bu cihazın personeli başka cihazda giriş yaptı" dedi (1.2.44):
+  /// durum oturumu tazeler → ~1 sn'de PIN ekranı.
+  void Function()? operatorDustu;
+
   /// Değişim haberleri (abonelik `dispose`'ta iptal edilmeli).
   Stream<SenkronDegisimi> get degisimler => _akis.stream;
 
@@ -183,6 +187,10 @@ class SenkronMerkezi {
   void _isle(Map<String, dynamic> r, {required bool ilk}) {
     final yeniImlec = (r['imlec'] as num?)?.toInt();
     if (yeniImlec != null) _imlec = yeniImlec;
+    if (r['operator_dustu'] == true) {
+      operatorDustu?.call();
+      return;
+    }
     if (ilk || r['ilk'] == true) return; // başlangıç imleci: ekranlar zaten kendini yüklüyor
     if (_akis.isClosed) return;
 

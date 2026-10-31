@@ -410,6 +410,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           if (mounted) {
             setState(_rozet.clear);
             context.bildir2('Eklenemedi', e.mesaj, hata: true);
+            context.durum.islemHatasi(e);
             if (e.kod == 404) _bulunamadi();
           }
           return;

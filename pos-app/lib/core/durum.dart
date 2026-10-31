@@ -52,7 +52,7 @@ class UygulamaDurumu extends ChangeNotifier {
 
   /// Adisyon değişim akışı (uzun yoklama + bu cihazın yazmaları). Kabuk
   /// açıkken çalışır; pano/adisyon/kasa ekranları abone olur.
-  late final SenkronMerkezi senkron = SenkronMerkezi(api);
+  late final SenkronMerkezi senkron = SenkronMerkezi(api)..operatorDustu = () => unawaited(oturumuYenile());
 
   Timer? _kalpAtisi;
   Timer? _yenidenDene;
