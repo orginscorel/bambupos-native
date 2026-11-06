@@ -123,6 +123,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   /* bugün ödenenler */
   String? _kilit;
   Timer? _kilitSayaci;
+  int _odenenTur = 0;
   Json? _odenenler;
   String? _kilitHata;
 
@@ -194,6 +195,9 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     // Borçlar listesi açıkken o da tazelenir (başka cihazdan borca yazılan
     // adisyon çıkıp girmeden görünür).
     if (_sekme == 'debts' && _borclu == null) _borclulariYukle(sessiz: true);
+    // Bugün ödenenler açıkken 15 sn'de bir tazelenir (yeni ödemeler çıkıp
+    // girmeden görünür; önce yalnız PIN ile açılınca yükleniyordu).
+    if (_sekme == 'paid' && _kilit != null && ++_odenenTur % 3 == 0) _odenenleriYenile(sessiz: true);
   }
 
   @override
@@ -1624,7 +1628,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     _kilitSayaci?.cancel();
   }
 
-  Future<void> _odenenleriYenile() async {
+  Future<void> _odenenleriYenile({bool sessiz = false}) async {
     final k = _kilit;
     if (k == null) return;
     try {
@@ -1635,8 +1639,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       if (e.kod == 423) {
         setState(() => _kilitle('Süre doldu; yeniden şifre girin.'));
       } else {
-        context.bildir2('Liste yüklenemedi', e.mesaj, hata: true);
+        if (!sessiz) context.bildir2('Liste yüklenemedi', e.mesaj, hata: true);
       }
+    } catch (_) {
+      if (!sessiz) rethrow;
     }
   }
 
@@ -1722,6 +1728,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
               setState(() => _sekme = k);
               // Sekmeye her girişte taze liste (önce yalnız boşken yükleniyordu).
               if (k == 'debts') _borclulariYukle(sessiz: _borclular.isNotEmpty);
+              if (k == 'paid' && _kilit != null) _odenenleriYenile(sessiz: true);
             },
             child: Container(
               height: 48,
