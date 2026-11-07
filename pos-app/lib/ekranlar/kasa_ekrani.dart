@@ -1661,7 +1661,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   String _sure(String? iso) {
     if (iso == null) return '—';
     final dk = gecenDakika(iso, saatFarki: _o.saatFarki);
-    return dk < 60 ? '$dk dk' : '${dk ~/ 60} sa ${dk % 60} dk';
+    return dk >= 1440 ? sureMetni(dk) : (dk < 60 ? '$dk dk' : '${dk ~/ 60} sa ${dk % 60} dk');
   }
 
   _KartDurum _kartDurum(AdisyonOzet a) {
@@ -1785,7 +1785,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
           crossAxisCount: _sutun(g),
           mainAxisSpacing: g >= 640 ? 10 : 8,
           crossAxisSpacing: g >= 640 ? 10 : 8,
-          mainAxisExtent: (g >= 480 ? 200 : 270) + ek,
+          mainAxisExtent: (g >= 480 ? 216 : 286) + ek,
         ),
         itemCount: kartlar.length,
         itemBuilder: (_, i) => kartlar[i],
@@ -1848,9 +1848,24 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       ),
     ]);
     final sure = Column(children: [
-      Text('Süre', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+      Text('Masa Süre', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
       Text(_sure(a.ham['created_at']?.toString()), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
     ]);
+    // SON SİPARİŞ (1.2.51): son ürün eklenmesinden beri geçen süre (sunucu son_siparis_at).
+    final sonIso = a.ham['son_siparis_at']?.toString();
+    final sonSiparis = sonIso == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text.rich(TextSpan(children: [
+                const TextSpan(text: 'Son sipariş · '),
+                TextSpan(text: _sure(sonIso), style: const TextStyle(fontWeight: FontWeight.w800)),
+                const TextSpan(text: ' önce'),
+              ]), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.uyari)),
+            ),
+          );
     return Semantics(
       label: '$baslik — ${para(a.kalan, simge: false)} lira · $etiket',
       button: true,
@@ -1888,6 +1903,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
                   const SizedBox(height: 4),
                   sure,
                 ],
+                ?sonSiparis,
                 if (borc > 0)
                   Tooltip(
                     message: '${a.cariAdi ?? 'Şahıs'} — defterdeki açık borcu',

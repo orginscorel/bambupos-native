@@ -164,8 +164,9 @@ class _MasaPanosuState extends State<MasaPanosu> {
   String? _sonSiparis(Masa m) {
     String? en;
     for (final a in m.adisyonlar) {
-      final iso = a.acilis;
-      if (iso != null && (en == null || iso.compareTo(en) > 0)) en = iso;
+      // 1.2.51: son ürün eklenme anı (son_siparis_at); yoksa eski kaynak.
+      final iso = _metin(a.ham['son_siparis_at']) ?? a.acilis;
+      if (iso != null && (en == null || (DateTime.tryParse(iso)?.isAfter(DateTime.tryParse(en) ?? DateTime(0)) ?? false))) en = iso;
     }
     return en;
   }
@@ -630,7 +631,7 @@ class _MasaPanosuState extends State<MasaPanosu> {
             ),
             Expanded(
               child: Column(children: [
-                Text('Süre', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+                Text('Masa Süre', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
                 Text(sureMetni(gecenDakika(acilis, saatFarki: _fark)),
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               ]),
@@ -649,10 +650,11 @@ class _MasaPanosuState extends State<MasaPanosu> {
           const SizedBox(height: 6),
           DefaultTextStyle.merge(
             style: TextStyle(fontSize: 11.5, color: Renk.ikinci),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            // Dar kartta taşmasın: sığmazsa satır orantılı küçülür.
+            child: FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.schedule_rounded, size: 13, color: Renk.soluk),
               const SizedBox(width: 3),
-              Text(saatMetni(acilis)),
+              Text('Açılış ${saatMetni(acilis)}'),
               const SizedBox(width: 9),
               Icon(Icons.restaurant_rounded, size: 13, color: Renk.soluk),
               const SizedBox(width: 3),
@@ -663,14 +665,18 @@ class _MasaPanosuState extends State<MasaPanosu> {
                 const SizedBox(width: 3),
                 Text('$kisi'),
               ],
-            ]),
+            ])),
           ),
           const SizedBox(height: 3),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.history_rounded, size: 13, color: bayat ? Renk.uyari : Renk.soluk),
+            Icon(Icons.history_rounded, size: 13, color: Renk.uyari),
             const SizedBox(width: 3),
-            Text('Son ${sureMetni(gecenDakika(son, saatFarki: _fark))}',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: bayat ? Renk.uyari : Renk.ikinci)),
+            Flexible(
+              child: Text(son == null ? 'Son sipariş · —' : 'Son sipariş · ${sureMetni(gecenDakika(son, saatFarki: _fark))} önce',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, fontWeight: bayat ? FontWeight.w800 : FontWeight.w600, color: Renk.uyari)),
+            ),
           ]),
           if (m.adisyonlar.first.acan != null) ...[
             const SizedBox(height: 3),

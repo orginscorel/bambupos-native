@@ -25,6 +25,12 @@ int gecenDakika(String? iso, {Duration saatFarki = Duration.zero}) {
 
 String sureMetni(int dakika) {
   if (dakika < 60) return '$dakika dk';
+  // 24 saati geçen süre "X gün Y sa" (web ile aynı, 1.2.51).
+  if (dakika >= 1440) {
+    final g = dakika ~/ 1440;
+    final sa = (dakika % 1440) ~/ 60;
+    return sa == 0 ? '$g gün' : '$g gün $sa sa';
+  }
   final s = dakika ~/ 60;
   final d = dakika % 60;
   return d == 0 ? '$s sa' : '$s sa $d dk';
