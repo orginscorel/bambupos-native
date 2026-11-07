@@ -2091,7 +2091,23 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     if (o == null) return Center(child: Text('Yükleniyor…', style: TextStyle(color: Renk.ikinci)));
     final satirlar = (o['rows'] as List? ?? const []).whereType<Map>().toList();
     final yontemler = (o['yontemler'] as List? ?? const []).whereType<Map>().toList();
+    final aralik = o['range'] is Map ? (o['range'] as Map).cast<String, dynamic>() : <String, dynamic>{};
+    final basAn = aralik['baslangic_at']?.toString();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Tarih başlığı: hangi günün ödemeleri olduğu açıkça görünsün.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+        child: Row(children: [
+          Icon(Icons.calendar_today_rounded, size: 18, color: Renk.marka),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(gunBasligi(aralik['acik_gun']?.toString()), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              if (basAn != null) Text("${kisaTarih(basAn)} ${saatMetni(basAn)}'ten beri", style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+            ]),
+          ),
+        ]),
+      ),
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 10, 0),
         child: Row(children: [
@@ -2138,7 +2154,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             Text('${a.masaAdi ?? a.cariAdi ?? 'Adisyon #${a.id}'} #${a.id}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
             Text(para(tamSayi(r['odenen_minor'])), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Renk.basari)),
             const Spacer(),
-            Text(saatMetni(r['son_odeme_at']?.toString()), style: TextStyle(fontSize: 11, color: Renk.ikinci)),
+            Text('${kisaTarih(r['son_odeme_at']?.toString())} · ${saatMetni(r['son_odeme_at']?.toString())}', style: TextStyle(fontSize: 11, color: Renk.ikinci)),
             Wrap(spacing: 4, runSpacing: 2, children: [
               for (final m in y)
                 Text('${m['label']} ${para(tamSayi(m['amount_minor']))}${tamSayi(m['count']) > 1 ? ' (${m['count']})' : ''}',

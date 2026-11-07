@@ -36,6 +36,23 @@ String saatMetni(String? iso) {
   return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 }
 
+const _aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const _gunler = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+
+/// "2026-11-07" → "7 Kasım 2026 Cumartesi" (iş günü başlığı).
+String gunBasligi(String? ymd) {
+  final t = ymd == null ? null : DateTime.tryParse(ymd);
+  if (t == null) return '';
+  return '${t.day} ${_aylar[t.month - 1]} ${t.year} ${_gunler[t.weekday - 1]}';
+}
+
+/// ISO an → "07 Kas" (yerel saat).
+String kisaTarih(String? iso) {
+  final t = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+  if (t == null) return '';
+  return '${t.day.toString().padLeft(2, '0')} ${_aylar[t.month - 1].substring(0, 3)}';
+}
+
 /// Türkçe büyük/küçük harf duyarsız arama (İ/ı, I/i doğru eşleşsin).
 String aramaAnahtari(String s) => s
     .replaceAll('İ', 'i')
