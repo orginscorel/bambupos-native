@@ -15,6 +15,7 @@ import 'ekranlar/acilis.dart';
 import 'ekranlar/aktivasyon_ekrani.dart';
 import 'ekranlar/bildirim_baloncuklari.dart';
 import 'ekranlar/kabuk.dart';
+import 'ekranlar/kasa_hatirlatma.dart';
 import 'ekranlar/pin_ekrani.dart';
 import 'ekranlar/ortak.dart';
 
@@ -116,6 +117,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
             child: Stack(children: [
               ?child,
               BildirimBaloncuklari(merkez: widget.durum.bildirim),
+              KasaHatirlatma(durum: widget.durum),
             ]),
           ),
           // Açılış perdesi bütün aşamaların üstünde oynar, oturum denetimi

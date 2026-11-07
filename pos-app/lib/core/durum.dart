@@ -86,13 +86,35 @@ class UygulamaDurumu extends ChangeNotifier {
   /// Dokunma / fare / klavye — main.dart'taki dinleyici çağırır.
   void etkinlik() => _sonEtkinlik = DateTime.now();
 
+  /// KASA YETKİLİSİ (1.2.49, işletme talebi): kasa cihazında kasa yetkisi
+  /// olan personel 3 dk boşta kalınca PIN'e DÜŞMEZ; ekranı kapatmayan bir
+  /// hatırlatma çıkar ("Kasada girili hesap: Ad"). 10 sn'de dokunulmazsa
+  /// kendiliğinden kapanır, oturum sürer; "PIN ekranına dön" → kilitle().
+  /// Değer: hatırlatmadaki personel adı (null = gizli).
+  final kasaHatirlatma = ValueNotifier<String?>(null);
+
+  bool get _kilitYerineHatirlat {
+    final o = oturum;
+    return o != null && o.istasyon == 'kasa' && (o.yetki('payments.take') || o.yetkiler.contains('*'));
+  }
+
   void _bostaDenetle() {
-    if (asama != Asama.calisma || !(oturum?.operatorVar ?? false)) return;
+    if (asama != Asama.calisma || !(oturum?.operatorVar ?? false)) {
+      kasaHatirlatma.value = null;
+      return;
+    }
     if (kilitMuaf > 0) {
       _sonEtkinlik = DateTime.now();
       return;
     }
-    if (DateTime.now().difference(_sonEtkinlik) >= bostaKilitSuresi) kilitle();
+    if (DateTime.now().difference(_sonEtkinlik) >= bostaKilitSuresi) {
+      if (_kilitYerineHatirlat) {
+        _sonEtkinlik = DateTime.now(); // bir sonraki hatırlatma 3 dk sonra
+        kasaHatirlatma.value = oturum!.operatorAd;
+      } else {
+        kilitle();
+      }
+    }
   }
 
   @visibleForTesting
@@ -266,6 +288,7 @@ class UygulamaDurumu extends ChangeNotifier {
   /// Ekranı kilitler: operatör düşer, cihaz eşli kalır (PIN ekranı).
   /// PIN ekranı HEMEN gelir; sunucuya bildirim arkada gider.
   Future<void> kilitle() {
+    kasaHatirlatma.value = null;
     final istek = _kilitIstegi = api.post('/terminal/operator/clear').then<void>((_) {}, onError: (_) {
       // Bağlantı yoksa bile ekran kilitlenir; sunucuda operatör boşta kalma süresiyle düşer.
     });
