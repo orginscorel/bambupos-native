@@ -1320,9 +1320,13 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       'lines': satirlar,
       'totals': toplamlar,
       'payments': odemeler,
-      'footer': tur == 'bill'
+      // Fişi önizleyen / bastıran kişi (1.2.50): sunucu da basarken ekler, çift yazmaz.
+      'footer': [
+        if (_o.operatorAd.isNotEmpty) 'Kasiyer: ${_o.operatorAd}',
+        ...(tur == 'bill'
           ? ['Bu fiş ön-hesaptır — ödeme kasada alınır.', 'Bu belge bilgi amaçlıdır, mali değeri yoktur.', 'Ön-hesap · #${s.id}']
-          : ['Bizi tercih ettiğiniz için teşekkürler', 'Bu belge bilgi amaçlıdır, mali değeri yoktur.', 'Adisyon kapanışı · #${s.id}'],
+          : ['Bizi tercih ettiğiniz için teşekkürler', 'Bu belge bilgi amaçlıdır, mali değeri yoktur.', 'Adisyon kapanışı · #${s.id}']),
+      ],
     };
   }
 
