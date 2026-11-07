@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -33,9 +34,14 @@ import 'urun_secimi.dart';
 ///    GÖNDERİLMEZ — web de göndermez).
 ///  - Tüm kalemler iptal edildiyse "Adisyonda ürün kalmadı" sorulur.
 class AdisyonEkrani extends StatefulWidget {
-  const AdisyonEkrani({super.key, required this.adisyonId, this.kasaKipi = false});
+  const AdisyonEkrani({super.key, required this.adisyonId, this.kasaKipi = false, this.islem});
   final int adisyonId;
   final bool kasaKipi;
+
+  /// Açılınca bir kez çalışacak işlem (kasa ⋮ menüsünden, 1.2.48):
+  /// 'tasi' → Adisyonu başka masaya taşı, 'birlestir' → Masayı birleştir.
+  /// Web'deki `?islem=` ile aynı: adisyon ekranının KENDİ akışı açılır.
+  final String? islem;
 
   @override
   State<AdisyonEkrani> createState() => _AdisyonEkraniState();
@@ -150,6 +156,9 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   final Map<int, Set<int>> _birim = {};
   int? _acikDokum;
 
+  /// Yeni sipariş görünümünde "Önceden gönderilenler" bulanık durur; dokununca açılır.
+  bool _eskileriGoster = false;
+
   /// §2.6 hızlı ekleme kuyruğu + kart rozetleri.
   final List<Urun> _kuyruk = [];
   final Map<int, int> _rozet = {};
@@ -173,9 +182,12 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   /// işlemi yapan personelde denetler (uygulama her zaman terminaldir).
   bool _canOrPin(String _) => true;
 
+  String? _bekleyenIslem;
+
   @override
   void initState() {
     super.initState();
+    _bekleyenIslem = widget.islem;
     WidgetsBinding.instance.addObserver(this);
     _api = context.api;
     _katalog = KatalogDeposu.ornek.katalog;
@@ -290,6 +302,18 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     // birleştirdi): "kapalı" göstermek yerine hedefe geç.
     final hedef = a.birlestirilenHedef;
     if (hedef != null && _modal == 0) _birlesmeyeGit(hedef.id, hedef.masa);
+    // Kasadan gelen işlem (taşı / birleştir): ilk yüklemede bir kez açılır.
+    final islem = _bekleyenIslem;
+    if (islem != null) {
+      _bekleyenIslem = null;
+      if (a.acik && !a.selfMi) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _ayrildi) return;
+          if (islem == 'tasi' && _can('orders.update')) _adisyonuTasi();
+          if (islem == 'birlestir' && _can('orders.merge_tables')) _birlestir();
+        });
+      }
+    }
   }
 
   Future<void> _kataloguYukle() async {
@@ -1454,10 +1478,10 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
       for (final no in gruplar.keys.toList()..sort()) {
         final ks = gruplar[no]!;
         satirlar.add(_partiBasligi(no, ks, no == aktifParti, adlar['$no']?.toString()));
-        satirlar.addAll(ks.map((k) => _kalemSatiri(a, k)));
+        satirlar.addAll(_gorunumSatirlari(a, ks));
       }
     } else {
-      satirlar.addAll(aktif.map((k) => _kalemSatiri(a, k)));
+      satirlar.addAll(_gorunumSatirlari(a, aktif));
     }
 
     final iskonto = tamSayi(a.ham['iskonto_minor']);
@@ -1626,8 +1650,110 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
     );
   }
 
-  Widget _kalemSatiri(Adisyon a, Kalem k) {
-    final secilebilir = _tasinabilir(k) && _can('orders.update');
+  /* ── YENİ SİPARİŞ GÖRÜNÜMÜ (1.2.48, web Siparişler ile aynı) ──
+     Hazırlığa gönderilmiş "çay ×1" varken yeni çay eklenince satır "2×"
+     görünüp personel "iki mi girdim?" diye siliyordu. Gönderilmemiş adet
+     varken: üstte "Yeni eklenenler" (yalnız yeni adet, −/+ ve çöp yalnız
+     ona), altta "Önceden gönderilenler" bulanık. Gönderilince her zamanki
+     birleşik görünüm. Yalnız GÖRÜNÜM: sunucu/fiş/adet mantığı aynı. */
+
+  bool _yeniMi(Kalem k) => _bekleyen(k) > 0 && !k.ikram && !k.iade;
+
+  /// Kısmen gönderilmiş satır ikiye bölünerek gösterilir (yeni + eski parça).
+  bool _bolunur(Kalem k) => _kismenGonderilmis(k) && _bekleyen(k) < k.adet && !k.ikram && !k.iade && !_serbest(k);
+
+  List<Widget> _gorunumSatirlari(Adisyon a, List<Kalem> ks) {
+    final kip = a.acik && a.aktifKalemler.any(_yeniMi);
+    if (!kip) return [for (final k in ks) _kalemSatiri(a, k)];
+    final yeni = <Widget>[];
+    final eski = <Widget>[];
+    for (final k in ks) {
+      if (_yeniMi(k)) {
+        if (_bolunur(k)) {
+          yeni.add(_kalemSatiri(a, k, tur: 'yeni'));
+          eski.add(_kalemSatiri(a, k, tur: 'eskiParca'));
+        } else {
+          yeni.add(_kalemSatiri(a, k));
+        }
+      } else {
+        eski.add(_kalemSatiri(a, k));
+      }
+    }
+    if (yeni.isEmpty || eski.isEmpty) return [...yeni, ...eski];
+    Widget baslik(IconData ikon, String metin, Color renk, Color zemin, {Widget? sag}) => Container(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+          decoration: BoxDecoration(color: zemin, border: Border(bottom: BorderSide(color: Renk.cizgi))),
+          child: Row(children: [
+            Icon(ikon, size: 15, color: renk),
+            const SizedBox(width: 6),
+            Expanded(child: Text(metin, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: renk))),
+            ?sag,
+          ]),
+        );
+    final bulanik = !_eskileriGoster;
+    return [
+      baslik(Icons.fiber_new_rounded, 'Yeni eklenenler', Renk.uyari, Renk.uyariZemin),
+      ...yeni,
+      baslik(
+        Icons.history_rounded,
+        'Önceden gönderilenler',
+        Renk.ikinci,
+        Renk.yuzey,
+        sag: TextButton(
+          key: const ValueKey('adisyon-eskileri-goster'),
+          style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 8), visualDensity: VisualDensity.compact),
+          onPressed: () => setState(() => _eskileriGoster = !_eskileriGoster),
+          child: Text(bulanik ? 'Göster' : 'Soluklaştır', style: const TextStyle(fontSize: 12)),
+        ),
+      ),
+      for (final w in eski)
+        bulanik
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _eskileriGoster = true),
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: .45,
+                    child: ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: 1.2, sigmaY: 1.2), child: w),
+                  ),
+                ),
+              )
+            : w,
+    ];
+  }
+
+  /// [tur]: 'normal' | 'yeni' (bölünmüş satırın gönderilmemiş adedi) |
+  /// 'eskiParca' (aynı satırın gönderilmiş adedi; yalnız bilgi).
+  Widget _kalemSatiri(Adisyon a, Kalem k, {String tur = 'normal'}) {
+    final parca = tur != 'normal';
+    final gosterilen = tur == 'yeni' ? _bekleyen(k) : (tur == 'eskiParca' ? k.adet - _bekleyen(k) : k.adet);
+    if (tur == 'eskiParca') {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(color: Renk.ic, border: Border(bottom: BorderSide(color: Renk.cizgi))),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: '$gosterilen×', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const TextSpan(text: ' '),
+                  ...urunAdiParcalari(k.ad, stil: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (k.varyant != null) TextSpan(text: ' (${k.varyant})', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
+                ]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 15),
+              ),
+              Text(k.durumEtiket.isNotEmpty ? 'Gönderildi · ${k.durumEtiket}' : 'Gönderildi', style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Text(para(k.birimFiyat * gosterilen), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        ]),
+      );
+    }
+    final secilebilir = !parca && _tasinabilir(k) && _can('orders.update');
     final topluAdet = _topluAdedi(k);
     final tam = _secili.contains(k.id) && topluAdet >= k.adet;
     final kismi = _secili.contains(k.id) && topluAdet > 0 && topluAdet < k.adet;
@@ -1666,11 +1792,11 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
             child: Tooltip(
               message: acik ? 'Dökümü kapat' : 'Kim, kaçta sipariş etti?',
               child: InkWell(
-                onTap: () => setState(() => _acikDokum = acik ? null : k.id),
+                onTap: parca ? null : () => setState(() => _acikDokum = acik ? null : k.id),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text.rich(
                     TextSpan(children: [
-                      TextSpan(text: '${k.adet}×', style: const TextStyle(fontWeight: FontWeight.w800)),
+                      TextSpan(text: '$gosterilen×', style: const TextStyle(fontWeight: FontWeight.w800)),
                       const TextSpan(text: ' '),
                       ...urunAdiParcalari(k.ad, stil: const TextStyle(fontWeight: FontWeight.w600)),
                       if (k.varyant != null) TextSpan(text: ' (${k.varyant})', style: TextStyle(fontSize: 13, color: Renk.ikinci)),
@@ -1682,7 +1808,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   if (k.secenekler.isNotEmpty) Text(k.secenekler.join(', '), style: TextStyle(fontSize: 12, color: Renk.ikinci)),
                   // Kim, kaçta (2026-10-30 işletme): TEK adetli üründe açılan karttaki
                   // gibi saat + personel satırda; 1'den fazla adette yalnız açılan kartlarda.
-                  if (k.adet == 1 && !acik) ...tekAdetEkleyen(k),
+                  if (k.adet == 1 && !acik && !parca) ...tekAdetEkleyen(k),
                   if (k.not != null && k.not!.trim().isNotEmpty) KalemNotu(k.not!),
                   if (k.ikram)
                     Text('${k.iade ? 'İptal / iade' : 'İkram'} — ${k.ikramNedeni ?? ''}',
@@ -1695,7 +1821,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Opacity(
               opacity: k.ikram ? .6 : 1,
-              child: Text(para(k.tutar),
+              child: Text(para(parca ? k.birimFiyat * gosterilen : k.tutar),
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, decoration: k.ikram ? TextDecoration.lineThrough : null)),
             ),
             Text('${para(k.birimFiyat)} / adet', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
@@ -1703,7 +1829,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
         ]),
         // Adet kartları (web sipariş detayı / Kasa ile aynı): her adet ayrı
         // kart — kutu · saat · ürün · siparişi giren · birim fiyat.
-        if (acik)
+        if (acik && !parca)
           AdetKartlari(
             key: ValueKey('adisyon-adetler-${k.id}'),
             kalem: k,
@@ -1725,7 +1851,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.schedule_rounded, size: 11, color: Renk.uyari),
                       const SizedBox(width: 4),
-                      Text(bekleyen >= k.adet ? 'Gönderilmedi' : '$bekleyen adet gönderilmedi',
+                      Text(bekleyen >= k.adet || parca ? 'Gönderilmedi' : '$bekleyen adet gönderilmedi',
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.uyari)),
                     ]),
                   ),
@@ -1754,8 +1880,11 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                 Container(
                   decoration: BoxDecoration(color: Renk.yuzey, borderRadius: koseYuvarlak, border: Border.all(color: Renk.cizgiKoyu)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    _kucukDugme(Icons.remove_rounded, k.adet > 1 && (_serbest(k) || _bekleyen(k) > 0) && !_mesgul ? () => _adet(k, -1) : null, 'Azalt'),
-                    SizedBox(width: 28, child: Text('${k.adet}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
+                    if (parca)
+                      _kucukDugme(Icons.remove_rounded, _bekleyen(k) > 1 && !_mesgul ? () => _bekleyeniCikar(k, 1) : null, 'Azalt')
+                    else
+                      _kucukDugme(Icons.remove_rounded, k.adet > 1 && (_serbest(k) || _bekleyen(k) > 0) && !_mesgul ? () => _adet(k, -1) : null, 'Azalt'),
+                    SizedBox(width: 28, child: Text('$gosterilen', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
                     _kucukDugme(Icons.add_rounded, _mesgul ? null : () => _adet(k, 1), 'Artır'),
                   ]),
                 ),

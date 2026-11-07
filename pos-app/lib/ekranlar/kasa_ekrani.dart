@@ -13,6 +13,7 @@ import '../core/modeller.dart';
 import '../core/pos_cihaz.dart';
 import '../core/senkron_merkezi.dart';
 import 'adet_kartlari.dart';
+import 'adisyon_ekrani.dart';
 import 'adisyon_pencereleri.dart';
 import 'kasa_pencereleri.dart';
 import 'ortak.dart';
@@ -2093,77 +2094,263 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
     final yontemler = (o['yontemler'] as List? ?? const []).whereType<Map>().toList();
     final aralik = o['range'] is Map ? (o['range'] as Map).cast<String, dynamic>() : <String, dynamic>{};
     final basAn = aralik['baslangic_at']?.toString();
+    final toplam = tamSayi(o['toplam_minor']);
+    final odemeAdet = tamSayi(o['odeme_adet']);
+    // 1.2.48: web "Bugün ödenenler" v3 tasarımı — renkli özet kutuları +
+    // ayrıntılı kartlar; özet de kartlarla birlikte kayar (telefonda yer açılır).
+    final sutun = g >= 1280 ? 4 : (g >= 900 ? 3 : (g >= 560 ? 2 : 1));
+    final aralikP = g >= 640 ? 10.0 : 8.0;
+    final ozetSutun = g >= 900 ? 4 : (g >= 420 ? 2 : 1);
+    final kutular = <Widget>[
+      _odenenOzetKutusu(Icons.payments_outlined, 'Toplam tahsilat', para(toplam),
+          '${o['adisyon_adet'] ?? satirlar.length} adisyon · $odemeAdet ödeme', Renk.marka, Renk.markaAcik, Renk.markaKenar, null),
+      for (final y in yontemler)
+        () {
+          final r = _yontemRenk('${y['label']}');
+          final tutar = tamSayi(y['amount_minor']);
+          return _odenenOzetKutusu(_yontemIkonu('${y['label']}'), '${y['label']}', para(tutar),
+              '${tamSayi(y['count'])} ödeme · %${toplam > 0 ? (tutar * 100 / toplam).round() : 0}', r.$1, r.$2, r.$3, toplam > 0 ? tutar / toplam : 0);
+        }(),
+    ];
+    List<Widget> satirla(List<Widget> ogeler, int n) => [
+          for (var k = 0; k < ogeler.length; k += n)
+            Padding(
+              padding: EdgeInsets.only(bottom: aralikP),
+              child: IntrinsicHeight(
+                child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (var m = k; m < k + n; m++) ...[
+                    if (m > k) SizedBox(width: aralikP),
+                    Expanded(child: m < ogeler.length ? ogeler[m] : const SizedBox.shrink()),
+                  ],
+                ]),
+              ),
+            ),
+        ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       // Tarih başlığı: hangi günün ödemeleri olduğu açıkça görünsün.
       Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 4),
         child: Row(children: [
-          Icon(Icons.calendar_today_rounded, size: 18, color: Renk.marka),
-          const SizedBox(width: 8),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(color: Renk.markaAcik, borderRadius: koseYuvarlak, border: Border.all(color: Renk.markaKenar)),
+            child: Icon(Icons.calendar_today_rounded, size: 18, color: Renk.marka),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(gunBasligi(aralik['acik_gun']?.toString()), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              if (basAn != null) Text("${kisaTarih(basAn)} ${saatMetni(basAn)}'ten beri", style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+              Text(gunBasligi(aralik['acik_gun']?.toString()), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              if (basAn != null)
+                Text("${kisaTarih(basAn)} ${saatMetni(basAn)}'ten beri", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
             ]),
           ),
-        ]),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 10, 0),
-        child: Row(children: [
-          Expanded(
-            child: Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text.rich(TextSpan(children: [
-                TextSpan(text: '${o['adisyon_adet'] ?? satirlar.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                const TextSpan(text: ' adisyon · '),
-                TextSpan(text: para(tamSayi(o['toplam_minor'])), style: const TextStyle(fontWeight: FontWeight.w700)),
-              ])),
-              for (final y in yontemler) Rozet('${y['label']} ${para(tamSayi(y['amount_minor']))}'),
-            ]),
-          ),
+          IconButton(tooltip: 'Yenile', onPressed: () => _odenenleriYenile(), icon: Icon(Icons.refresh_rounded, size: 20, color: Renk.ikinci)),
           TextButton.icon(onPressed: () => setState(_kilitle), icon: const Icon(Icons.lock_outline_rounded, size: 15), label: const Text('Kilitle')),
         ]),
       ),
       Expanded(
-        child: satirlar.isEmpty
-            ? _bos(Icons.account_balance_wallet_outlined, 'Bugün ödeme alınmış adisyon yok', 'Gün sonu alınmamış açık gündeki ödemeler burada listelenir.')
-            : _izgara(g, [
-                for (final r in satirlar)
-                  _odenenKarti(r.cast<String, dynamic>()),
-              ]),
+        child: ListView(padding: const EdgeInsets.fromLTRB(12, 6, 12, 12), children: [
+          ...satirla(kutular, ozetSutun),
+          if (satirlar.isEmpty)
+            SizedBox(height: 260, child: _bos(Icons.account_balance_wallet_outlined, 'Bugün ödeme alınmış adisyon yok', 'Gün sonu alınmamış açık gündeki ödemeler burada listelenir.'))
+          else ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(2, 6, 2, 8),
+              child: Text('ÖDENEN ADİSYONLAR · ${satirlar.length}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: .5, color: Renk.soluk)),
+            ),
+            ...satirla([for (final r in satirlar) _odenenKarti(r.cast<String, dynamic>())], sutun),
+          ],
+        ]),
       ),
     ]);
+  }
+
+  /// Yöntem rengi (web RENK ile aynı aile): nakit = yeşil, kart = mavi, diğer = turuncu.
+  (Color, Color, Color) _yontemRenk(String ad) {
+    final k = ad.toLowerCase();
+    if (k.contains('nakit')) return (Renk.basari, Renk.basariZemin, Renk.basariKenar);
+    if (k.contains('kart') && !k.contains('yemek') && !k.contains('hediye')) return (Renk.bilgi, Renk.bilgiZemin, Renk.bilgiKenar);
+    return (Renk.uyari, Renk.uyariZemin, Renk.uyariKenar);
+  }
+
+  IconData _yontemIkonu(String ad) {
+    final k = ad.toLowerCase();
+    if (k.contains('nakit')) return Icons.payments_outlined;
+    if (k.contains('kart')) return Icons.credit_card_rounded;
+    if (k.contains('havale') || k.contains('eft')) return Icons.account_balance_outlined;
+    return Icons.account_balance_wallet_outlined;
+  }
+
+  Widget _odenenOzetKutusu(IconData ikon, String baslik, String tutar, String alt, Color renk, Color zemin, Color kenar, double? oran) => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: zemin, borderRadius: koseYuvarlak, border: Border.all(color: kenar)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(color: renk, borderRadius: BorderRadius.circular(8)),
+              child: Icon(ikon, size: 16, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(baslik, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: renk))),
+          ]),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(tutar, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Renk.yazi, fontFeatures: const [FontFeature.tabularFigures()])),
+          ),
+          const SizedBox(height: 2),
+          Text(alt, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.ikinci)),
+          if (oran != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(value: oran.clamp(0, 1).toDouble(), minHeight: 5, color: renk, backgroundColor: kenar),
+            ),
+          ],
+        ]),
+      );
+
+  /// Açılıştan kapanışa (yoksa son ödemeye) geçen süre: "1 sa 25 dk".
+  String _odenenSure(String? bas, String? son) {
+    final a = bas == null ? null : DateTime.tryParse(bas);
+    final b = son == null ? null : DateTime.tryParse(son);
+    if (a == null || b == null) return '—';
+    final dk = b.difference(a).inMinutes;
+    if (dk < 0) return '—';
+    return dk < 60 ? '$dk dk' : '${dk ~/ 60} sa ${dk % 60} dk';
   }
 
   Widget _odenenKarti(Json r) {
     final o = r['order'] is Map ? (r['order'] as Map).cast<String, dynamic>() : <String, dynamic>{};
     final a = AdisyonOzet(o);
-    final y = (r['yontemler'] as List? ?? const []).whereType<Map>().toList();
+    final odenen = tamSayi(r['odenen_minor']);
+    final sonOdeme = r['son_odeme_at']?.toString();
+    final acilisAn = o['created_at']?.toString();
+    final kalanVar = a.kalan > 0;
+    final renk = kalanVar ? Renk.uyari : Renk.basari;
+    final zemin = kalanVar ? Renk.uyariZemin : Renk.basariZemin;
+    final kenar = kalanVar ? Renk.uyariKenar : Renk.basariKenar;
+    final odemeler = (r['odemeler'] as List? ?? const []).whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+
+    Widget bilgi(String baslik, String deger, {bool son = false}) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            decoration: BoxDecoration(border: son ? null : Border(right: BorderSide(color: Renk.cizgi))),
+            child: Column(children: [
+              Text(baslik.toUpperCase(), maxLines: 1, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Renk.soluk, letterSpacing: .3)),
+              const SizedBox(height: 1),
+              FittedBox(fit: BoxFit.scaleDown, child: Text(deger, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
+            ]),
+          ),
+        );
+
+    Widget odemeSatiri(Json p) {
+      final iptal = p['status'] == 'cancelled' || p['status'] == 'voided';
+      final ad = '${p['method_label'] ?? p['method'] ?? ''}';
+      final yr = _yontemRenk(ad);
+      final an = p['created_at']?.toString();
+      final ust = TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, decoration: iptal ? TextDecoration.lineThrough : null, color: iptal ? Renk.soluk : Renk.yazi);
+      return Opacity(
+        opacity: iptal ? .6 : 1,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(color: yr.$2, borderRadius: BorderRadius.circular(7), border: Border.all(color: yr.$3)),
+              child: Icon(_yontemIkonu(ad), size: 14, color: yr.$1),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(iptal ? '$ad · kaldırıldı' : ad, maxLines: 1, overflow: TextOverflow.ellipsis, style: ust),
+                Text([saatMetni(an), if (p['cashier'] != null) '${p['cashier']}'].where((x) => x.isNotEmpty).join(' · '),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Renk.ikinci)),
+              ]),
+            ),
+            const SizedBox(width: 6),
+            Text(para(tamSayi(p['amount_minor'])), style: ust),
+          ]),
+        ),
+      );
+    }
+
     return Material(
-      color: Renk.basariZemin,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Renk.basari.withValues(alpha: .55))),
+      color: zemin,
+      shape: RoundedRectangleBorder(borderRadius: koseYuvarlak, side: BorderSide(color: kenar)),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: () {
           setState(() => _sekme = 'orders');
           _sec(a);
         },
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${a.masaAdi ?? a.cariAdi ?? 'Adisyon #${a.id}'} #${a.id}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-            Text(para(tamSayi(r['odenen_minor'])), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Renk.basari)),
-            const Spacer(),
-            Text('${kisaTarih(r['son_odeme_at']?.toString())} · ${saatMetni(r['son_odeme_at']?.toString())}', style: TextStyle(fontSize: 11, color: Renk.ikinci)),
-            Wrap(spacing: 4, runSpacing: 2, children: [
-              for (final m in y)
-                Text('${m['label']} ${para(tamSayi(m['amount_minor']))}${tamSayi(m['count']) > 1 ? ' (${m['count']})' : ''}',
-                    style: TextStyle(fontSize: 11, color: Renk.ikinci)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Başlık: masa adı + #id + kanal | ödenen tutar + durum
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            color: Renk.yuzey,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(a.masaAdi ?? a.cariAdi ?? a.musteri ?? 'Adisyon', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  Text(['#${a.id}', if (a.kanalEtiket.isNotEmpty) a.kanalEtiket].join(' · '),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Renk.soluk, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(para(odenen), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: renk, fontFeatures: const [FontFeature.tabularFigures()])),
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(color: renk, borderRadius: BorderRadius.circular(6)),
+                  child: Text(kalanVar ? 'Kısmi ödendi' : 'Ödendi', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                ),
+              ]),
             ]),
-            if (tamSayi(r['iptal_adet']) > 0) Text('${r['iptal_adet']} ödeme kaldırıldı', style: TextStyle(fontSize: 11, color: Renk.hata)),
-            if (a.kalan > 0) Text('kalan ${para(a.kalan)}', style: TextStyle(fontSize: 11, color: Renk.uyari)),
-          ]),
-        ),
+          ),
+          // Bilgi şeridi: Ürün · Açılış · Son ödeme · Süre
+          Container(
+            decoration: BoxDecoration(color: Renk.yuzey, border: Border(top: BorderSide(color: Renk.cizgi), bottom: BorderSide(color: kenar))),
+            child: IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                bilgi('Ürün', '${a.kalemSayisi}'),
+                bilgi('Açılış', saatMetni(acilisAn).isEmpty ? '—' : saatMetni(acilisAn)),
+                bilgi('Son ödeme', saatMetni(sonOdeme).isEmpty ? '—' : saatMetni(sonOdeme)),
+                bilgi('Süre', _odenenSure(acilisAn, o['closed_at']?.toString() ?? sonOdeme), son: true),
+              ]),
+            ),
+          ),
+          // Ödeme hareketleri
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+            child: Column(children: [
+              if (odemeler.isEmpty)
+                for (final m in (r['yontemler'] as List? ?? const []).whereType<Map>())
+                  odemeSatiri({'method_label': m['label'], 'amount_minor': m['amount_minor'], 'created_at': sonOdeme})
+              else
+                for (final p in odemeler) odemeSatiri(p),
+            ]),
+          ),
+          const Spacer(),
+          // Alt satır: Hesap · Kalan · İndirim · açan
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 7, 12, 8),
+            decoration: BoxDecoration(border: Border(top: BorderSide(color: kenar))),
+            child: Wrap(spacing: 10, runSpacing: 2, children: [
+              Text('Hesap ${para(a.toplam)}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Renk.ikinci)),
+              if (kalanVar) Text('Kalan ${para(a.kalan)}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Renk.uyari)),
+              if (a.indirim > 0) Text('İndirim ${para(a.indirim)}', style: TextStyle(fontSize: 11.5, color: Renk.ikinci)),
+              if (tamSayi(r['iptal_adet']) > 0) Text('${r['iptal_adet']} ödeme kaldırıldı', style: TextStyle(fontSize: 11.5, color: Renk.hata)),
+              if (a.acan != null) Text('Açan: ${a.acan}', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+            ]),
+          ),
+        ]),
       ),
     );
   }
@@ -2558,6 +2745,12 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             if (_ikramGorunur && (_detay?.acik ?? false) && !_duzelt)
               oge('iade', Icons.undo_rounded, ikramAdet > 0 ? 'İptal / İade ($ikramAdet)' : 'İptal / İade — önce ürün seçin',
                   etkin: ikramAdet > 0 && !_mesgul, key: const ValueKey('kasa-secim-iade'), renk: Renk.hata),
+            // TAŞI / BİRLEŞTİR (1.2.48, web kasa ⋮ ile aynı): İptal/İade'nin hemen
+            // altında; adisyon ekranının kendi taşı/birleştir akışını açar.
+            if ((_detay?.acik ?? s.acik) && !s.selfMi && !_duzelt && _kalemDuzenler)
+              oge('tasi', Icons.arrow_forward_rounded, 'Adisyonu başka masaya taşı', etkin: !_mesgul, key: const ValueKey('kasa-tasi')),
+            if ((_detay?.acik ?? s.acik) && !s.selfMi && !_duzelt && _can('orders.merge_tables'))
+              oge('birlestir', Icons.merge_rounded, 'Masayı birleştir', etkin: !_mesgul, key: const ValueKey('kasa-birlestir')),
             if (fis && s.odenen > 0) oge('fis', Icons.receipt_long_outlined, 'Ödeme fişi yazdır'),
             oge('yazici', Icons.print_outlined, 'Fiş yazıcısı · ${_yaziciAdi ?? 'seçilmedi'}'),
             // "Hesap fişini önizle" ve "İndirim / iskonto" buradan kaldırıldı
@@ -2573,6 +2766,10 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         _seciliIkram();
       case 'iade':
         _seciliIkram(iade: true);
+      case 'tasi':
+        _adisyonEkranindaAc('tasi');
+      case 'birlestir':
+        _adisyonEkranindaAc('birlestir');
       case 'fis':
         _fisYazdir('payment');
       case 'yazici':
@@ -2585,6 +2782,26 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
         _sipariseGeriGonder();
       case 'borc':
         _borcaYaz();
+    }
+  }
+
+  /// Seçili adisyonu adisyon ekranında açıp taşı / birleştir akışını başlatır
+  /// (siparişlerdeki ile aynı sistem). Dönüşte liste tazelenir; adisyon hâlâ
+  /// açıksa yeniden seçilir (taşındıysa yeni masa adıyla), kapandıysa seçim bırakılır.
+  Future<void> _adisyonEkranindaAc(String islem) async {
+    final s = _secili;
+    if (s == null) return;
+    await _penceredeyken(() => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(builder: (_) => AdisyonEkrani(adisyonId: s.id, kasaKipi: true, islem: islem)),
+        ));
+    if (!mounted) return;
+    await _yukle(sessiz: true);
+    if (!mounted) return;
+    final ayni = _adisyonlar.where((x) => x.id == s.id && x.acik).firstOrNull;
+    if (ayni != null) {
+      await _sec(ayni);
+    } else {
+      _secimeDon();
     }
   }
 
