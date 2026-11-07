@@ -12,6 +12,7 @@ import 'package:bambumpos_pos/ekranlar/adisyon_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kasa_ekrani.dart';
 import 'package:bambumpos_pos/ekranlar/kasa_pencereleri.dart';
 import 'package:bambumpos_pos/ekranlar/ortak.dart';
+import 'package:bambumpos_pos/ekranlar/ust_bildirim.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -139,6 +140,8 @@ Future<(UygulamaDurumu, _Sunucu)> _kur(WidgetTester t,
       locale: const Locale('tr', 'TR'),
       supportedLocales: const [Locale('tr', 'TR')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      // Uygulamadaki gibi üst bildirim katmanı (1.2.52).
+      builder: (context, child) => Stack(children: [?child, UstBildirim(durum: d)]),
       home: Scaffold(body: ekran ?? const KasaEkrani()),
     ),
   ));

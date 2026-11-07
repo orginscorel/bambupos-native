@@ -18,6 +18,7 @@ import 'ekranlar/kabuk.dart';
 import 'ekranlar/kasa_hatirlatma.dart';
 import 'ekranlar/pin_ekrani.dart';
 import 'ekranlar/ortak.dart';
+import 'ekranlar/ust_bildirim.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -118,6 +119,7 @@ class _BamBumPosUygulamasiState extends State<BamBumPosUygulamasi> {
               ?child,
               BildirimBaloncuklari(merkez: widget.durum.bildirim),
               KasaHatirlatma(durum: widget.durum),
+              UstBildirim(durum: widget.durum),
             ]),
           ),
           // Açılış perdesi bütün aşamaların üstünde oynar, oturum denetimi

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/hareket.dart';
 import '../app/tema.dart';
+import 'ust_bildirim.dart';
 
 /// Web'deki hazır neden listeleri (resources/js/lib/reasons.ts).
 const nedenListeleri = <String, List<String>>{
@@ -126,10 +127,7 @@ Future<String?> nedenSor(BuildContext context, {required String tur, String? ust
             style: tur == 'item_comp' ? null : FilledButton.styleFrom(backgroundColor: Renk.hata),
             onPressed: () {
               if (neden.trim().length < 3) {
-                ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-                  backgroundColor: Renk.hata,
-                  content: Text('Neden zorunlu — en az 3 karakterlik bir neden girin.'),
-                ));
+                UstBildirim.goster('Neden zorunlu — en az 3 karakterlik bir neden girin.', hata: true);
                 return;
               }
               Navigator.pop(ctx, neden.trim());

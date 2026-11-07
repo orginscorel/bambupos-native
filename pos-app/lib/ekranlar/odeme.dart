@@ -7,6 +7,7 @@ import '../core/api.dart';
 import '../core/bicim.dart';
 import '../core/modeller.dart';
 import 'ortak.dart';
+import 'ust_bildirim.dart';
 
 /// Ödeme al: nakit / kart. Nakitte alınan tutar kalandan fazlaysa sunucuya
 /// KALAN gönderilir, fark para üstü olarak gösterilir.
@@ -76,12 +77,9 @@ class _OdemeState extends State<_Odeme> {
       final yeni = Adisyon(((r as Map)['order'] as Map).cast<String, dynamic>());
       if (!mounted) return;
       final ustu = _paraUstu;
-      // Pencere kapanınca bu bağlam ölür; bildirimi alttaki ekran gösterir.
-      final mesaj = ScaffoldMessenger.of(context);
       Navigator.pop(context, yeni);
-      if (ustu > 0) {
-        mesaj.showSnackBar(SnackBar(content: Text('Para üstü: ${para(ustu)}'), duration: const Duration(seconds: 6)));
-      }
+      // Üst bildirim uygulama katmanında: pencere kapansa da görünür.
+      if (ustu > 0) UstBildirim.goster('Para üstü: ${para(ustu)}', sure: const Duration(seconds: 6));
     } on ApiHata catch (e) {
       if (!mounted) return;
       setState(() {

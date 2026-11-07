@@ -4,6 +4,7 @@ import '../app/hareket.dart';
 import '../app/tema.dart';
 import '../core/api.dart';
 import '../core/durum.dart';
+import 'ust_bildirim.dart';
 
 /// Durum nesnesini ağaca taşır (ek paket gerekmeden).
 class DurumKapsami extends InheritedWidget {
@@ -28,13 +29,8 @@ extension DurumErisimi on BuildContext {
   bool get yoklamaUygun => uygulamaOnde() && TickerMode.getValuesNotifier(this).value.enabled;
 
   void bildir(String mesaj, {bool hata = false}) {
-    final m = ScaffoldMessenger.maybeOf(this);
-    m?.hideCurrentSnackBar();
-    m?.showSnackBar(SnackBar(
-      content: Text(mesaj),
-      backgroundColor: hata ? Renk.hata : Renk.yazi,
-      duration: Duration(milliseconds: hata ? 3500 : 1800),
-    ));
+    // 1.2.52: alttaki bant yerine dokunmayı engellemeyen üst bildirim.
+    UstBildirim.goster(mesaj, hata: hata);
   }
 
   /// Bir işlemi çalıştırır; hata mesajını gösterir, oturum gerekiyorsa tazeler.
@@ -197,16 +193,7 @@ Future<bool> onayla(BuildContext context, String baslik, String metin, {String o
 /// Web'deki başlıklı bildirim (useToast: success(başlık, metin) / danger(...)).
 extension BaslikliBildirim on BuildContext {
   void bildir2(String baslik, String metin, {bool hata = false}) {
-    final m = ScaffoldMessenger.maybeOf(this);
-    m?.hideCurrentSnackBar();
-    m?.showSnackBar(SnackBar(
-      backgroundColor: hata ? Renk.hata : Renk.yazi,
-      duration: Duration(milliseconds: hata ? 4000 : 2400),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(baslik, style: const TextStyle(fontWeight: FontWeight.w700)),
-        if (metin.isNotEmpty) Text(metin, style: const TextStyle(fontSize: 13)),
-      ]),
-    ));
+    UstBildirim.goster(baslik, metin: metin, hata: hata, sure: Duration(milliseconds: hata ? 4000 : 2400));
   }
 }
 
