@@ -297,8 +297,11 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
                                   borderRadius: Marka.yaricap,
                                   border: Border.all(color: Colors.white.withValues(alpha: .15)),
                                 ),
-                                child: const Text('E-posta / kullanıcı adı ve parola ile giriş',
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Icon(Icons.key_rounded, color: Colors.white70, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Demo anahtarım var', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                ]),
                               ),
                             ),
                           ),
@@ -551,9 +554,10 @@ class _BekleniyorState extends State<_Bekleniyor> with SingleTickerProviderState
       );
 }
 
-/* ───────────────────────── Parola ile giriş ─────────────────────────
-   Eşleme yapılamadığında (ya da App Store incelemesi için) hesap bilgisiyle
-   giriş. Yalnız patron paneli yetkisi olanlar içeri girer. */
+/* ──────────────── Demo girişi (mağaza incelemesi, 2026-11-13) ────────────────
+   Uygulamaya giriş yalnız panelden üretilen eşleme koduyla yapılır; bu ekran
+   inceleme için verilen demo anahtarıyla Demo Kafe'nin patron hesabına girer
+   (sunucu: LoginController, kullanıcı adı "demo" + anahtar). */
 
 class ParolaGirisEkrani extends StatefulWidget {
   const ParolaGirisEkrani({super.key});
@@ -562,22 +566,19 @@ class ParolaGirisEkrani extends StatefulWidget {
 }
 
 class _ParolaGirisEkraniState extends State<ParolaGirisEkrani> {
-  final _kim = TextEditingController();
-  final _parola = TextEditingController();
-  bool _gizli = true;
+  final _anahtar = TextEditingController();
   bool _bekle = false;
   String? _hata;
 
   @override
   void dispose() {
-    _kim.dispose();
-    _parola.dispose();
+    _anahtar.dispose();
     super.dispose();
   }
 
   Future<void> _gir() async {
-    if (_kim.text.trim().isEmpty || _parola.text.isEmpty) {
-      setState(() => _hata = 'E-posta / kullanıcı adı ve parolanı gir.');
+    if (_anahtar.text.trim().isEmpty) {
+      setState(() => _hata = 'Demo anahtarını gir.');
       return;
     }
     setState(() {
@@ -585,7 +586,7 @@ class _ParolaGirisEkraniState extends State<ParolaGirisEkrani> {
       _hata = null;
     });
     try {
-      final r = await Uyg.api.post('/api/v1/auth/login', {'email': _kim.text.trim(), 'password': _parola.text, 'remember': true});
+      final r = await Uyg.api.post('/api/v1/auth/login', {'email': 'demo', 'password': _anahtar.text.trim(), 'remember': true});
       if (r is Map && r['two_factor'] == true) {
         setState(() => _hata = 'Hesabında iki adımlı doğrulama açık. Telefonu eşleme koduyla bağla.');
         return;
@@ -608,7 +609,7 @@ class _ParolaGirisEkraniState extends State<ParolaGirisEkrani> {
       if (!mounted) return;
       kabugaGec(context);
     } on ApiHata catch (e) {
-      if (mounted) setState(() => _hata = e.mesaj);
+      if (mounted) setState(() => _hata = e.kod == 422 ? 'Demo anahtarı geçersiz.' : e.mesaj);
     } finally {
       if (mounted) setState(() => _bekle = false);
     }
@@ -648,42 +649,26 @@ class _ParolaGirisEkraniState extends State<ParolaGirisEkrani> {
                   const SizedBox(height: 14),
                   const Belirme(sira: 0, child: Align(alignment: Alignment.centerLeft, child: PaMark(boyut: 48))),
                   const SizedBox(height: 16),
-                  Belirme(sira: 1, child: Text('Parola ile giriş', style: gosterim(28, renk: Colors.white))),
+                  Belirme(sira: 1, child: Text('Demo girişi', style: gosterim(28, renk: Colors.white))),
                   const SizedBox(height: 4),
                   Belirme(
                     sira: 2,
-                    child: Text('BamBumPOS hesabınla gir. Yalnız patron paneli yetkisi olanlar girebilir.',
+                    child: Text('Size verilen demo anahtarını girin; örnek işletmenin patron hesabıyla açılır.',
                         style: TextStyle(color: Colors.white.withValues(alpha: .7), height: 1.4)),
                   ),
                   const SizedBox(height: 22),
                   Belirme(
                     sira: 3,
                     child: TextField(
-                      controller: _kim,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.username],
-                      textInputAction: TextInputAction.next,
+                      controller: _anahtar,
+                      autofocus: true,
                       autocorrect: false,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: koyu('E-posta / kullanıcı adı', Icons.person_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Belirme(
-                    sira: 4,
-                    child: TextField(
-                      controller: _parola,
-                      obscureText: _gizli,
-                      autofillHints: const [AutofillHints.password],
+                      enableSuggestions: false,
+                      textCapitalization: TextCapitalization.characters,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _bekle ? null : _gir(),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: koyu('Parola', Icons.lock_rounded,
-                          sag: IconButton(
-                            tooltip: _gizli ? 'Parolayı göster' : 'Parolayı gizle',
-                            onPressed: () => setState(() => _gizli = !_gizli),
-                            icon: Icon(_gizli ? Icons.visibility_rounded : Icons.visibility_off_rounded, color: Colors.white60),
-                          )),
+                      style: const TextStyle(color: Colors.white, letterSpacing: 1.5, fontWeight: FontWeight.w700),
+                      decoration: koyu('Demo anahtarı', Icons.key_rounded),
                     ),
                   ),
                   if (_hata != null) ...[
