@@ -1,0 +1,109 @@
+name: POS macOS · Mac App Store
+
+# BamBumPOS POS'un macOS derlemesini Mac App Store için imzalar ve
+# App Store Connect'e yükler (macOS sürüm sayfasındaki "Build" listesine düşer).
+# Elle (workflow_dispatch) veya pos-v* etiketinde çalışır.
+# Gizliler: MAC_APP_P12_B64 (3rd Party Mac Developer Application),
+# MAC_INST_P12_B64 (3rd Party Mac Developer Installer), MAC_P12_PASS, ASC_KEY_P8.
+# Profil: pos-app/macos-imza/appstore.provisionprofile (MAC_APP_STORE, 2TDA97CKBT).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['pos-v*']
+
+concurrency:
+  group: pos-macos-appstore-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.8'
+  ASC_KEY_ID: 5Z9AN85989
+  ASC_ISSUER: e0998d8d-1026-4fe2-b8bd-d2f5715dbef8
+
+defaults:
+  run:
+    working-directory: pos-app
+
+jobs:
+  macappstore:
+    name: Mac App Store yükleme
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode 26 seç
+        working-directory: .
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$X" ] && sudo xcode-select -s "$X/Contents/Developer"; xcodebuild -version
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Anahtarlığı hazırla
+        env:
+          APP_P12: ${{ secrets.MAC_APP_P12_B64 }}
+          INST_P12: ${{ secrets.MAC_INST_P12_B64 }}
+          PASS: ${{ secrets.MAC_P12_PASS }}
+          K: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -e
+          KC=$RUNNER_TEMP/mac.keychain-db; KP=$(uuidgen)
+          security create-keychain -p "$KP" $KC
+          security set-keychain-settings -lut 3600 $KC
+          security unlock-keychain -p "$KP" $KC
+          for v in APP_P12 INST_P12; do
+            printf '%s' "${!v}" | base64 --decode > $RUNNER_TEMP/k.p12
+            security import $RUNNER_TEMP/k.p12 -P "$PASS" -A -t cert -f pkcs12 -k $KC
+          done
+          rm -f $RUNNER_TEMP/k.p12
+          curl -sfL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o $RUNNER_TEMP/wwdr.cer && security import $RUNNER_TEMP/wwdr.cer -k $KC || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productbuild: -k "$KP" $KC >/dev/null
+          security list-keychains -d user -s $KC $(security list-keychains -d user | tr -d '"')
+          security find-identity -v $KC
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$K" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+      - name: İmzala ve paketle
+        run: |
+          set -e
+          APP="build/macos/Build/Products/Release/BamBumPOS.app"
+          cp macos-imza/appstore.provisionprofile "$APP/Contents/embedded.provisionprofile"
+          security cms -D -i macos-imza/appstore.provisionprofile > prof.plist
+          /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' prof.plist > profent.plist
+          cp macos/Runner/Release.entitlements ent.plist
+          for k in com.apple.application-identifier com.apple.developer.team-identifier; do
+            V=$(/usr/libexec/PlistBuddy -c "Print :$k" profent.plist)
+            /usr/libexec/PlistBuddy -c "Add :$k string $V" ent.plist
+          done
+          plutil -p ent.plist
+          UYG=$(security find-identity -v -p codesigning | grep -o '"3rd Party Mac Developer Application[^"]*\|"Apple Distribution[^"]*' | head -1 | tr -d '"')
+          YUK=$(security find-identity -v | grep -o '"3rd Party Mac Developer Installer[^"]*' | head -1 | tr -d '"')
+          echo "Uygulama kimliği: $UYG / Yükleyici: $YUK"
+          # İçten dışa: framework ve dylib'ler, sonra uygulama (sandbox + profil yetkileri ile)
+          find "$APP/Contents/Frameworks" -depth \( -name '*.framework' -o -name '*.dylib' \) 2>/dev/null | while read f; do
+            codesign -f -s "$UYG" --timestamp=none "$f"; done
+          codesign -f -s "$UYG" --entitlements ent.plist --timestamp=none "$APP"
+          codesign -v --deep --strict "$APP"
+          codesign -d --entitlements - "$APP" | head -30
+          mkdir -p cikti
+          productbuild --component "$APP" /Applications --sign "$YUK" cikti/BamBumPOS-POS-MacAppStore.pkg
+          echo "Sürüm: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist"))"
+      - name: App Store Connect'e yükle
+        run: |
+          xcrun altool --validate-app -f cikti/BamBumPOS-POS-MacAppStore.pkg -t macos --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER
+          xcrun altool --upload-app -f cikti/BamBumPOS-POS-MacAppStore.pkg -t macos --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-appstore
+          path: pos-app/cikti/*
+          if-no-files-found: ignore
+      - name: Temizle
+        if: always()
+        working-directory: .
+        run: |
+          security delete-keychain $RUNNER_TEMP/mac.keychain-db 2>/dev/null || true
+          rm -rf ~/.appstoreconnect
