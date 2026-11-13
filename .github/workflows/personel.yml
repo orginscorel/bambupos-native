@@ -43,11 +43,14 @@ jobs:
           V=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
           mkdir -p out && cp build/app/outputs/flutter-apk/app-release.apk "out/BamBumPOS-Personel-$V-Android.apk"
           rm -f android/app/imza.p12 android/key.properties
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android
-          path: out/
-          retention-days: 7
+      - name: Sürüme yükle (android)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          T="personel-${{ github.run_number }}"; R="${{ github.repository }}"
+          gh release view "$T" --repo "$R" >/dev/null 2>&1 || gh release create "$T" --repo "$R" --target "${{ github.sha }}" \
+            --title "Personel ${{ github.run_number }}" --notes "Android (imzalı) + iPhone (imzasız)" --prerelease || sleep 5
+          gh release upload "$T" out/* --repo "$R" --clobber
   ios:
     runs-on: macos-15
     timeout-minutes: 45
@@ -72,27 +75,20 @@ jobs:
           mkdir -p out/Payload
           cp -R build/ios/iphoneos/Runner.app out/Payload/
           cd out && zip -qry Runner-imzasiz.ipa Payload && rm -rf Payload && ls -la
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios
-          path: out/
-          retention-days: 7
+      - name: Sürüme yükle (ios)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          T="personel-${{ github.run_number }}"; R="${{ github.repository }}"
+          gh release view "$T" --repo "$R" >/dev/null 2>&1 || gh release create "$T" --repo "$R" --target "${{ github.sha }}" \
+            --title "Personel ${{ github.run_number }}" --notes "Android (imzalı) + iPhone (imzasız)" --prerelease || sleep 5
+          gh release upload "$T" out/* --repo "$R" --clobber
+  # Artifact deposu kotası dolunca derleme düşüyordu: dosyalar artık doğrudan sürüme yükleniyor.
   yayinla:
     needs: [android, ios]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: out
-          merge-multiple: true
-      - name: Sürüm oluştur
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ls -la out
-          gh release create "personel-${{ github.run_number }}" out/* \
-            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
-            --title "Personel ${{ github.run_number }}" --notes "Android (imzalı) + iPhone (imzasız)" --prerelease
+      - run: echo "personel-${{ github.run_number }} hazır"
   imza:
     needs: yayinla
     uses: ./.github/workflows/ios-imza.yml
