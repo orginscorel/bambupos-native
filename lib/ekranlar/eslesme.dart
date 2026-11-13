@@ -452,7 +452,7 @@ class _GirisEkraniState extends State<GirisEkrani> {
               ),
             ),
             const SizedBox(height: 26),
-            const Belir(child: PaMark(boyut: 56)),
+            const Belir(child: Align(alignment: Alignment.centerLeft, child: PaMark(boyut: 56))),
             const SizedBox(height: 18),
             Belir(gecikme: 60, child: Text('Parola ile giriş', style: gosterim(30, renk: Colors.white))),
             Belir(gecikme: 100, child: Text('İşletmenin sana verdiği bilgilerle gir.', style: TextStyle(color: Colors.white.withValues(alpha: .65)))),
