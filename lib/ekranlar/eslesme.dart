@@ -216,7 +216,11 @@ class _EslesmeEkraniState extends State<EslesmeEkrani> {
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: Colors.white.withValues(alpha: .15)),
                         ),
-                        child: const Text('E-posta / telefon ve parola ile giriş', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.key_rounded, color: Colors.white70, size: 20),
+                          SizedBox(width: 8),
+                          Text('Demo anahtarım var', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                        ]),
                       ),
                     ),
                     TextButton(
@@ -378,7 +382,10 @@ class _BekleniyorState extends State<_Bekleniyor> with SingleTickerProviderState
       ]);
 }
 
-/* ───────────────────────── Parola ile giriş ───────────────────────── */
+/* ──────────────── Demo girişi (mağaza incelemesi, 2026-11-13) ────────────────
+   Uygulamaya giriş yalnız panelden üretilen eşleme koduyla yapılır; bu ekran
+   inceleme için verilen demo anahtarıyla Demo Kafe hesabına girer (sunucu:
+   LoginController, kullanıcı adı "demo" + anahtar). */
 
 class GirisEkrani extends StatefulWidget {
   const GirisEkrani({super.key});
@@ -387,15 +394,13 @@ class GirisEkrani extends StatefulWidget {
 }
 
 class _GirisEkraniState extends State<GirisEkrani> {
-  final _kim = TextEditingController();
-  final _parola = TextEditingController();
-  bool _gizli = true;
+  final _anahtar = TextEditingController();
   bool _bekle = false;
   String? _hata;
 
   Future<void> _gir() async {
-    if (_kim.text.trim().isEmpty || _parola.text.isEmpty) {
-      setState(() => _hata = 'E-posta / telefon ve parolanı gir.');
+    if (_anahtar.text.trim().isEmpty) {
+      setState(() => _hata = 'Demo anahtarını gir.');
       return;
     }
     setState(() {
@@ -403,7 +408,7 @@ class _GirisEkraniState extends State<GirisEkrani> {
       _hata = null;
     });
     try {
-      final r = await Uyg.api.post('/api/v1/auth/login', {'email': _kim.text.trim(), 'password': _parola.text, 'remember': true});
+      final r = await Uyg.api.post('/api/v1/auth/login', {'email': 'demo', 'password': _anahtar.text.trim(), 'remember': true});
       if (r is Map && (r['two_factor'] == true || r['requires_two_factor'] == true)) {
         setState(() => _hata = 'Hesabında iki adımlı doğrulama açık. Telefonu eşleme koduyla bağla.');
         return;
@@ -415,10 +420,16 @@ class _GirisEkraniState extends State<GirisEkrani> {
         setState(() => _hata = 'Giriş yapılamadı.');
       }
     } on ApiHata catch (e) {
-      setState(() => _hata = e.mesaj);
+      setState(() => _hata = e.kod == 422 ? 'Demo anahtarı geçersiz.' : e.mesaj);
     } finally {
       if (mounted) setState(() => _bekle = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _anahtar.dispose();
+    super.dispose();
   }
 
   @override
@@ -454,33 +465,20 @@ class _GirisEkraniState extends State<GirisEkrani> {
             const SizedBox(height: 26),
             const Belir(child: Align(alignment: Alignment.centerLeft, child: PaMark(boyut: 56))),
             const SizedBox(height: 18),
-            Belir(gecikme: 60, child: Text('Parola ile giriş', style: gosterim(30, renk: Colors.white))),
-            Belir(gecikme: 100, child: Text('İşletmenin sana verdiği bilgilerle gir.', style: TextStyle(color: Colors.white.withValues(alpha: .65)))),
+            Belir(gecikme: 60, child: Text('Demo girişi', style: gosterim(30, renk: Colors.white))),
+            Belir(gecikme: 100, child: Text('Size verilen demo anahtarını girin; örnek işletmenin çalışan hesabıyla açılır.', style: TextStyle(color: Colors.white.withValues(alpha: .65)))),
             const SizedBox(height: 26),
             Belir(
               gecikme: 140,
               child: TextField(
-                controller: _kim,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.username],
-                style: const TextStyle(color: Colors.white),
-                decoration: koyu('E-posta / telefon / kullanıcı adı', Icons.person_rounded),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Belir(
-              gecikme: 180,
-              child: TextField(
-                controller: _parola,
-                obscureText: _gizli,
-                autofillHints: const [AutofillHints.password],
-                style: const TextStyle(color: Colors.white),
+                controller: _anahtar,
+                autofocus: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.characters,
+                style: const TextStyle(color: Colors.white, letterSpacing: 1.5, fontWeight: FontWeight.w700),
                 onSubmitted: (_) => _gir(),
-                decoration: koyu('Parola', Icons.lock_rounded,
-                    sag: IconButton(
-                      icon: Icon(_gizli ? Icons.visibility_rounded : Icons.visibility_off_rounded, color: Colors.white60),
-                      onPressed: () => setState(() => _gizli = !_gizli),
-                    )),
+                decoration: koyu('Demo anahtarı', Icons.key_rounded),
               ),
             ),
             if (_hata != null)
