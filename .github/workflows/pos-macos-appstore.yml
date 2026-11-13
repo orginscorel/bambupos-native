@@ -97,6 +97,7 @@ jobs:
           xcrun altool --upload-app -f cikti/BamBumPOS-POS-MacAppStore.pkg -t macos --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true  # depolama kotası dolarsa yüklemeyi kırmızıya boyamasın
         with:
           name: macos-appstore
           path: pos-app/cikti/*
