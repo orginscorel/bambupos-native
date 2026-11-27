@@ -1519,7 +1519,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
   Widget _secimSeridi(Adisyon a) {
     final secim = _seciliKalemler;
     final adet = secim.fold<int>(0, (t, k) => t + _topluAdedi(k));
-    final tutar = secim.fold<int>(0, (t, k) => t + (k.adet == 0 ? 0 : (k.tutar / k.adet * _topluAdedi(k)).round()));
+    final tutar = secim.fold<int>(0, (t, k) => t + k.payTutari(_topluAdedi(k)));
     final tek = secim.length == 1 ? secim.first : null;
     final cikarMi = tek != null && _cikarilabilir(tek);
     return Container(
@@ -1825,6 +1825,7 @@ class _AdisyonEkraniState extends State<AdisyonEkrani> with WidgetsBindingObserv
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, decoration: k.ikram ? TextDecoration.lineThrough : null)),
             ),
             Text('${para(k.birimFiyat)} / adet', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+            if (k.adisyonIndirim > 0 && !k.ikram && !parca) IndirimEtiketi(kalem: k),
           ]),
         ]),
         // Adet kartları (web sipariş detayı / Kasa ile aynı): her adet ayrı

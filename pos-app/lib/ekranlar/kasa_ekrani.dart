@@ -797,7 +797,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
   ];
 
   /// Satırın n adedinin tutarı (satır toplamından orantılı; tamamı = satır toplamı).
-  static int _payTutari(Kalem k, int n) => n >= k.adet ? k.tutar : (k.adet == 0 ? 0 : (k.tutar * n / k.adet).round());
+  static int _payTutari(Kalem k, int n) => k.payTutari(n);
 
   int get _seciliToplam => _seciliKalemler.fold(0, (t, x) => t + _payTutari(x.kalem, x.adet));
   int get _seciliAdet => _seciliKalemler.fold(0, (t, x) => t + x.adet);
@@ -1256,7 +1256,8 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
       }
       cesit++;
       adet += k.adet;
-      satirlar.add({'name': '${k.adet}x ${k.ad}${k.varyant != null ? ' (${k.varyant})' : ''}', 'amount': k.iade ? 'İADE' : (k.ikram ? 'İKRAM' : tl(k.tutar))});
+      // Satır LİSTE tutarıyla; adisyon indirimi altta "İndirim" satırında düşülür.
+      satirlar.add({'name': '${k.adet}x ${k.ad}${k.varyant != null ? ' (${k.varyant})' : ''}', 'amount': k.iade ? 'İADE' : (k.ikram ? 'İKRAM' : tl(k.listeTutar))});
       if (k.adet > 1 && !k.ikram) satirlar.add({'name': '    ${k.adet} × ${tl(k.birimFiyat)}', 'amount': ''});
       if (k.secenekler.isNotEmpty) satirlar.add({'name': '    ${k.secenekler.join(' · ')}', 'amount': ''});
       if (k.not != null && k.not!.isNotEmpty) satirlar.add({'name': '    » ${k.not}', 'amount': ''});
@@ -3085,6 +3086,7 @@ class _KasaEkraniState extends State<KasaEkrani> with WidgetsBindingObserver {
             )),
         if (k.adet > 1 || k.ikram)
           Text('${para(k.birimFiyat)} / adet', style: TextStyle(fontSize: 11.5, color: Renk.soluk)),
+        if (k.adisyonIndirim > 0 && !k.ikram) IndirimEtiketi(kalem: k),
       ]),
       if (cokAdet)
         Padding(

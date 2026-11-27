@@ -248,3 +248,30 @@ List<Widget> tekAdetEkleyen(Kalem k) {
     ),
   ];
 }
+
+/// KALEM BAZLI ADİSYON İNDİRİMİ (sunucu 2026-11-26): hazır yüzde indirimin bu
+/// satıra düşen payı — üstü çizili liste tutarı + düşen indirim (web ile aynı).
+class IndirimEtiketi extends StatelessWidget {
+  const IndirimEtiketi({super.key, required this.kalem});
+
+  final Kalem kalem;
+
+  @override
+  Widget build(BuildContext context) {
+    final stil = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: Renk.uyari,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Text.rich(
+      TextSpan(children: [
+        TextSpan(
+          text: para(kalem.listeTutar),
+          style: stil.copyWith(decoration: TextDecoration.lineThrough, decorationColor: Renk.uyari, color: Renk.uyari.withValues(alpha: .75)),
+        ),
+        TextSpan(text: ' −${para(kalem.adisyonIndirim)}', style: stil),
+      ]),
+    );
+  }
+}

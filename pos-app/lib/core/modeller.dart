@@ -232,6 +232,26 @@ class Kalem {
   /// tamamı (kısmi ödemede sunucu satırı böler).
   int get odenmemisAdet => odendi ? 0 : (ham['unpaid_qty'] == null ? adet : tamSayi(ham['unpaid_qty']).clamp(0, adet));
   int get tutar => tamSayi(ham['line_total_minor']);
+
+  /// KALEM BAZLI ADİSYON İNDİRİMİ (sunucu 2026-11-26): hazır yüzde indirimin
+  /// bu satıra düşen payı. `tutar` bu indirim düşülmüş (tahsil edilecek) tutardır.
+  int get adisyonIndirim => tamSayi(ham['adisyon_indirim_minor']);
+
+  /// Satırın indirimsiz (liste) tutarı — fişte satır bununla yazılır, indirim
+  /// altta "İndirim" satırında düşülür (Ara toplam ile tutarlı). Eski sunucu: tutar.
+  int get listeTutar => ham['liste_tutar_minor'] == null ? tutar : tamSayi(ham['liste_tutar_minor']);
+
+  /// Satıra düşen toplam indirim (satır + adisyon indirimi). Kısmi adet tutarı
+  /// sunucunun bölme hesabıyla birebir: adet × birim − ⌊indirim × adet / toplam⌋.
+  int get indirimToplam => tamSayi(ham['discount_minor']);
+
+  /// Satırın n adedinin tahsil tutarı (tamamı = satır toplamı).
+  int payTutari(int n) {
+    if (n >= adet) return tutar;
+    if (adet <= 0 || n <= 0) return 0;
+    final t = n * birimFiyat - (indirimToplam * n) ~/ adet;
+    return t < 0 ? 0 : t;
+  }
   String? get not => _metin(ham['note']);
   String? get istasyon => _metin(ham['station_label']);
   bool get hazirliksiz => ham['no_prep'] == true;
